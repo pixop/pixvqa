@@ -1,0 +1,25 @@
+Netflix VMAF
+============
+
+This directory redistributes licensing materials for the official Netflix VMAF
+project (https://github.com/Netflix/vmaf), used by PixVQA for optional CPU VMAF
+v1 evaluation via libvmaf 3.2.1.
+
+Pinned upstream revision
+------------------------
+
+- Repository: https://github.com/Netflix/vmaf
+- Tag: v3.2.1
+- Commit: f85a853692a8c730d0270cd733c8bb30b5b93b7c
+
+Vendored model JSON assets
+--------------------------
+
+The eight VMAF v1.0.16 model JSON files under `model/` in this repository are
+exact byte copies of the corresponding files from the pinned Netflix commit.
+See `model/README.md` and `reports/VMAF_MODEL_CHECKSUMS.md`.
+
+Copyright (c) 2020 Netflix, Inc.
+
+The LICENSE file in this directory is the Netflix VMAF LICENSE (BSD-2-Clause-Patent)
+fetched from the pinned commit.

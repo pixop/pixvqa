@@ -1,0 +1,59 @@
+# Build products
+build/
+cmake-build-*/
+
+# Pinned libvmaf checkout/build/install (reproduced by scripts/build_libvmaf.sh)
+deps/
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+*.exe
+*.ilk
+*.pdb
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets and local environment
+.env
+.env.*
+*.pem
+credentials.json
+
+# Local logs / scratch
+*.log
+/tmp/
+/_fix_crlf.py
+dist/
+
+# Research PDFs and FFmpeg excerpts. Redistribution is not granted.
+research/
+
+# Generated measurements and local media are not source.
+reports/*.json
+reports/*.txt
+
+# Media is not part of this source tree.
+*.yuv
+*.mp4
+*.hevc
+*.265
+*.ivf
+*.mkv
+*.mov

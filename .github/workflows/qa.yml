@@ -1,0 +1,75 @@
+name: qa
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      hardware:
+        description: Run the NVIDIA profile on a self-hosted GPU runner
+        type: boolean
+        default: false
+
+jobs:
+  cpu-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the CPU binary
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ python3 make
+          bash build.sh
+      - name: Smoke profile
+        run: python3 scripts/run_qa.py --profile smoke
+      - name: Upload the smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-smoke
+          path: reports/qa/smoke.*
+
+  full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record that the full profile is not run here
+        run: |
+          mkdir -p reports/qa
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          reason = (
+              "SKIP. GitHub-hosted runners do not provide the validated FFmpeg, "
+              "libdav1d, or libvmaf prefixes. On the validation host, with FFMPEG, "
+              "VVDEC, and VMAF_CLI set, run: python3 scripts/run_qa.py --profile full"
+          )
+          Path("reports/qa/full-ci.json").write_text(json.dumps({
+              "profile": "full",
+              "verdict": "SKIP",
+              "reason": reason,
+          }, indent=2) + "\n", encoding="utf-8")
+          print(reason)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qa-full-skip
+          path: reports/qa/full-ci.json
+
+  hardware:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware }}
+    runs-on: [self-hosted, linux, nvidia]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hardware profile
+        run: |
+          if ! command -v nvidia-smi >/dev/null; then
+            echo "FAIL. Hardware was requested and nvidia-smi is not available. This is not a pass."
+            exit 1
+          fi
+          python3 scripts/run_qa.py --profile hardware
+      - name: Upload the hardware report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-hardware
+          path: reports/qa/hardware.*
