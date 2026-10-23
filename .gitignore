@@ -48,6 +48,7 @@ research/
 # Generated measurements and local media are not source.
 reports/*.json
 reports/*.txt
+/reports/qa/
 
 # Media is not part of this source tree.
 *.yuv
