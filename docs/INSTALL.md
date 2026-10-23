@@ -192,6 +192,39 @@ These steps match the libraries used for the earlier AV1, VVC, and NVDEC checks,
 - The FFmpeg clone, `./configure`, and `make` in section 3, including a configure that omits `--enable-ffnvcodec`, `--enable-nvdec`, and `--enable-cuvid`.
 - The GCC 13 and CUDA steps in section 6.
 
+## Continuous integration (GitHub Actions)
+
+Workflow file: `.github/workflows/qa.yml` on the [pixop/pixvqa](https://github.com/pixop/pixvqa) repository.
+
+**When CI runs**
+
+- Every **push** to `main`.
+- Every **pull request** targeting `main`.
+- **Manual** runs from the Actions tab (`workflow_dispatch`). Optional input **hardware** runs the GPU hardware profile only when set to true and a matching self-hosted NVIDIA runner exists.
+
+CI does **not** install PixVQA on end-user machines. It only validates this source tree on GitHub’s Ubuntu runners (or your self-hosted GPU runner when explicitly requested).
+
+**What hosted CI executes (CPU, `ubuntu-24.04`)**
+
+1. `bash build.sh` — compiles `build/cpu/pixvqa` and `build/cpu/selftest`, then runs selftest and `scripts/test_io_regressions.py` inside the build script.
+2. `build/cpu/selftest` — repeated as an explicit CI step.
+3. `scripts/test_io_regressions.py` — CPU-only CLI and I/O checks (no FFmpeg).
+4. `scripts/test_qcs.py` — QCS regression (Ubuntu package `python3-numpy`).
+5. `scripts/run_qa.py --profile smoke` — 16-case smoke profile on the CPU binary.
+
+**What hosted CI does not run**
+
+- **Full QA** (~233 cases): needs FFmpeg, libdav1d, libvmaf, VMAF CLI, `build/swdec` or `build/full`, and other fixtures documented in the QA harness. A separate workflow job records **NOT RUN** with an artifact; it is not a passing full validation.
+- **CUDA / NVDEC / hardware profile**: no GPU on GitHub-hosted runners. Use manual dispatch with **hardware** enabled and a self-hosted runner labeled `self-hosted`, `linux`, `nvidia`.
+
+**Local validation (same as release QA)**
+
+```bash
+python3 scripts/run_qa.py --profile smoke
+python3 scripts/run_qa.py --profile full    # after deps in sections 2–6
+python3 scripts/run_qa.py --profile hardware  # GPU build; export PIXVQA_CHECK_GPU=1
+```
+
 ## Troubleshooting
 
 - `Set FFMPEG_PREFIX` or `Set GCC_ENV`: `build_decode.sh` did not find `lib/libavcodec.so` or `bin/g++`.

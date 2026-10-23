@@ -1,73 +1,144 @@
-name: qa
+name: QA
 
 on:
+  push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       hardware:
-        description: Run the NVIDIA profile on a self-hosted GPU runner
+        description: Run the NVIDIA hardware profile on a self-hosted GPU runner
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
-  cpu-smoke:
-    runs-on: ubuntu-latest
+  cpu-hosted:
+    name: CPU build and hosted tests
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - name: Build the CPU binary
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ python3 make
-          bash build.sh
-      - name: Smoke profile
+          sudo apt-get install -y g++ make python3 python3-numpy
+
+      - name: Build CPU binary (includes selftest and I/O regressions)
+        run: bash build.sh
+
+      - name: Selftest binary
+        run: build/cpu/selftest
+
+      - name: I/O regression suite
+        run: python3 scripts/test_io_regressions.py
+
+      - name: QCS regression suite
+        run: python3 scripts/test_qcs.py
+
+      - name: QA smoke profile (16 cases)
         run: python3 scripts/run_qa.py --profile smoke
-      - name: Upload the smoke report
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## CPU hosted CI — executed"
+            echo ""
+            echo "| Check | Status |"
+            echo "|-------|--------|"
+            echo "| \`bash build.sh\` (compile; also runs selftest + I/O inside the script) | see build log |"
+            echo "| \`build/cpu/selftest\` | see step above |"
+            echo "| \`scripts/test_io_regressions.py\` | see step above |"
+            echo "| \`scripts/test_qcs.py\` (needs NumPy; \`python3-numpy\` on Ubuntu) | see step above |"
+            echo "| \`scripts/run_qa.py --profile smoke\` (16 cases) | see step above |"
+            echo ""
+            echo "## Not run on GitHub-hosted runners"
+            echo ""
+            echo "- **Full QA** (~233 cases): needs pinned FFmpeg, libdav1d, libvmaf build, external VMAF CLI, decode binaries, and optional GPU."
+            echo "- **Hardware / NVDEC / CUDA metrics**: needs a self-hosted runner with NVIDIA labels; enable only via manual workflow dispatch."
+            echo ""
+            echo "Local full profile: \`python3 scripts/run_qa.py --profile full\` after \`docs/INSTALL.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload smoke report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-smoke
+          name: qa-smoke-hosted
           path: reports/qa/smoke.*
 
-  full:
-    runs-on: ubuntu-latest
+  hosted-integration-skip:
+    name: Full QA — NOT RUN on hosted CI
+    runs-on: ubuntu-24.04
+    needs: cpu-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Record that the full profile is not run here
+      - name: Document full-profile limitation
         run: |
           mkdir -p reports/qa
           python3 - <<'PY'
           import json
           from pathlib import Path
           reason = (
-              "SKIP. GitHub-hosted runners do not provide the validated FFmpeg, "
-              "libdav1d, or libvmaf prefixes. On the validation host, with FFMPEG, "
-              "VVDEC, and VMAF_CLI set, run: python3 scripts/run_qa.py --profile full"
+              "NOT RUN on GitHub-hosted CI. The full profile needs validated FFmpeg, "
+              "libdav1d, libvmaf prefixes, VMAF CLI, software-decode/full binaries, and "
+              "optional GPU. On a prepared machine run: "
+              "python3 scripts/run_qa.py --profile full"
           )
-          Path("reports/qa/full-ci.json").write_text(json.dumps({
-              "profile": "full",
-              "verdict": "SKIP",
-              "reason": reason,
-          }, indent=2) + "\n", encoding="utf-8")
+          Path("reports/qa/full-hosted-skip.json").write_text(
+              json.dumps(
+                  {
+                      "profile": "full",
+                      "verdict": "NOT_RUN",
+                      "hosted_ci": True,
+                      "reason": reason,
+                  },
+                  indent=2,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
           print(reason)
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: qa-full-skip
-          path: reports/qa/full-ci.json
 
-  hardware:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware }}
+      - name: Summary — full QA not executed
+        run: |
+          {
+            echo "## Full QA — NOT RUN"
+            echo ""
+            echo "This job **does not** execute the 233-case full profile. It records why hosted CI skips integration testing."
+            echo ""
+            echo "Run locally after building dependencies per \`docs/INSTALL.md\`:"
+            echo "\`python3 scripts/run_qa.py --profile full\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload skip record
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-full-not-run-on-hosted
+          path: reports/qa/full-hosted-skip.json
+
+  hardware-self-hosted:
+    name: Hardware / GPU (manual, self-hosted only)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware == true }}
     runs-on: [self-hosted, linux, nvidia]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Hardware profile
         run: |
           if ! command -v nvidia-smi >/dev/null; then
-            echo "FAIL. Hardware was requested and nvidia-smi is not available. This is not a pass."
+            echo "FAIL. Hardware was requested and nvidia-smi is not available."
             exit 1
           fi
           python3 scripts/run_qa.py --profile hardware
-      - name: Upload the hardware report
+
+      - name: Upload hardware report
         if: always()
         uses: actions/upload-artifact@v4
         with:
