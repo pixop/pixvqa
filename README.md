@@ -33,7 +33,7 @@ Quality Consistency Score (QCS) is a metric-agnostic descriptor of temporal qual
 
 QCS characterizes the distribution of frame-level quality scores over time, not their temporal ordering. Different temporal arrangements of the same quality scores therefore produce the same QCS.
 
-Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. `--qcs` accepts `psnr`, `xpsnr`, `ssim`, and `msssim`. It does not accept `vmaf` or the PU21 metrics. Defaults are `[30,50]` for PSNR and XPSNR, and `[0.8,1.0]` for SSIM and MS-SSIM. `--qcs-range psnr=40:55` sets one range. The name is the base metric, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99` and identical XPSNR is printed `inf`. Both still count in QCS.
+Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. QCS supports the base metrics `psnr`, `xpsnr`, `ssim`, and `msssim` (selected with `--metrics`; `--qcs` enables their QCS reporting). It does not accept `vmaf` or the PU21 metrics. Defaults are `[30,50]` for PSNR and XPSNR, and `[0.8,1.0]` for SSIM and MS-SSIM. `--qcs-range psnr=40:55` sets one range. The name is the base metric, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99` and identical XPSNR is printed `inf`. Both still count in QCS.
 
 ```bash
 pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
@@ -43,7 +43,7 @@ pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
 
 ## Quick start
 
-The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. `pixvqa` is `build/swdec/pixvqa`, or the installed binary. The GPU command needs `build/full/pixvqa`.
+The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes a binary on `PATH`; alternatively invoke `build/swdec/pixvqa` from the checkout, or `$HOME/pixvqa/bin/pixvqa-with-libs` after the guided installation. The GPU command requires the full NVIDIA build (`build/full/pixvqa` or its installed equivalent).
 
 Compressed video, software decoder:
 
@@ -101,31 +101,46 @@ pixvqa --metrics psnr --decode gpu \
 
 ## Installation
 
-The tested environment is Linux on x86-64, including WSL2. Native Windows has not been validated. Builds do not require a CUDA toolkit unless you want NVDEC or GPU metrics. Full commands, FFmpeg flags, and troubleshooting are in [docs/INSTALL.md](docs/INSTALL.md).
+PixVQA targets **Linux x86-64**, including Ubuntu 22.04/24.04 under WSL2. Native Windows has not been validated. Run installation commands in a **Linux/Ubuntu shell**, not Windows Git Bash or MSYS2. The source tree does not include prebuilt FFmpeg, libdav1d, or CUDA libraries.
 
-Raw YUV only. This binary does not decode compressed video:
+Choose **one** of the following installation methods from the root of your PixVQA source checkout.
 
-```bash
-bash build.sh
-```
+### Option 1 — Automatic installation (guided; experimental)
 
-CPU decoding, including AV1 through libdav1d and VVC through FFmpeg. Leave `GCC13` and `CUDA_HOME` unset:
+From the repository root, run the interactive installer in an Ubuntu/Linux terminal:
 
 ```bash
-export FFMPEG_PREFIX=/path/to/ffmpeg
-export DAV1D_LIB=/path/to/libdav1d
-export GCC_ENV=/path/to/gcc
-export LIBVMAF_PREFIX=/path/to/libvmaf
-bash build_decode.sh
+bash install_pixvqa.sh
 ```
 
-The executable is `build/swdec/pixvqa`. Optional NVDEC and GPU metrics produce `build/full/pixvqa`.
+The installer asks two independent questions:
+
+1. **Install dav1d 1.5.1 for software AV1 decoding?** `[Y/n]` (default: yes).
+2. **Build NVIDIA GPU support (CUDA metrics + NVDEC)?** `[y/N]` (default: no).
+
+**Choose dav1d = Yes** for the FFmpeg software-decoding build (`build/swdec/pixvqa`). With **dav1d = No**, the current guided installer installs only the raw-YUV CPU build (`build/cpu/pixvqa`), without compressed decoding. Selecting NVIDIA = Yes together with dav1d = No is rejected; this combination has not been validated. The installer does not currently accept command-line switches such as `--with-dav1d` or `--without-cuda`.
+
+For NVIDIA = Yes, the installer checks for an existing compatible NVIDIA driver and **CUDA toolkit 12.8**, which must already be installed. It can install a separate conda-forge **GCC 13.4** toolchain and compatible `ffnvcodec` development headers when missing. It does **not** install the NVIDIA driver or CUDA toolkit. On WSL2, use the Windows-provided NVIDIA driver; do not install a second Linux display driver.
+
+The default installation prefix is `$HOME/pixvqa`. The installer builds pinned libvmaf 3.2.1, verifies that VMAF is enabled in PixVQA, checks runtime libraries, and runs CPU smoke QA. It reuses matching existing dependency installations where possible, but does not provide a general uninstall command or a guaranteed transaction/rollback mechanism.
+
+**Run PixVQA after installation** using the launcher generated by Revision 6, which supplies private FFmpeg, dav1d and CUDA library paths in a new shell:
 
 ```bash
-PREFIX=/opt/pixvqa PIXVQA_BIN=build/swdec/pixvqa bash scripts/install.sh
+"$HOME/pixvqa/bin/pixvqa-with-libs" --version
 ```
 
-Models are copied to `$PREFIX/share/pixvqa/model`. Pass one file to `--model`. Nothing selects a model for you.
+The installed executable is also at `$HOME/pixvqa/bin/pixvqa`, but direct execution from a new shell may need additional runtime-library configuration. Revision 6 does **not** create `$HOME/pixvqa-deps/pixvqa-env.sh` and does not automatically add `pixvqa` to `PATH`. If you choose a custom `PREFIX`, substitute that directory in the command above.
+
+**Verification status (23 October 2026):** Revision 6 completed on Ubuntu 22.04 WSL2 with dav1d = Yes and NVIDIA = Yes. After rebuilding CUDA for `sm_89 + sm_120`, the CPU smoke profile passed (16/16) and the NVIDIA hardware profile passed (3/3) on an RTX 4070. The VVC hardware regression requires a separately staged VVC fixture and a modern FFmpeg executable capable of decoding VVC; see [fixture instructions](tests/fixtures/vvc/README.md). These results establish a working local configuration, **not** a clean-system installation or coverage of every installer choice. The installer remains experimental until those tests are completed; see [clean-install validation plan](docs/INSTALL_VALIDATION.md).
+
+### Option 2 — Manual installation (advanced/custom builds)
+
+Follow **[docs/INSTALL.md](docs/INSTALL.md)** for pinned dependency versions, FFmpeg configuration, libvmaf, CPU-only/raw-YUV or software-decoding builds, optional CUDA/NVDEC builds, installation, verification, and troubleshooting. The manual procedure saves the checkout root in `PIXVQA_SRC`, allowing you to return to the project after building dependencies in separate directories.
+
+Depending on the build, the executable is `build/cpu/pixvqa` (raw YUV only), `build/swdec/pixvqa` (FFmpeg software decoding), or `build/full/pixvqa` (optional NVIDIA support). Installed VMAF models are stored under `$PREFIX/share/pixvqa/model`; pass the required JSON model to `--model` explicitly.
+
+For independent clean-environment verification of automatic and manual paths, use [docs/INSTALL_VALIDATION.md](docs/INSTALL_VALIDATION.md). Do not treat a rerun on already-populated prefixes as a clean install.
 
 ## Command-line options
 
@@ -145,7 +160,7 @@ Models are copied to `$PREFIX/share/pixvqa/model`. Pass one file to `--model`. N
 | `--model` | VMAF model JSON. No default |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
-| `--qcs` | Optional QCS for `psnr`, `xpsnr`, `ssim`, or `msssim` |
+| `--qcs` | Enable QCS for selected supported base metrics (`psnr`, `xpsnr`, `ssim`, `msssim`) |
 | `--qcs-range` | `metric=lower:upper`, with lower < upper |
 
 ## Formats and limitations

@@ -58,3 +58,7 @@ reports/*.txt
 *.ivf
 *.mkv
 *.mov
+
+# Local third-party VVC test bitstream: redistribution not verified.
+/tests/fixtures/vvc/*.vvc
+/tests/fixtures/vvc/*.vvc

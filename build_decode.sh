@@ -140,11 +140,18 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
       exit 1
     fi
   fi
-  FULL_RPATH="$CUDA_HOME/lib:$GCC13/lib:$FFMPEG_PREFIX/lib:$PIXVQA_LIBCUDA_DIR"
+  # Link using the native OS toolchain: FFmpeg depends on the Ubuntu glibc ABI.
+  # CUDA object files were produced with GCC13, but the final driver must not
+  # link against the older Conda sysroot (GLIBC_2.35 failure).
+  FULL_LINK_CXX="${PIXVQA_FULL_LINK_CXX:-/usr/bin/g++}"
+  [[ -x "$FULL_LINK_CXX" ]] || { echo "Missing system linker driver: $FULL_LINK_CXX" >&2; exit 1; }
+  CUDART_LIBDIR="${CUDART_LIBDIR:-${CUDA_HOME}/targets/x86_64-linux/lib}"
+  [[ -f "$CUDART_LIBDIR/libcudart.so" ]] || { echo "Missing CUDA runtime library: $CUDART_LIBDIR/libcudart.so" >&2; exit 1; }
+  FULL_RPATH="$CUDART_LIBDIR:$GCC13/lib:$FFMPEG_PREFIX/lib:$PIXVQA_LIBCUDA_DIR"
   if [[ -n "${DAV1D_LIB:-}" ]]; then
     FULL_RPATH="$DAV1D_LIB:$FULL_RPATH"
   fi
-  FULL_LIBS=(-L"$CUDA_HOME/lib" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda
+  FULL_LIBS=(-L"$GCC13/lib" -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda
              -L"$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
              -Wl,-rpath,"$FULL_RPATH")
   if [[ -n "${DAV1D_LIB:-}" ]]; then
@@ -155,7 +162,8 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     FULL_OBJS+=(build/cuda/vmaf.o)
     FULL_LIBS+=($PIXVQA_VMAF_LIBS)
   fi
-  $DEC_CXX $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${FULL_OBJS[@]}" \
+  echo "Final link compiler: $FULL_LINK_CXX (system glibc)"
+  "$FULL_LINK_CXX" $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${FULL_OBJS[@]}" \
     -o "$FULL/pixvqa" "${FULL_LIBS[@]}"
   echo "Full build OK: $FULL/pixvqa"
 fi

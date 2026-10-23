@@ -54,13 +54,24 @@ meson setup "$BUILD" "$SRC/libvmaf" \
 meson compile -C "$BUILD" -j"$(nproc)"
 meson install -C "$BUILD"
 
-PC_DIR=""
-if [[ -f "$PREFIX/lib64/pkgconfig/libvmaf.pc" ]]; then
-  PC_DIR="$PREFIX/lib64/pkgconfig"
-elif [[ -f "$PREFIX/lib/pkgconfig/libvmaf.pc" ]]; then
-  PC_DIR="$PREFIX/lib/pkgconfig"
+# Prefer the pkg-config file installed by THIS pinned build. Meson commonly
+# uses lib/x86_64-linux-gnu on Ubuntu; do not silently resolve /usr/local.
+PC_FILE="$(find "$PREFIX" -type f -name libvmaf.pc -print -quit)"
+if [[ -z "$PC_FILE" ]]; then
+  echo "build_libvmaf: libvmaf.pc missing under $PREFIX" >&2
+  exit 1
 fi
-export PKG_CONFIG_PATH="${PC_DIR}${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+PC_DIR="$(dirname "$PC_FILE")"
+export PKG_CONFIG_PATH="$PC_DIR${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+resolved_pc="$(pkg-config --variable=pcfiledir libvmaf)"
+if [[ "$resolved_pc" != "$PC_DIR" ]]; then
+  echo "build_libvmaf: incorrect pkg-config resolution: $resolved_pc (expected $PC_DIR)" >&2
+  exit 1
+fi
+if ! find "$PREFIX" -type f -name libvmaf.a -print -quit | grep -q .; then
+  echo "build_libvmaf: libvmaf.a missing under $PREFIX" >&2
+  exit 1
+fi
 echo "libvmaf version: $(pkg-config --modversion libvmaf)"
 echo "libvmaf cflags: $(pkg-config --cflags libvmaf)"
 echo "libvmaf libs: $(pkg-config --libs --static libvmaf)"

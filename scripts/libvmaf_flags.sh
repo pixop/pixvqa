@@ -1,48 +1,20 @@
 #!/usr/bin/env bash
-# Shared libvmaf discovery for PixVQA build scripts.
-# Sets: PIXVQA_VMAF_CFLAGS PIXVQA_VMAF_LIBS PIXVQA_HAS_VMAF (0|1)
-# Optional: LIBVMAF_PREFIX (default: $ROOT/deps/libvmaf-3.2.1)
-
+# Discover the pinned PixVQA libvmaf without falling back to /usr/local.
 pixvqa_detect_libvmaf() {
-  local root="$1"
-  local prefix="${LIBVMAF_PREFIX:-$root/deps/libvmaf-3.2.1}"
+  local root="$1" prefix="${LIBVMAF_PREFIX:-$1/deps/libvmaf-3.2.1}"
+  local libdir="" candidate
   PIXVQA_HAS_VMAF=0
   PIXVQA_VMAF_CFLAGS=""
   PIXVQA_VMAF_LIBS=""
-
-  if [[ ! -f "$prefix/include/libvmaf/libvmaf.h" ]]; then
+  [[ -f "$prefix/include/libvmaf/libvmaf.h" ]] || return 0
+  for candidate in "$prefix/lib" "$prefix/lib64" "$prefix/lib/x86_64-linux-gnu"; do
+    if [[ -f "$candidate/libvmaf.a" ]]; then libdir="$candidate"; break; fi
+  done
+  if [[ -z "$libdir" ]]; then
+    echo "WARNING: pinned libvmaf headers found but libvmaf.a missing under $prefix" >&2
     return 0
   fi
-
-  local pc_dir=""
-  if [[ -f "$prefix/lib64/pkgconfig/libvmaf.pc" ]]; then
-    pc_dir="$prefix/lib64/pkgconfig"
-  elif [[ -f "$prefix/lib/pkgconfig/libvmaf.pc" ]]; then
-    pc_dir="$prefix/lib/pkgconfig"
-  fi
-
-  if [[ -n "$pc_dir" ]] && command -v pkg-config >/dev/null 2>&1; then
-    local old_pc="${PKG_CONFIG_PATH:-}"
-    export PKG_CONFIG_PATH="$pc_dir${old_pc:+:$old_pc}"
-    if pkg-config --exists libvmaf; then
-      PIXVQA_VMAF_CFLAGS="$(pkg-config --cflags libvmaf)"
-      PIXVQA_VMAF_LIBS="$(pkg-config --libs --static libvmaf)"
-      PIXVQA_HAS_VMAF=1
-      export PKG_CONFIG_PATH="$old_pc"
-      return 0
-    fi
-    export PKG_CONFIG_PATH="$old_pc"
-  fi
-
-  local libdir=""
-  if [[ -f "$prefix/lib64/libvmaf.a" ]]; then
-    libdir="$prefix/lib64"
-  elif [[ -f "$prefix/lib/libvmaf.a" ]]; then
-    libdir="$prefix/lib"
-  fi
-  if [[ -n "$libdir" ]]; then
-    PIXVQA_VMAF_CFLAGS="-I$prefix/include"
-    PIXVQA_VMAF_LIBS="-L$libdir -lvmaf -lpthread -lm -lstdc++"
-    PIXVQA_HAS_VMAF=1
-  fi
+  PIXVQA_VMAF_CFLAGS="-I$prefix/include"
+  PIXVQA_VMAF_LIBS="-L$libdir -lvmaf -pthread -lm"
+  PIXVQA_HAS_VMAF=1
 }

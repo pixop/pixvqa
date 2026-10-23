@@ -8,6 +8,7 @@ an independent decode of the same bitstream.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -20,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 BIN = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "swdec" / "pixvqa"))
 FULL = Path(os.environ.get("PIXVQA_FULL", ROOT / "build" / "full" / "pixvqa"))
 W, H, N = 256, 256, 4
+VVC_W, VVC_H = 480, 360
+VVC_SHA256 = "eb1191c46b50cb8b2b631194f74a7a9152cced29e0f7d1278d7723420e83d44d"
+VVC_FIXTURE = ROOT / "tests" / "fixtures" / "vvc" / "bbb_360p.vvc"
 FAILS = 0
 NOTES: list[str] = []
 
@@ -94,12 +98,12 @@ def pix(binary: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def expect_match(label: str, binary: Path, reference: Path, compressed: Path, fmt: str,
-                 decoder: str, backend: str, frames: int = N) -> subprocess.CompletedProcess[str] | None:
+                 decoder: str, backend: str, frames: int = N, width: int = W, height: int = H) -> subprocess.CompletedProcess[str] | None:
     done = pix(binary, [
         "--metrics", "psnr", "--decode", "cpu" if backend == "software" else "gpu",
         "--metric-device", "cpu", "-v", "0",
-        "-r", str(reference), "-s", f"{W}x{H}", "-f", fmt,
-        "-t", str(compressed), "-s", f"{W}x{H}", "-f", fmt,
+        "-r", str(reference), "-s", f"{width}x{height}", "-f", fmt,
+        "-t", str(compressed), "--input", "compressed", "-s", f"{width}x{height}", "-f", fmt,
     ])
     text = done.stdout + done.stderr
     if done.returncode != 0 or "999.99" not in done.stdout:
@@ -120,6 +124,33 @@ def pu21_value(stdout: str) -> float | None:
     if not match:
         return None
     return float(match.group(1))
+
+
+def vvc_reference_decoder(fallback: str) -> list[str]:
+    """Find an FFmpeg CLI with native VVC decode; encoding is not required."""
+    candidates = [
+        os.environ.get("PIXVQA_VVC_FFMPEG", ""),
+        os.environ.get("FFMPEG", ""),
+        fallback,
+        str(Path.home() / "codeccomp/encoders/nvenc/bin/ffmpeg"),
+        str(Path.home() / "codeccomp/metrics/vmaf1.0/bin/ffmpeg"),
+    ]
+    valid: list[str] = []
+    for candidate in dict.fromkeys(candidates):
+        if not candidate or not Path(candidate).is_file():
+            continue
+        result = run([candidate, "-hide_banner", "-decoders"])
+        if result.returncode == 0 and re.search(r"^\s*V[^\n]*\bvvc\b", result.stdout, re.M):
+            valid.append(candidate)
+    return valid
+
+
+def fixture_frames(reference: Path) -> int:
+    # yuv420p10le: 2 bytes per sample, 1.5 samples per pixel.
+    frame_bytes = VVC_W * VVC_H * 3
+    if reference.stat().st_size == 0 or reference.stat().st_size % frame_bytes:
+        return 0
+    return reference.stat().st_size // frame_bytes
 
 
 def main() -> int:
@@ -220,39 +251,40 @@ def main() -> int:
             else:
                 print("OK   truncated AV1 is not scored")
 
-        vvc = td / "clip.vvc.mp4"
-        if encode(ffmpeg, src10, vvc, "yuv420p10le", ["-c:v", "libvvenc", "-preset", "faster", "-qp", "32", "-period", "1"]):
-            dec = td / "vvc.yuv"
-            if not decode_ref(ffmpeg, vvc, dec, "yuv420p10le", ["-c:v", "vvc"]):
-                fail("independent FFmpeg vvc decoder could not decode the clip")
+        # Use a pinned, pre-encoded VVC elementary stream, never a VVC encoder.
+        # The fixture is deliberately not redistributed until licensing is cleared.
+        vvc = VVC_FIXTURE
+        if not vvc.is_file():
+            fail(f"VVC fixture missing: {vvc}. See tests/fixtures/vvc/README.md")
+        elif hashlib.sha256(vvc.read_bytes()).hexdigest() != VVC_SHA256:
+            fail("VVC fixture SHA-256 mismatch; refusing an unverified bitstream")
+        else:
+            oracle = td / "vvc-reference.yuv"
+            oracle_ffmpeg = None
+            oracle_diagnostics = []
+            for candidate in vvc_reference_decoder(ffmpeg):
+                attempt = run([
+                    candidate, "-y", "-hide_banner", "-loglevel", "error",
+                    "-f", "vvc", "-i", str(vvc), "-f", "rawvideo",
+                    "-pix_fmt", "yuv420p10le", str(oracle),
+                ])
+                if attempt.returncode == 0 and oracle.is_file() and fixture_frames(oracle) > 0:
+                    oracle_ffmpeg = candidate
+                    break
+                oracle_diagnostics.append(f"{candidate}: {attempt.stderr[-350:]}")
+            if oracle_ffmpeg is None:
+                fail("independent FFmpeg VVC decode unavailable. Set PIXVQA_VVC_FFMPEG "
+                     "to a modern FFmpeg with native VVC decoding. " + " | ".join(oracle_diagnostics))
             else:
-                got = expect_match("vvc 10-bit software", BIN, dec, vvc, "420p:10", "vvc", "software")
-                if got is None:
-                    pass
-                vvdec = shutil.which("vvdecapp") or os.environ.get("VVDEC", "")
-                if vvdec and Path(vvdec).is_file():
-                    extracted = td / "clip.266"
-                    ext = run([ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(vvc), "-c", "copy", "-f", "vvc", str(extracted)])
-                    out_yuv = td / "vvdec.yuv"
-                    app = run([vvdec, "-b", str(extracted), "-o", str(out_yuv)]) if ext.returncode == 0 else ext
-                    if app.returncode != 0 or not out_yuv.is_file():
-                        note("VVdeC did not decode this VVC clip: " + (app.stderr or "")[-200:])
-                    else:
-                        same = pix(BIN, [
-                            "--metrics", "psnr", "--decode", "cpu", "-v", "0",
-                            "-r", str(out_yuv), "-s", f"{W}x{H}", "-f", "420p:10",
-                            "-t", str(vvc), "-s", f"{W}x{H}", "-f", "420p:10",
-                        ])
-                        if same.returncode != 0 or "999.99" not in same.stdout:
-                            fail(f"vvc versus VVdeC {same.stderr[-300:]}")
-                        else:
-                            print("OK   vvc matches VVdeC")
-                else:
-                    note("VVdeC was not available; the VVC pixel oracle is a separate FFmpeg vvc process")
+                frames = fixture_frames(oracle)
+                note(f"VVC independent pixel oracle: {oracle_ffmpeg}; {frames} frames")
+                expect_match("vvc 10-bit software", BIN, oracle, vvc, "420p:10",
+                             "vvc", "software", frames=frames, width=VVC_W, height=VVC_H)
+
             refused = pix(BIN, [
-                "--metrics", "psnr", "--decode", "gpu",
-                "-r", str(vvc), "-s", f"{W}x{H}", "-f", "420p:10",
-                "-t", str(vvc), "-s", f"{W}x{H}", "-f", "420p:10",
+                "--metrics", "psnr", "--decode", "gpu", "--input", "compressed",
+                "-r", str(vvc), "-s", f"{VVC_W}x{VVC_H}", "-f", "420p:10",
+                "-t", str(vvc), "-s", f"{VVC_W}x{VVC_H}", "-f", "420p:10",
             ])
             if refused.returncode == 0 or "Summary results" in refused.stdout or "backend=software" in refused.stderr:
                 fail(f"gpu vvc was not rejected: {refused.stderr[-300:]}")
@@ -260,8 +292,6 @@ def main() -> int:
                 print("OK   gpu rejects VVC")
             else:
                 fail(f"gpu vvc diagnostic: {refused.stderr[-300:]}")
-        else:
-            fail("could not encode VVC")
 
         if os.environ.get("PIXVQA_RUN_GPU") == "1" and FULL.is_file():
             if av1_8.is_file():
@@ -279,11 +309,11 @@ def main() -> int:
                     expect_match("hevc 10-bit nvdec", FULL, dec, hevc, "420p:10", "hevc", "nvdec")
             else:
                 fail("could not encode HEVC for NVDEC")
-            if vvc.is_file():
+            if vvc.is_file() and hashlib.sha256(vvc.read_bytes()).hexdigest() == VVC_SHA256:
                 refused = pix(FULL, [
                     "--metrics", "psnr", "--decode", "gpu",
-                    "-r", str(vvc), "-s", f"{W}x{H}", "-f", "420p:10",
-                    "-t", str(vvc), "-s", f"{W}x{H}", "-f", "420p:10",
+                    "-r", str(vvc), "--input", "compressed", "-s", f"{VVC_W}x{VVC_H}", "-f", "420p:10",
+                    "-t", str(vvc), "--input", "compressed", "-s", f"{VVC_W}x{VVC_H}", "-f", "420p:10",
                 ])
                 if refused.returncode == 0 or "Summary results" in refused.stdout or "backend=software" in refused.stderr:
                     fail(f"full binary gpu vvc fallback: {refused.stderr[-300:]}")

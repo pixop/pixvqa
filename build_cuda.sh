@@ -57,8 +57,10 @@ echo "CXX src/msssim_avx2.cpp (AVX2, no FMA contract)"
 $CXX $CXXFLAGS -mavx2 -ffp-contract=off -fno-fast-math -c src/msssim_avx2.cpp -o "$OUT/msssim_avx2.o"
 objs+=("$OUT/msssim_avx2.o")
 
-echo "NVCC src/cuda_metrics.cu (sm_120)"
+echo "NVCC src/cuda_metrics.cu (sm_89 + sm_120)"
+
 $NVCC -O3 -std=c++17 -Iinclude --compiler-bindir "$GCC13/bin" \
+  -gencode arch=compute_89,code=sm_89 \
   -gencode arch=compute_120,code=sm_120 \
   -gencode arch=compute_120,code=compute_120 \
   -c src/cuda_metrics.cu -o "$OUT/cuda_metrics.o"
