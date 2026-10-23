@@ -52,7 +52,8 @@ def trapz_qcs(scores, a, b, grid=1001) -> float:
     ge = np.cumsum(counts[::-1])[::-1] / q.size
     xi = np.linspace(a, b, grid)
     si = np.interp(xi, x, ge, left=1.0, right=0.0)
-    area = float(np.trapezoid(si, xi))
+    integrate = getattr(np, "trapezoid", np.trapz)
+    area = float(integrate(si, xi))
     return 100.0 * area / (b - a)
 
 
