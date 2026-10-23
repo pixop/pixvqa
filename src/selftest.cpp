@@ -1,3 +1,5 @@
+#include "pixvqa/cpu_dispatch.hpp"
+#include "pixvqa/qcs.hpp"
 #include "pixvqa/hdr.hpp"
 #include "pixvqa/psnr.hpp"
 #include "pixvqa/pu21.hpp"
@@ -10,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -132,6 +136,13 @@ int main() {
     const PlaneScore msssim = compute_msssim_frame(a, a, fmt, 1023.0, 1);
     expect_near("msssim_identical", msssim.y, 1.0, 1e-12);
     expect_near("msssim_identical_avg", msssim.avg, 1.0, 1e-12);
+    if (cpu_has_avx2()) {
+      PlaneBuffer xa = checker(64, 64, 5, 80, 400);
+      PlaneBuffer xb = checker(64, 64, 7, 90, 500);
+      const double scalar = msssim_plane_scalar(xa.view(), xb.view(), 1023.0, 1, nullptr);
+      const double avx2 = msssim_plane_avx2(xa.view(), xb.view(), 1023.0, 1, nullptr);
+      expect_near("msssim_scalar_vs_avx2", avx2, scalar, 1e-9);
+    }
     bool too_small = false;
     try {
       auto tiny = fill(8, 8, 10);
@@ -704,6 +715,43 @@ int main() {
     } else {
       std::printf("OK   pu21_does_not_change_psnr\n");
     }
+  }
+
+  // QCS on [30, 50]. Expected values are the closed form, not a second call
+  // into QcsAccum. +inf contributes 100%, -inf contributes 0%, NaN is omitted.
+  {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    auto check = [&](const char* name, std::initializer_list<double> qs, bool want, double exp) {
+      QcsAccum acc{30.0, 50.0, 0.0, 0};
+      for (double q : qs) acc.add(q);
+      if (!want) {
+        if (acc.available()) {
+          std::fprintf(stderr, "FAIL %s: expected unavailable\n", name);
+          ++g_fail;
+        } else {
+          std::printf("OK   %s: unavailable\n", name);
+        }
+        return;
+      }
+      expect_near(name, acc.percent(), exp, 1e-12);
+    };
+    check("qcs_finite_25", {25.0}, true, 0.0);
+    check("qcs_finite_30", {30.0}, true, 0.0);
+    check("qcs_finite_35", {35.0}, true, 25.0);
+    check("qcs_finite_40", {40.0}, true, 50.0);
+    check("qcs_finite_45", {45.0}, true, 75.0);
+    check("qcs_finite_50", {50.0}, true, 100.0);
+    check("qcs_finite_55", {55.0}, true, 100.0);
+    check("qcs_finite_70", {70.0}, true, 100.0);
+    check("qcs_A_35_posinf", {35.0, inf}, true, 62.5);
+    check("qcs_B_all_posinf", {inf, inf, inf}, true, 100.0);
+    check("qcs_C_35_55", {35.0, 55.0}, true, 62.5);
+    check("qcs_D_mixed_posinf", {25.0, 40.0, 70.0, inf}, true, 62.5);
+    check("qcs_E_40_neginf", {40.0, -inf}, true, 25.0);
+    check("qcs_F_perm_D", {inf, 70.0, 25.0, 40.0}, true, 62.5);
+    check("qcs_G_all_nan", {nan, nan}, false, 0.0);
+    check("qcs_nan_mixed", {40.0, nan}, true, 50.0);
   }
 
   if (g_fail) {

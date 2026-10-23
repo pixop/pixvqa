@@ -379,7 +379,8 @@ def check_cuda() -> None:
                 return
             cpu_c = {(p, int(s)): (float(cs), float(ss))
                      for p, s, hh, ww, cs, ss in COMP.findall(cpu.stderr)}
-            for prec, atol in (("fp64", CUDA_FP64_ATOL), ("fp32", CUDA_FP32_ATOL), ("mixed", CUDA_FP32_ATOL)):
+            # PIXVQA_CUDA_PREC is ignored. Every label must match the FP64 CPU components.
+            for prec, atol in (("fp64", CUDA_FP64_ATOL), ("fp32", CUDA_FP64_ATOL), ("mixed", CUDA_FP64_ATOL)):
                 gpu = run_cuda(ref, tst, w, h, chroma, bits, prec)
                 if gpu.returncode:
                     fail(f"{name} {prec}: {gpu.stderr[-300:]}")

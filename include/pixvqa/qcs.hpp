@@ -7,8 +7,10 @@ namespace pixvqa {
 // Exact integral of the empirical step survival S(x) = P(Q >= x) over [lower, upper],
 // normalized by the interval length and reported in percent:
 //   100 * mean(clamp((Q - lower) / (upper - lower), 0, 1))
-// Non-finite scores are ignored. This is not the published Python trapezoidal
-// approximation of a linearly interpolated survival curve.
+// NaN is an invalid sample and is omitted. +inf clamps to 1 and -inf clamps to 0;
+// both are counted. This is not the published Python trapezoidal approximation
+// of a linearly interpolated survival curve.
+// `finite` counts accepted samples, including infinities.
 struct QcsAccum {
   double lower = 0;
   double upper = 1;
@@ -16,7 +18,7 @@ struct QcsAccum {
   int finite = 0;
 
   void add(double q) {
-    if (!std::isfinite(q)) return;
+    if (std::isnan(q)) return;
     const double width = upper - lower;
     double z = (q - lower) / width;
     if (z < 0.0) z = 0.0;

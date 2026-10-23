@@ -27,8 +27,8 @@ inline constexpr int kMsssimWin = 11;
 
 int msssim_scales(int height, int width);
 
-// CPU entry. AVX2 double is the default. PIXVQA_MSSSIM_BACKEND=scalar selects
-// the reference implementation. The variable is read on the first call.
+// CPU entry. AVX2 double is used when the CPU has AVX2. Otherwise the scalar
+// reference implementation runs. There is no public backend override.
 double msssim_plane(PlaneView ref, PlaneView dist, double peak, int threads,
                          MsssimPlaneInfo* detail);
 

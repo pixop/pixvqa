@@ -123,9 +123,7 @@ def run_pix(ref: Path, test: Path, w: int, h: int, chroma: str, bits: int, flags
     cmd = [
         str(BIN), *flags, "-r", str(ref), "-s", f"{w}x{h}", "-f", f"{fmt}:{bits}",
         "-t", str(test), "-s", f"{w}x{h}", "-f", f"{fmt}:{bits}"]
-    env = os.environ.copy()
-    env["PIXVQA_SSIM_BACKEND"] = "scalar"
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
 
 def check_oracle_closed_forms() -> None:

@@ -141,8 +141,16 @@ def test_empty_files(path_ref: Path, path_test: Path):
     err = assert_not_a_score(done, "empty-file")
     if err:
         return err
-    if "no frames read" not in done.stderr:
+    # main() returns 1 after printing the execution summary and before any score.
+    # The banner names the metric ("SSIM: cpu"). A score would be "[ SSIM".
+    if done.returncode != 1:
+        return fail(f"empty-file: expected exit 1, got {done.returncode}")
+    if "no frames read (empty input or FIFO closed before the first frame)" not in done.stderr:
         return fail(f"empty-file: stderr={done.stderr!r}")
+    if "SSIM: cpu" not in done.stdout:
+        return fail(f"empty-file: missing execution banner\n{done.stdout}")
+    if "Summary results" in done.stdout or "[ SSIM" in done.stdout:
+        return fail("empty-file: stdout contains a score")
     print("OK   empty-file")
     return 0
 

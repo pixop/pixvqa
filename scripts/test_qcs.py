@@ -32,8 +32,12 @@ def fail(msg: str) -> None:
 
 
 def exact(scores, a, b) -> float | None:
-    q = np.asarray(scores, dtype=np.float64)
-    q = q[np.isfinite(q)]
+    """Closed form. +inf clamps to 1, -inf clamps to 0, NaN is omitted.
+
+    This is independent of QcsAccum. It does not drop infinities.
+    """
+    q = np.asarray(scores, dtype=np.float64).reshape(-1)
+    q = q[~np.isnan(q)]
     if q.size == 0:
         return None
     z = np.clip((q - a) / (b - a), 0.0, 1.0)
@@ -108,7 +112,9 @@ def main() -> int:
     ref_frames = [(0, 0, 0)] * len(offsets)
     tst_frames = [(d, 0, 0) for d in offsets]
     scores = [psnr_db(d * d, 0, 0, "444", peak) for d in offsets]
-    finite = [s for s in scores if math.isfinite(s)]
+    # The first frame is an exact match, so its PSNR is +inf. Counting that
+    # frame as 100% is the closed form. The pre-fix result dropped it and
+    # printed 61.185157. The corrected value on this fixture is 68.948125.
     with tempfile.TemporaryDirectory(prefix="qcs_") as tmp:
         td = Path(tmp)
         ref, tst = td / "r.yuv", td / "t.yuv"
@@ -119,7 +125,14 @@ def main() -> int:
             fail(proc.stderr[-300:])
             return 1
         got = qcs_map(proc.stdout)
-        check_close("psnr_default", got["PSNR-QCS"][0], exact(finite, 30, 50))
+        # Closed form for this fixture, including the leading +inf frame.
+        # Pre-fix finite-only result: 61.185157. Do not accept that value.
+        locked = 68.9481253081602
+        if abs(exact(scores, 30, 50) - locked) > 1e-9:
+            fail(f"independent oracle drifted from {locked}: {exact(scores, 30, 50)}")
+        if got["PSNR-QCS"][0] is not None and abs(got["PSNR-QCS"][0] - 61.185157) < 1e-4:
+            fail("psnr_default still excludes the +inf frame (pre-fix 61.185157)")
+        check_close("psnr_default", got["PSNR-QCS"][0], locked)
         if got["PSNR-QCS"][1:] != ("30", "50"):
             fail(f"default range {got['PSNR-QCS']}")
         # Reorder the two distorted frames by rewriting the test in swapped order.
@@ -134,17 +147,29 @@ def main() -> int:
         write_const_frames(tst, tst_frames, size, 10)
         custom = run(["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55"], ref, tst, size, "444p:10")
         cg = qcs_map(custom.stdout)
-        check_close("psnr_custom", cg["PSNR-QCS"][0], exact(finite, 40, 55))
+        check_close("psnr_custom", cg["PSNR-QCS"][0], exact(scores, 40, 55))
+        if exact(scores, 40, 55) == exact(scores, 30, 50):
+            fail("custom and default ranges are mathematically identical")
+        elif cg["PSNR-QCS"][0] == got["PSNR-QCS"][0]:
+            fail("custom range did not change QCS")
+        else:
+            print("OK   range_changes_qcs")
         if cg["PSNR-QCS"][1:] != ("40", "55"):
             fail(f"custom range text {cg['PSNR-QCS']}")
-        # Identical pictures: internal PSNR is +inf, printed 999.99, excluded.
+        # Identical pictures: internal PSNR is +inf, printed 999.99, QCS 100%.
         write_const_frames(tst, ref_frames, size, 10)
         ident = run(["--metrics", "psnr", "--qcs"], ref, tst, size, "444p:10")
         ig = qcs_map(ident.stdout)
-        if ig["PSNR-QCS"][0] is not None:
-            fail(f"identical PSNR QCS should be unavailable, got {ig}")
+        if "999.99" not in ident.stdout:
+            fail(f"identical PSNR text lost 999.99: {ident.stdout[-200:]}")
         else:
-            print("OK   identical_unavailable")
+            check_close("identical_psnr_qcs", ig["PSNR-QCS"][0], 100.0)
+        xident = run(["--fps", "30", "--metrics", "xpsnr", "--qcs"], ref, ref, size, "444p:10")
+        xig = qcs_map(xident.stdout)
+        if xident.returncode != 0 or "inf" not in xident.stdout:
+            fail(f"identical XPSNR: rc={xident.returncode} {xident.stdout[-200:]} {xident.stderr[-200:]}")
+        else:
+            check_close("identical_xpsnr_qcs", xig["XPSNR-QCS"][0], 100.0)
         # Metric text without QCS is unchanged when the flag is absent.
         write_const_frames(tst, tst_frames, size, 10)
         plain = run(["--metrics", "psnr"], ref, tst, size, "444p:10")
@@ -185,7 +210,8 @@ def main() -> int:
             (["--metrics", "psnr", "--qcs", "--qcs-range", "nope=1:2"], "unknown"),
             (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=5:1"], "lower < upper"),
             (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=nan:2"], "lower bound"),
-            (["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100"], "not available"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100"], "not supported"),
+            (["--metrics", "pu21-psnr", "--qcs", "--hdr-transfer", "pq"], "not QCS metrics"),
             (["--metrics", "psnr", "--qcs-range", "psnr=30:40"], "requires --qcs"),
             (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=1-2"], "invalid"),
         ):
@@ -202,6 +228,15 @@ def main() -> int:
                 fail(f"cuda qcs {qcs_map(gpu.stdout)} cpu {qcs_map(cpu.stdout)}")
             else:
                 print("OK   cuda_psnr_qcs")
+            cpu_id = run(["--metrics", "psnr", "--qcs"], ref, ref, size, "444p:10")
+            gpu_id = run(["--metric-device", "gpu", "--metrics", "psnr", "--qcs"],
+                         ref, ref, size, "444p:10", bin_path=CUDA)
+            if "999.99" not in cpu_id.stdout or "999.99" not in gpu_id.stdout:
+                fail("identical PSNR lost 999.99 on cpu or cuda")
+            elif qcs_map(cpu_id.stdout)["PSNR-QCS"][0] != 100.0 or qcs_map(gpu_id.stdout)["PSNR-QCS"][0] != 100.0:
+                fail(f"identical cuda qcs cpu {qcs_map(cpu_id.stdout)} gpu {qcs_map(gpu_id.stdout)}")
+            else:
+                print("OK   cuda_identical_psnr_qcs")
     if FAILS:
         print(f"{FAILS} QCS checks failed", file=sys.stderr)
         return 1

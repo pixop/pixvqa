@@ -14,23 +14,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def write_yuv(path: Path, w: int, h: int, bits: int, frames: int, bias: int) -> None:
+    import array
     cw, ch = w // 2, h // 2
     mask = (1 << bits) - 1
+
+    def plane(width: int, height: int, base: int, frame: int) -> bytes:
+        origin = base + bias + frame * 17
+        if bits > 8:
+            values = array.array(
+                "H",
+                ((origin + row * 3 + col * 5) & mask
+                 for row in range(height) for col in range(width)),
+            )
+            return values.tobytes()
+        return bytes(
+            (origin + row * 3 + col * 5) & mask
+            for row in range(height) for col in range(width)
+        )
+
     with path.open("wb") as out:
-        for i in range(frames):
-            def plane(width: int, height: int, base: int) -> bytes:
-                raw = bytearray()
-                for row in range(height):
-                    for col in range(width):
-                        value = (base + bias + i * 17 + row * 3 + col * 5) & mask
-                        if bits > 8:
-                            raw += int(value).to_bytes(2, "little")
-                        else:
-                            raw.append(value)
-                return bytes(raw)
-            out.write(plane(w, h, 40))
-            out.write(plane(cw, ch, 80))
-            out.write(plane(cw, ch, 140))
+        for frame in range(frames):
+            out.write(plane(w, h, 40, frame))
+            out.write(plane(cw, ch, 80, frame))
+            out.write(plane(cw, ch, 140, frame))
 
 
 def ffmpeg() -> str | None:
@@ -60,61 +66,31 @@ def main() -> int:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     blocks = re.findall(r"```bash\n(.*?)```", text, flags=re.S)
     blocks = [b.strip() for b in blocks if "pixvqa " in b and not b.strip().startswith("export") and "bash " not in b]
-    if len(blocks) < 8:
+    if len(blocks) < 5:
         print(f"expected the usage examples, found {len(blocks)}", file=sys.stderr)
         return 2
     ff = ffmpeg()
     fails = 0
     with tempfile.TemporaryDirectory(prefix="pixvqa_readme_") as tmp:
         td = Path(tmp)
-        write_yuv(td / "reference.yuv", 64, 64, 8, 2, 0)
-        write_yuv(td / "distorted.yuv", 64, 64, 8, 2, 30)
-        write_yuv(td / "reference10.yuv", 64, 64, 10, 2, 0)
-        write_yuv(td / "distorted10.yuv", 64, 64, 10, 2, 40)
-        write_yuv(td / "vmaf_ref.yuv", 320, 240, 8, 2, 0)
-        write_yuv(td / "vmaf_dist.yuv", 320, 240, 8, 2, 25)
-        write_yuv(td / "clip.av1.yuv", 64, 64, 8, 2, 0)
-        write_yuv(td / "clip.vvc.yuv", 64, 64, 10, 2, 0)
-        write_yuv(td / "clip.hevc.yuv", 256, 256, 10, 2, 0)
+        # User-facing README examples are 1920x1080. These clips are generated
+        # here; they are not the small fixtures used by the QA profiles.
+        write_yuv(td / "reference.yuv", 1920, 1080, 8, 2, 0)
+        write_yuv(td / "distorted.yuv", 1920, 1080, 8, 2, 30)
+        write_yuv(td / "reference10.yuv", 1920, 1080, 10, 2, 0)
+        write_yuv(td / "distorted10.yuv", 1920, 1080, 10, 2, 40)
         model = ROOT / "model"
         if model.is_dir():
             (td / "model").mkdir()
             for path in model.glob("*.json"):
                 (td / "model" / path.name).write_bytes(path.read_bytes())
         if ff:
-            encode(ff, td / "reference.yuv", td / "clip.h264.mp4", "yuv420p", "64x64", 2,
-                   ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "0"])
-            encode(ff, td / "clip.av1.yuv", td / "clip.av1.mp4", "yuv420p", "64x64", 2,
-                   ["-c:v", "libaom-av1", "-pix_fmt", "yuv420p", "-cpu-used", "8"])
-            raw = (td / "clip.av1.yuv").read_bytes()
-            # The AV1 example compares an independent decode, not the pre-encode pictures.
-            dec = subprocess.run(
-                [ff, "-y", "-hide_banner", "-loglevel", "error", "-c:v", "libdav1d", "-i", str(td / "clip.av1.mp4"),
-                 "-f", "rawvideo", "-pix_fmt", "yuv420p", str(td / "clip.av1.yuv")],
-                capture_output=True, text=True,
-            )
-            if dec.returncode != 0:
-                (td / "clip.av1.yuv").write_bytes(raw)
-            encode(ff, td / "clip.vvc.yuv", td / "clip.vvc.mp4", "yuv420p10le", "64x64", 2,
-                   ["-c:v", "libvvenc", "-preset", "faster", "-qp", "28"])
-            vraw = (td / "clip.vvc.yuv").read_bytes()
-            vdec = subprocess.run(
-                [ff, "-y", "-hide_banner", "-loglevel", "error", "-c:v", "vvc", "-i", str(td / "clip.vvc.mp4"),
-                 "-f", "rawvideo", "-pix_fmt", "yuv420p10le", str(td / "clip.vvc.yuv")],
-                capture_output=True, text=True,
-            )
-            if vdec.returncode != 0:
-                (td / "clip.vvc.yuv").write_bytes(vraw)
-            encode(ff, td / "clip.hevc.yuv", td / "clip.hevc.mp4", "yuv420p10le", "256x256", 2,
+            encode(ff, td / "reference.yuv", td / "reference.mp4", "yuv420p", "1920x1080", 2,
+                   ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "18"])
+            encode(ff, td / "distorted.yuv", td / "distorted.mp4", "yuv420p", "1920x1080", 2,
+                   ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "28"])
+            encode(ff, td / "reference10.yuv", td / "reference10.hevc.mp4", "yuv420p10le", "1920x1080", 2,
                    ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1", "-tag:v", "hvc1"])
-            hraw = (td / "clip.hevc.yuv").read_bytes()
-            hdec = subprocess.run(
-                [ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(td / "clip.hevc.mp4"),
-                 "-f", "rawvideo", "-pix_fmt", "yuv420p10le", str(td / "clip.hevc.yuv")],
-                capture_output=True, text=True,
-            )
-            if hdec.returncode != 0:
-                (td / "clip.hevc.yuv").write_bytes(hraw)
         env = os.environ.copy()
         env["PATH"] = str(binary.parent) + os.pathsep + env.get("PATH", "")
         full = ROOT / "build" / "full" / "pixvqa"
@@ -126,15 +102,47 @@ def main() -> int:
                     continue
                 use = env.copy()
                 use["PATH"] = str(full.parent) + os.pathsep + env.get("PATH", "")
-            if "clip." in block and not ff:
+            if ".mp4" in block and not ff:
                 print(f"SKIP example {i} no ffmpeg")
                 continue
-            proc = subprocess.run(["bash", "-lc", block], cwd=td, capture_output=True, text=True, env=use, timeout=180)
-            if proc.returncode != 0:
+            proc = subprocess.run(["bash", "-lc", block], cwd=td, capture_output=True, text=True, env=use, timeout=300)
+            names = []
+            found = re.search(r"--metrics\s+(\S+)", block)
+            if found:
+                names = found.group(1).split(",")
+            labels = {
+                "psnr": "[ PSNR",
+                "xpsnr": "[ XPSNR",
+                "ssim": "[ SSIM",
+                "msssim": "[ MS-SSIM",
+                "vmaf": "[ VMAF",
+                "pu21-psnr": "[ PU21-PSNR",
+                "pu21-ssim": "[ PU21-SSIM",
+                "pu21-msssim": "[ PU21-MS-SSIM",
+            }
+            backends = {
+                "psnr": "PSNR: cpu",
+                "xpsnr": "XPSNR: cpu",
+                "ssim": "SSIM: cpu",
+                "msssim": "MS-SSIM: cpu",
+                "vmaf": "VMAF: cpu",
+                "pu21-psnr": "PU21-PSNR: cpu",
+                "pu21-ssim": "PU21-SSIM: cpu",
+                "pu21-msssim": "PU21-MS-SSIM: cpu",
+            }
+            missing = [labels[n] for n in names if n in labels and labels[n] not in proc.stdout]
+            missing += [backends[n] for n in names if n in backends and backends[n] not in proc.stdout]
+            if "--qcs" in block and "QCS value:" not in proc.stdout:
+                missing.append("QCS value:")
+            if "--decode gpu" in block and "distorted: gpu" not in proc.stdout:
+                missing.append("distorted: gpu")
+            if "--decode cpu" in block and "distorted: cpu" not in proc.stdout:
+                missing.append("distorted: cpu")
+            if proc.returncode != 0 or missing:
                 fails += 1
-                print(f"FAIL example {i}\n{block}\n{proc.stderr[-400:]}", file=sys.stderr)
+                print(f"FAIL example {i} missing={missing}\n{block}\n{proc.stderr[-400:]}\n{proc.stdout[-500:]}", file=sys.stderr)
             else:
-                print(f"OK   example {i}")
+                print(f"OK   example {i} {','.join(names)}")
     if fails:
         print(f"{fails} examples failed", file=sys.stderr)
         return 1

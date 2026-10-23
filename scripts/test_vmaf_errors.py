@@ -104,7 +104,7 @@ def main() -> int:
         expect_fail(
             "qcs-vmaf-range",
             ["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100", *base],
-            "not available in Phase 1",
+            "not supported",
         )
         expect_fail(
             "qcs-vmaf-only",

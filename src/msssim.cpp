@@ -112,12 +112,8 @@ bool msssim_profile_enabled() {
 }
 
 bool msssim_force_scalar() {
-  static int scalar = -1;
-  if (scalar < 0) {
-    const char* p = pix_getenv("MSSSIM_BACKEND");
-    scalar = (p && std::strcmp(p, "scalar") == 0) ? 1 : 0;
-  }
-  return scalar != 0;
+  // PIXVQA_MSSSIM_BACKEND is not a public control. AVX2 is used when the CPU has it.
+  return false;
 }
 
 struct StageUs {

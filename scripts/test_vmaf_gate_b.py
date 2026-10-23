@@ -569,12 +569,13 @@ def main() -> int:
         dump = FIXTURE / "dist_nvdec_dump.yuv"
         if dump.is_file():
             dump.unlink()
+        # VMAF-only --metric-device gpu is refused (see vmaf_backend_cuda_rejected).
+        # This path is NVDEC decode with host VMAF, so the metric device stays CPU.
         rc, out = run_pix(
             PIX_FULL,
             [
                 *model_args,
                 "--decode", "gpu",
-                "--metric-device", "gpu",
                 "-v",
                 "1",
                 "-n",

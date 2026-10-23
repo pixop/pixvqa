@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FFmpeg decode builds. Links the private LGPL n8.1.3 libraries in FFMPEG_PREFIX.
+# FFmpeg decode builds. Links the LGPL n8.1.3 libraries in FFMPEG_PREFIX.
 # Software decode: build/swdec/pixvqa
 # Full CUDA + software + NVDEC: build/full/pixvqa
 # Neither replaces build/cpu/pixvqa or build/cuda/pixvqa.
@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 if [[ -z "${FFMPEG_PREFIX:-}" ]]; then
-  echo "Set FFMPEG_PREFIX to the private FFmpeg n8.1.3 LGPL shared-library prefix." >&2
+  echo "Set FFMPEG_PREFIX to an FFmpeg n8.1.3 LGPL shared-library prefix." >&2
   echo "Example: FFMPEG_PREFIX=/path/to/ffmpeg-n8.1.3-lgpl GCC_ENV=/path/to/gcc bash build_decode.sh" >&2
   exit 1
 fi

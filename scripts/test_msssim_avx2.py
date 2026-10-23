@@ -178,7 +178,7 @@ def main() -> int:
                     print(f"OK   4k threads {th} worst {tw:.3e}")
         env = os.environ.copy()
         env["PIXVQA_MSSSIM_DEBUG"] = "1"
-        env["PIXVQA_MSSSIM_BACKEND"] = "scalar"
+        env["PIXVQA_MSSSIM_BACKEND"] = "scalar"  # ignored; production stays on AVX2
         scalar = subprocess.run([str(BIN), "--threads", "4", *cmd_base],
                                 capture_output=True, text=True, env=env, timeout=180)
         if scalar.returncode != 0 or 4 not in rows:
@@ -188,9 +188,9 @@ def main() -> int:
             for a, b in zip(comps(scalar.stderr), rows[4]):
                 worst = max(worst, abs(a[4] - b[4]), abs(a[5] - b[5]))
             if worst > ATOL:
-                fail(f"4k scalar-vs-avx2 {worst:.3e}")
+                fail(f"4k backend env changed the score {worst:.3e}")
             else:
-                print(f"OK   4k scalar-vs-avx2 worst {worst:.3e}")
+                print(f"OK   4k PIXVQA_MSSSIM_BACKEND ignored worst {worst:.3e}")
     if FAILS:
         print(f"{FAILS} failed", file=sys.stderr)
         return 1

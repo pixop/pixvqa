@@ -193,20 +193,26 @@ void usage(const char* argv0) {
       "                       N is a positive integer for the metric workers only.\n"
       "   An execution summary lists each input as raw, cpu, or gpu, and each metric backend.\n"
       "\n"
-      "5. QCS and quality ranges\n"
-      "   --qcs               One sequence score per selected metric, from the\n"
-      "                       exact survival integral of that metric's per-frame avg.\n"
+      "5. QCS\n"
+      "   Quality Consistency Score (QCS) measures how consistently video quality\n"
+      "   remains above selected quality thresholds over time, using the normalized\n"
+      "   area under the survival curve of frame-level quality scores.\n"
+      "   It is not a ninth quality metric. It is an optional descriptor of the\n"
+      "   selected base scores.\n"
+      "   --qcs               Print one QCS value for each supported base metric.\n"
       "   --qcs-range M=A:B   Repeatable. M is psnr, xpsnr, ssim, or msssim.\n"
-      "                       Requires A < B.\n"
+      "                       Requires --qcs and A < B.\n"
       "   Defaults: psnr and xpsnr [30,50]; ssim and msssim [0.8,1.0].\n"
-      "   vmaf is rejected for QCS. VMAF scores are reported separately.\n"
-      "   A future VMAF-QCS range is reserved at [70,100] and is not applied here.\n"
-      "   QCS is the exact step-function integral, not the trapezoidal interpolation\n"
-      "   in the published qcs.py. On Q=[40,40,40,45,45,50] those differ by 20.8333\n"
-      "   points on [40,50] and by 10.4167 points on [30,50]. Compare BD-QCS only\n"
-      "   when every curve uses the same implementation and the same range.\n"
-      "   Identical PSNR frames are +inf internally (printed 999.99) and are\n"
-      "   left out of QCS. If none remain, the value is unavailable.\n"
+      "   Each frame is one sample. Timestamps are not read, so this matches\n"
+      "   viewing time only when every frame has the same duration. Frame order\n"
+      "   does not change QCS.\n"
+      "   A score at or below the lower limit contributes 0%. A score at or\n"
+      "   above the upper limit contributes 100%. +inf contributes 100%.\n"
+      "   -inf contributes 0%. NaN is omitted. If no valid sample remains,\n"
+      "   the value is unavailable.\n"
+      "   vmaf and the PU21 metrics are not QCS inputs. Their scores are still\n"
+      "   printed. Identical PSNR is +inf internally and is printed 999.99.\n"
+      "   Identical XPSNR is printed inf. Those frames still count in QCS.\n"
       "\n"
       "6. Frame rate and frame limits\n"
       "   --fps N or N/D      Required for xpsnr. Positive integer or rational.\n"
@@ -429,8 +435,8 @@ bool assign_qcs_range(Options& opt, const std::string& spec) {
     slot_hi = &opt.qcs_msssim_hi;
   } else if (metric == "vmaf") {
     std::fprintf(stderr,
-                 "pixvqa: --qcs-range vmaf is not available in Phase 1 "
-                 "(VMAF scores are reported; QCS-on-VMAF needs separate approval)\n");
+                 "pixvqa: --qcs-range vmaf is not supported. "
+                 "QCS accepts psnr, xpsnr, ssim, and msssim\n");
     return false;
   } else {
     std::fprintf(stderr, "pixvqa: unknown --qcs-range metric %s\n", metric.c_str());
@@ -709,11 +715,7 @@ bool file_looks_compressed(const std::string& path, DeviceChoice request) {
 }
 #endif
 
-bool msssim_cpu_is_avx2() {
-  const char* p = pix_getenv("MSSSIM_BACKEND");
-  if (p && std::strcmp(p, "scalar") == 0) return false;
-  return cpu_has_avx2();
-}
+bool msssim_cpu_is_avx2() { return cpu_has_avx2(); }
 
 int resolve_execution(Options& opt) {
   std::string ref_codec;
@@ -874,38 +876,9 @@ int resolve_execution(Options& opt) {
 
   opt.use_cuda = opt.psnr_gpu || opt.ssim_gpu || opt.msssim_gpu ||
                  opt.xpsnr_backend == XpsnrBackend::Cuda;
+  // Public GPU PSNR, SSIM, and MS-SSIM use FP64. PIXVQA_CUDA_PREC is not a control.
   opt.cuda_prec = CudaPrecision::Fp64;
-  if (opt.psnr_gpu || opt.ssim_gpu || opt.msssim_gpu) {
-    const char* prec = pix_getenv("CUDA_PREC");
-    if (prec && prec[0]) {
-      if (std::strcmp(prec, "fp64") == 0) opt.cuda_prec = CudaPrecision::Fp64;
-      else if (std::strcmp(prec, "fp32") == 0) opt.cuda_prec = CudaPrecision::Fp32;
-      else if (std::strcmp(prec, "mixed") == 0) opt.cuda_prec = CudaPrecision::Mixed;
-      else {
-        std::fprintf(stderr, "pixvqa: PIXVQA_CUDA_PREC must be fp32, fp64, or mixed\n");
-        return 2;
-      }
-      opt.cuda_prec_set = true;
-    }
-  }
-
-  const char* ssim_env = pix_getenv("SSIM_BACKEND");
-  if (ssim_env && ssim_env[0]) {
-    if (std::strcmp(ssim_env, "scalar") == 0) {
-      opt.kernel = SsimKernelMode::Scalar;
-    } else if (std::strcmp(ssim_env, "avx2") == 0) {
-      if (!cpu_has_avx2()) {
-        std::fprintf(stderr, "pixvqa: PIXVQA_SSIM_BACKEND=avx2 but this CPU has no AVX2\n");
-        return 2;
-      }
-      opt.kernel = SsimKernelMode::Avx2;
-    } else {
-      std::fprintf(stderr, "pixvqa: PIXVQA_SSIM_BACKEND must be scalar or avx2\n");
-      return 2;
-    }
-  } else {
-    opt.kernel = cpu_has_avx2() ? SsimKernelMode::Avx2 : SsimKernelMode::Scalar;
-  }
+  opt.kernel = cpu_has_avx2() ? SsimKernelMode::Avx2 : SsimKernelMode::Scalar;
 
   opt.logical_visible = logical_processors();
   int budget = 1;
@@ -1603,8 +1576,8 @@ int main(int argc, char** argv) {
                             opt.enable_xpsnr;
     if (!qcs_metric) {
       std::fprintf(stderr,
-                   "pixvqa: --qcs requires psnr, ssim, msssim, or xpsnr in --metrics. "
-                   "vmaf is not a QCS metric\n");
+                   "pixvqa: --qcs requires psnr, xpsnr, ssim, or msssim in --metrics. "
+                   "vmaf is not a QCS metric. The PU21 metrics are not QCS metrics\n");
       return 2;
     }
   }

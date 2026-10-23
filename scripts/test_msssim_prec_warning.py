@@ -65,8 +65,8 @@ def main() -> int:
             "-n", "2", "-v", "1"]
         cases = (
             ("public-fp64", ["--metrics", "msssim", "--metric-device", "gpu"], None, False, None),
-            ("fp32", ["--metrics", "msssim", "--metric-device", "gpu"], "fp32", True, "using fp32"),
-            ("mixed", ["--metrics", "msssim", "--metric-device", "gpu"], "mixed", True, "using mixed"),
+            ("fp32", ["--metrics", "msssim", "--metric-device", "gpu"], "fp32", False, None),
+            ("mixed", ["--metrics", "msssim", "--metric-device", "gpu"], "mixed", False, None),
             ("fp64", ["--metrics", "msssim", "--metric-device", "gpu"], "fp64", False, None),
             ("psnr-only", ["--metrics", "psnr", "--metric-device", "gpu"], None, False, None),
             ("psnr-fp32", ["--metrics", "psnr", "--metric-device", "gpu"], "fp32", False, None),

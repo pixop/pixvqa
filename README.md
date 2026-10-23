@@ -1,225 +1,175 @@
+<p align="center">
+  <img src="docs/brand/pixop-vqa-logo.png" alt="Pixop VQA" width="640">
+</p>
+
 # PixVQA
 
-Proposed repository: `pixop/pixvqa`. The project license is not selected. See `docs/LICENSING.md`.
+Video Quality Assessment
 
-PixVQA compares a reference picture sequence with a distorted one and prints quality scores. The executable is `pixvqa`.
+PixVQA compares a reference sequence with a distorted sequence and prints text scores for the selected metrics. The default lists each frame and then a summary. There is no JSON mode. It reads raw planar YUV and, when built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports.
 
-It scores raw planar YUV, and, when the binary is built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports. There is no codec or container allowlist. A decoded picture is scored only when it is already planar 8-bit or 10-bit 4:2:0, 4:2:2, or 4:4:4. The two inputs are decoded independently and paired in presentation order. There is no resize, crop, chroma conversion, or tone map.
-
-CPU decoding does not need an NVIDIA driver. GPU decoding is NVDEC for HEVC 10-bit 4:2:0 and AV1 8-bit or 10-bit 4:2:0. Other codecs, including VVC, are rejected on `--decode gpu` and are not replaced by a software decoder.
-
-The tested environment is Linux, including WSL2. A native Windows build is not part of this tree.
-
-The intended logo path is `docs/brand/pixop-vqa-logo.png`. The image is not in this tree. See `docs/brand/README.md`.
+PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU21-SSIM, and PU21-MS-SSIM compare light after PQ or HLG is interpreted. All eight metrics have a CPU implementation. PSNR, SSIM, MS-SSIM, and XPSNR also have optional CUDA implementations. An optional CUDA build adds NVDEC for HEVC and AV1.
 
 ## Supported metrics
 
-Select them with `--metrics`. These eight names are supported:
-
-| Name | What it scores |
+| Name | Description |
 |---|---|
-| `psnr` | PSNR and MSE on stored sample codes |
+| `psnr` | Peak signal-to-noise ratio, and MSE, on stored sample codes |
 | `xpsnr` | XPSNR. Requires `--fps` |
-| `ssim` | Classical single-scale SSIM |
-| `msssim` | Five-scale product MS-SSIM. Not implied by `ssim` |
-| `vmaf` | Netflix VMAF v1 through libvmaf 3.2.1, on the CPU. Requires `--model` |
-| `pu21-psnr` | Color PSNR on PU21-encoded linear RGB |
+| `ssim` | Single-scale structural similarity |
+| `msssim` | One five-scale product MS-SSIM. `ssim` does not select it |
+| `vmaf` | Netflix VMAF v1 through libvmaf, on the CPU. Requires `--model` |
+| `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
 
-`ssim` uses an 11×11 Gaussian, sigma 1.5, K1 = 0.01, K2 = 0.03. The dynamic range is 255 for 8-bit and 1023 for 10-bit. Combined YUV `avg` is sample-count weighted: 4:2:0 `(4Y+U+V)/6`, 4:2:2 `(2Y+U+V)/4`, 4:4:4 `(Y+U+V)/3`.
+PU21 is a perceptually uniform encoding of display light, so those three metrics can take HDR as input. `pu21-xpsnr` and `pu21-vmaf` are not supported. Pass names to `--metrics`. There is no second MS-SSIM metric.
 
-`--qcs` prints one sequence percentage per selected PSNR, XPSNR, SSIM, or MS-SSIM score. VMAF is not a QCS metric. Scores are text on stdout. There is no JSON output mode.
+## Quality Consistency Score (QCS)
 
-PU21-XPSNR and PU21-VMAF were investigated and are not supported. XPSNR's weighting was built for coded samples, and the shipped VMAF model was not validated on PU21 values. The names `pu21-xpsnr` and `pu21-vmaf` are rejected.
+Quality Consistency Score (QCS) is a metric-agnostic descriptor of temporal quality reliability. It measures the proportion of viewing time during which video quality meets or exceeds thresholds within a specified quality range, summarized as the normalized area under the survival curve of frame-level quality scores. QCS complements conventional average quality metrics by revealing the prevalence and severity of quality degradations that averages may obscure.
 
-A numerical match validates the implementation. It does not establish that a metric predicts subjective quality better than another.
+QCS characterizes the distribution of frame-level quality scores over time, not their temporal ordering. Different temporal arrangements of the same quality scores therefore produce the same QCS.
 
-## HDR
+Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. `--qcs` accepts `psnr`, `xpsnr`, `ssim`, and `msssim`. It does not accept `vmaf` or the PU21 metrics. Defaults are `[30,50]` for PSNR and XPSNR, and `[0.8,1.0]` for SSIM and MS-SSIM. `--qcs-range psnr=40:55` sets one range. The name is the base metric, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99` and identical XPSNR is printed `inf`. Both still count in QCS.
 
-PU21 is the `banding_glare` encoding from Mantiuk and Azimi, Picture Coding Symposium 2021. DOI: [10.1109/PCS50896.2021.9477471](https://doi.org/10.1109/PCS50896.2021.9477471). Reference code: [gfxdisp/pu21](https://github.com/gfxdisp/pu21). The BSD-3-Clause notice is `licenses/PU21_BSD.txt`.
+```bash
+pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
+  -r reference.yuv -s 1920x1080 -f 420p:8 \
+  -t distorted.yuv -s 1920x1080 -f 420p:8
+```
 
-PQ and HLG are not inferred from bit depth, a filename, or BT.2020 primaries. The order for each field is per-input option, shared option, stream metadata, documented default, then an error. PSNR, SSIM, MS-SSIM, and XPSNR still compare stored sample codes. VMAF uses the SDR-trained v1 model and is refused when the effective transfer is PQ or HLG.
+## Quick start
 
-`--help-hdr` lists every HDR option. `--hdr-peak-nits` is an evaluation-display value. It is not the mastering-display peak, MaxCLL, or MaxFALL.
+The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. `pixvqa` is `build/swdec/pixvqa`, or the installed binary. The GPU command needs `build/full/pixvqa`.
+
+Compressed video, software decoder:
+
+```bash
+pixvqa --metrics psnr --decode cpu \
+  -r reference.mp4 --input compressed -s 1920x1080 -f 420p:8 \
+  -t distorted.mp4 --input compressed -s 1920x1080 -f 420p:8
+```
+
+PSNR, XPSNR, SSIM, and MS-SSIM together. XPSNR needs a frame rate:
+
+```bash
+pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
+  -r reference.yuv -s 1920x1080 -f 420p:8 \
+  -t distorted.yuv -s 1920x1080 -f 420p:8
+```
+
+VMAF has no default model. This uses one of the eight files in `model/`. Picture size does not choose a model. VMAF is refused when the effective transfer is PQ or HLG.
+
+```bash
+pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
+  -r reference.yuv -s 1920x1080 -f 420p:8 \
+  -t distorted.yuv -s 1920x1080 -f 420p:8
+```
+
+Raw planar YUV. `--input raw` does not probe the file:
+
+```bash
+pixvqa --metrics psnr --input raw \
+  -r reference.yuv -s 1920x1080 -f 420p:8 \
+  -t distorted.yuv -s 1920x1080 -f 420p:8
+```
+
+PQ, then HLG. PU21 uses the transfer. A stored-sample metric such as `psnr` does not.
+
+```bash
+pixvqa --metrics pu21-psnr,pu21-ssim --hdr-transfer pq \
+  -r reference10.yuv -s 1920x1080 -f 420p:10 \
+  -t distorted10.yuv -s 1920x1080 -f 420p:10
+```
+
+```bash
+pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg --hdr-peak-nits 1000 \
+  -r reference10.yuv -s 1920x1080 -f 420p:10 \
+  -t distorted10.yuv -s 1920x1080 -f 420p:10
+```
+
+HEVC 10-bit 4:2:0 on NVDEC:
+
+```bash
+pixvqa --metrics psnr --decode gpu \
+  -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
+  -t reference10.hevc.mp4 --input compressed -s 1920x1080 -f 420p:10
+```
 
 ## Installation
 
-Dependencies are selected with environment variables. The build scripts do not embed a developer home directory.
+The tested environment is Linux on x86-64, including WSL2. Native Windows has not been validated. Builds do not require a CUDA toolkit unless you want NVDEC or GPU metrics. Full commands, FFmpeg flags, and troubleshooting are in [docs/INSTALL.md](docs/INSTALL.md).
 
-### CPU metrics, raw YUV
-
-No CUDA, no NVIDIA driver, and no FFmpeg. VMAF is included when `deps/libvmaf-3.2.1` exists or `LIBVMAF_PREFIX` is set. AV1 and VVC are not decoded by this binary.
+Raw YUV only. This binary does not decode compressed video:
 
 ```bash
 bash build.sh
 ```
 
-The executable is `build/cpu/pixvqa`.
-
-### CPU decoding, including AV1 and VVC
-
-This binary does not need the CUDA toolkit or an NVIDIA driver. It needs a C++17 compiler, a shared LGPL FFmpeg built with `--disable-gpl`, `--enable-libdav1d`, and the native VVC decoder, plus libdav1d at runtime.
+CPU decoding, including AV1 through libdav1d and VVC through FFmpeg. Leave `GCC13` and `CUDA_HOME` unset:
 
 ```bash
 export FFMPEG_PREFIX=/path/to/ffmpeg
-export DAV1D_LIB=/path/to/dav1d/lib
+export DAV1D_LIB=/path/to/libdav1d
 export GCC_ENV=/path/to/gcc
 export LIBVMAF_PREFIX=/path/to/libvmaf
 bash build_decode.sh
 ```
 
-Leave `GCC13` and `CUDA_HOME` unset. The executable is `build/swdec/pixvqa`. AV1 software decoding uses libdav1d. VVC uses FFmpeg's native decoder. A compressed input with `--decode gpu` is an error on this binary.
-
-Use a shared FFmpeg built with `--disable-gpl`, `--disable-version3`, `--enable-shared`, and `--enable-libdav1d`, and with the native VVC decoder left enabled. libdav1d 1.5.1 is BSD-2-Clause. Notices are in `THIRD_PARTY_NOTICES.md`. This tree does not ship FFmpeg, libdav1d, CUDA, or a prebuilt `pixvqa`.
-
-### GPU metrics and NVDEC
-
-Build the CUDA objects, then the full binary. `PIXVQA_LIBCUDA_DIR` is the directory containing `libcuda.so.1`. On WSL2 that is often `/usr/lib/wsl/lib`. On a native Linux driver install it is often `/usr/lib/x86_64-linux-gnu`.
-
-```bash
-export GCC13=/path/to/gcc-for-nvcc
-export CUDA_HOME=/path/to/cuda
-bash build_cuda.sh
-export FFMPEG_PREFIX=/path/to/ffmpeg
-export DAV1D_LIB=/path/to/dav1d/lib
-export GCC_ENV=/path/to/gcc
-export LIBVMAF_PREFIX=/path/to/libvmaf
-export PIXVQA_LIBCUDA_DIR=/path/to/libcuda
-bash build_decode.sh
-```
-
-The executable is `build/full/pixvqa`. `--decode gpu` supports HEVC 10-bit 4:2:0 and AV1 8-bit or 10-bit 4:2:0. It does not silently fall back to software. GPU PSNR and GPU SSIM require 10-bit input. VMAF and PU21 stay on the CPU.
-
-### Install and models
+The executable is `build/swdec/pixvqa`. Optional NVDEC and GPU metrics produce `build/full/pixvqa`.
 
 ```bash
 PREFIX=/opt/pixvqa PIXVQA_BIN=build/swdec/pixvqa bash scripts/install.sh
 ```
 
-Models are copied to `$PREFIX/share/pixvqa/model`. Pass that directory in `--model`. Nothing selects a model for you.
+Models are copied to `$PREFIX/share/pixvqa/model`. Pass one file to `--model`. Nothing selects a model for you.
 
-Runtime libraries are not copied. A decode build needs `libavformat`, `libavcodec`, `libavutil`, and `libdav1d` on the loader path. When VMAF is enabled, `libvmaf` is linked statically from `LIBVMAF_PREFIX` and is not a separate runtime library. A GPU build also needs the NVIDIA driver libraries. `ldd build/swdec/pixvqa` shows which files the binary was linked against.
+## Command-line options
 
-`packaging/SHA256SUMS` lists the source files in this tree. It is not a release upload.
+`pixvqa --help` is the full option list. `pixvqa --help-hdr` is the full HDR list, including defaults and the PU21 citation.
 
-## Usage
+| Option | Purpose |
+|---|---|
+| `-r`, `-t` | Reference path and distorted path |
+| `--metrics` | Comma-separated metric names |
+| `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
+| `--metric-device` | `auto`, `cpu`, or `gpu`. Default `auto` |
+| `--threads` | `auto` or a positive integer. Default `auto` |
+| `-s WxH` | Luma size. Give it again after `-t` |
+| `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10` |
+| `--input` | `auto`, `raw`, or `compressed` |
+| `--fps` | `N` or `N/D`. Required for `xpsnr` |
+| `--model` | VMAF model JSON. No default |
+| `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
+| `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
+| `--qcs` | Optional QCS for `psnr`, `xpsnr`, `ssim`, or `msssim` |
+| `--qcs-range` | `metric=lower:upper`, with lower < upper |
 
-The examples below use the names the checker creates. `pixvqa` is the binary on `PATH`.
+## Formats and limitations
 
-Basic SDR comparison:
+FFmpeg chooses the demuxer and decoder. There is no container or codec allowlist. A picture is scored only when it is already planar 8-bit or 10-bit 4:2:0, 4:2:2, or 4:4:4. Other layouts are rejected and are not converted. The tested set is smaller than the set FFmpeg can open.
 
-```bash
-pixvqa --metrics psnr \
-  -r reference.yuv -s 64x64 -f 420p:8 \
-  -t distorted.yuv -s 64x64 -f 420p:8
-```
+| Path | Tested behavior |
+|---|---|
+| Raw YUV | Planar 8-bit and 10-bit 4:2:0, 4:2:2, and 4:4:4 |
+| AV1 | libdav1d, or libaom-av1 if libdav1d is absent. The native `av1` decoder is not used. NVDEC for 8-bit and 10-bit 4:2:0 |
+| VVC | FFmpeg native decoder, short 10-bit 4:2:0 clips. No NVDEC |
+| HEVC | Software decoding, and NVDEC for 10-bit 4:2:0 |
 
-Several metrics. XPSNR needs a frame rate:
+`--decode` accepts `auto`, `cpu`, or `gpu`. `--decode software` and `--decode nvdec` are rejected, and `cpu` and `gpu` do not substitute for each other. GPU PSNR and GPU SSIM are 10-bit only. GPU XPSNR and GPU MS-SSIM accept 8-bit and 10-bit. VMAF has no GPU path: `--metric-device gpu` with only VMAF is an error, and `--metrics xpsnr,vmaf --metric-device gpu` runs XPSNR on the GPU and leaves VMAF on the CPU. A GPU metric that cannot run is an error, with no CPU substitute. `--metric-device auto` uses GPU scoring for 10-bit 3840×2160 or larger NVDEC input when VMAF is not selected. PQ and HLG are not inferred from bit depth, a filename, or BT.2020 primaries. `--hdr-peak-nits` is an evaluation-display value, not MaxCLL. Identical samples print PSNR `999.99`. `--psnr`, `--ssim`, `--msssim`, `--xpsnr`, `--vmaf`, `--xpsnr-backend`, `--vmaf-backend`, `--wang-msssim`, and `--kernel` are rejected. An unknown option exits 1 with `PARSE ERROR`. A flag this version explicitly removed exits 2. Metric selection is `--metrics`.
 
-```bash
-pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
-  -r reference.yuv -s 64x64 -f 420p:8 \
-  -t distorted.yuv -s 64x64 -f 420p:8
-```
+## References
 
-Raw reference against a compressed file:
+- PSNR. Peak-signal form of mean squared error on the stored sample codes.
+- XPSNR. C. R. Helmrich, M. Siekmann, S. Becker, S. Bosse, D. Marpe, and T. Wiegand, “XPSNR: A Low-Complexity Extension of the Perceptually Weighted Peak Signal-to-Noise Ratio for High-Resolution Video Quality Assessment,” ICASSP 2020. [DOI 10.1109/ICASSP40776.2020.9054089](https://doi.org/10.1109/ICASSP40776.2020.9054089).
+- SSIM. Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image Quality Assessment: From Error Visibility to Structural Similarity,” IEEE Transactions on Image Processing, vol. 13, no. 4, pp. 600–612, April 2004. [DOI 10.1109/TIP.2003.819861](https://doi.org/10.1109/TIP.2003.819861).
+- MS-SSIM. Z. Wang, E. P. Simoncelli, and A. C. Bovik, “Multiscale Structural Similarity for Image Quality Assessment,” Asilomar Conference on Signals, Systems and Computers, 2003. [DOI 10.1109/ACSSC.2003.1292216](https://doi.org/10.1109/ACSSC.2003.1292216).
+- VMAF. Z. Li, A. Aaron, I. Katsavounidis, A. Moorthy, and M. Manohara, “Toward a Practical Perceptual Video Quality Metric,” Netflix Technology Blog, 2016. [Blog](https://netflixtechblog.com/toward-a-practical-perceptual-video-quality-metric-653f208b9652). Models and attribution: [model/README.md](model/README.md), [Netflix/vmaf](https://github.com/Netflix/vmaf) 3.2.1, [third_party/netflix-vmaf/NOTICE](third_party/netflix-vmaf/NOTICE).
+- PU21. R. K. Mantiuk and M. Azimi, “PU21: A Novel Perceptually Uniform Encoding for Adapting Existing Quality Metrics for HDR,” Picture Coding Symposium, 2021. [DOI 10.1109/PCS50896.2021.9477471](https://doi.org/10.1109/PCS50896.2021.9477471). Reference implementation: [gfxdisp/pu21](https://github.com/gfxdisp/pu21). Notice: [licenses/PU21_BSD.txt](licenses/PU21_BSD.txt).
 
-```bash
-pixvqa --metrics psnr --decode cpu \
-  -r reference.yuv --input raw -s 64x64 -f 420p:8 \
-  -t clip.h264.mp4 --input compressed -s 64x64 -f 420p:8
-```
+## License
 
-AV1, software decoder:
+PixVQA is licensed under the [MIT License](LICENSE) (SPDX `MIT`). Copyright (c) 2026 Pixop ApS. [docs/LICENSING.md](docs/LICENSING.md) explains third-party and model licenses. Dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-```bash
-pixvqa --metrics psnr --decode cpu \
-  -r clip.av1.yuv --input raw -s 64x64 -f 420p:8 \
-  -t clip.av1.mp4 --input compressed -s 64x64 -f 420p:8
-```
-
-VVC, software decoder. `--decode gpu` rejects VVC:
-
-```bash
-pixvqa --metrics psnr --decode cpu \
-  -r clip.vvc.yuv --input raw -s 64x64 -f 420p:10 \
-  -t clip.vvc.mp4 --input compressed -s 64x64 -f 420p:10
-```
-
-HEVC on NVDEC. This needs `build/full/pixvqa`:
-
-```bash
-pixvqa --metrics psnr --decode gpu \
-  -r clip.hevc.yuv --input raw -s 256x256 -f 420p:10 \
-  -t clip.hevc.mp4 --input compressed -s 256x256 -f 420p:10
-```
-
-PQ. The PSNR text is still a sample-code score. PU21 uses the transfer:
-
-```bash
-pixvqa --metrics psnr,pu21-psnr --hdr-transfer pq \
-  -r reference10.yuv -s 64x64 -f 420p:10 \
-  -t distorted10.yuv -s 64x64 -f 420p:10
-```
-
-HLG with an explicit evaluation peak:
-
-```bash
-pixvqa --metrics pu21-psnr --hdr-transfer hlg --hdr-peak-nits 1000 \
-  -r reference10.yuv -s 64x64 -f 420p:10 \
-  -t distorted10.yuv -s 64x64 -f 420p:10
-```
-
-One input PQ and the other HLG:
-
-```bash
-pixvqa --metrics pu21-psnr --ref-hdr-transfer pq --dist-hdr-transfer hlg \
-  --hdr-peak-nits 1000 \
-  -r reference10.yuv -s 64x64 -f 420p:10 \
-  -t distorted10.yuv -s 64x64 -f 420p:10
-```
-
-VMAF on SDR samples. The model path is required:
-
-```bash
-pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
-  -r vmaf_ref.yuv -s 320x240 -f 420p:8 \
-  -t vmaf_dist.yuv -s 320x240 -f 420p:8
-```
-
-## Accuracy and limits
-
-SSIM and MS-SSIM follow the classical definitions above. XPSNR follows the integer-rate high-pass formulation in the source. VMAF is Netflix VMAF v1, model JSON supplied by the user, minimum frame size enforced for the SpEED features. PU21 uses binary64, the `banding_glare` curve, domain `[0.005, 10000]` cd/m², and peak 256.
-
-Identical samples print PSNR `999.99`. VMAF is compared with libvmaf 3.2.1. Model checksums are in `reports/VMAF_MODEL_CHECKSUMS.md`. A numerical match checks the implementation. It does not rank subjective quality.
-
-Decoder limits that were tested, and are not a claim of full codec conformance:
-
-- Software pictures must already be planar 8-bit or 10-bit 4:2:0, 4:2:2, or 4:4:4. `nv12` as a software layout, RGB, and 12-bit are rejected.
-- AV1 GPU pictures are NV12 at 8-bit and P010 at 10-bit. The 8-bit path is deinterleaved on the host.
-- The AV1 fixtures have no film-grain header. libdav1d is opened with the library defaults `filmgrain=-1` and `oppoint=-1`.
-- The VVC checks are short 10-bit 4:2:0 clips, including a byte compare with VVdeC. They are not a conformance suite.
-- A mid-stream resolution change is not supported as a scored input.
-- `--decode auto` prefers a working software decoder. It uses AV1 NVDEC only when no software AV1 decoder is linked.
-
-## Quality checks
-
-```bash
-python3 scripts/run_qa.py --profile smoke
-python3 scripts/run_qa.py --profile full
-python3 scripts/run_qa.py --profile hardware
-```
-
-`full` needs FFmpeg, libdav1d, and the VMAF CLI (`FFMPEG`, `VVDEC`, `VMAF_CLI`). `hardware` runs only where `build/full/pixvqa` and `nvidia-smi` exist. A skipped hardware test is not a pass.
-
-GitHub-hosted runners build the CPU binary and run smoke. They record SKIP for the full profile. The hardware job runs only when requested on a self-hosted NVIDIA runner. See `.github/workflows/qa.yml`.
-
-## Troubleshooting
-
-- `this build has no CPU decoder`: the binary is `build/cpu/pixvqa`. Use `build/swdec/pixvqa` or `build/full/pixvqa`.
-- `GPU decoding is not compiled`: `--decode gpu` was asked of a binary built without NVDEC.
-- `no video stream`: `--input compressed` was used on raw YUV.
-- `vmaf requires --model`: pass a model JSON. There is no default.
-- `vmaf rejects HDR transfer`: the effective transfer is PQ or HLG.
-- A missing `libdav1d.so` or `libavcodec.so` at startup means the loader path does not match the build. `ldd` on the executable names the files.
+The logo at `docs/brand/pixop-vqa-logo.png` is included with the repository. The MIT license does not grant unrestricted trademark or logo use. See [docs/brand/README.md](docs/brand/README.md).
