@@ -19,7 +19,8 @@ if [ -f build.sh ] && [ -f build_decode.sh ] && [ -f build_cuda.sh ] && \
    [ -f scripts/build_libvmaf.sh ] && [ -f scripts/install.sh ]; then
     export PIXVQA_SRC="$(pwd -P)"
     export PREFIX="$PIXVQA_SRC"
-    export PIXVQA_ENABLE_NVIDIA=1  # Set to 0 for CPU/software decoding only.
+    export PIXVQA_ENABLE_NVIDIA=1  # Set to 0 to omit CUDA and NVDEC.
+    export PIXVQA_ENABLE_DAV1D="${PIXVQA_ENABLE_DAV1D:-1}"  # Set to 0 for raw YUV only.
     # Checkout-local manual root. It is separate from the guided installer's
     # $HOME paths and from PIXVQA_DEPS_ROOT. apt packages, the NVIDIA driver,
     # and CUDA_HOME stay outside this directory.
@@ -27,8 +28,8 @@ if [ -f build.sh ] && [ -f build_decode.sh ] && [ -f build_cuda.sh ] && \
     export LIBVMAF_PREFIX="${LIBVMAF_PREFIX:-$PIXVQA_SRC/deps/libvmaf-74f930d}"
     export ZIMG_PREFIX="${ZIMG_PREFIX:-$PIXVQA_SRC/deps/zimg-3.0.6}"
     export ZIMG_SRC="${ZIMG_SRC:-$PIXVQA_SRC/deps/src/zimg}"
-    printf 'PixVQA checkout: %s\nInstall prefix: %s\nManual dependency root: %s\nNVIDIA enabled: %s\n' \
-        "$PIXVQA_SRC" "$PREFIX" "$PIXVQA_MANUAL_ROOT" "$PIXVQA_ENABLE_NVIDIA"
+    printf 'PixVQA checkout: %s\nInstall prefix: %s\nManual dependency root: %s\ndav1d: %s\nNVIDIA enabled: %s\n' \
+        "$PIXVQA_SRC" "$PREFIX" "$PIXVQA_MANUAL_ROOT" "$PIXVQA_ENABLE_DAV1D" "$PIXVQA_ENABLE_NVIDIA"
 else
     echo 'STOP: Navigate to the root of your PixVQA clone before continuing.' >&2
 fi
@@ -308,73 +309,46 @@ Requires NVIDIA driver/GPU, the **CUDA 12.8** toolkit, and conda-forge GCC **13.
     bash build_cuda.sh
     bash build_decode.sh
     test -x build/full/pixvqa || { echo 'STOP: full PixVQA executable missing' >&2; exit 1; }
-    build/full/pixvqa --version | grep -q 'decode: software nvdec' || { echo 'STOP: full binary does not report NVDEC' >&2; exit 1; }
+    env -u LD_LIBRARY_PATH build/full/pixvqa --version | grep -q 'decode: software nvdec' || { echo 'STOP: full binary does not report NVDEC' >&2; exit 1; }
     echo 'PASS: PixVQA CUDA and NVDEC executable'
 )
 ```
 
-### Build outputs: which executable is which?
+The build scripts write intermediate executables under `build/`. Section 7 installs exactly one of them as `$PREFIX/bin/pixvqa` and then removes `build/` unless `PIXVQA_KEEP_BUILD=1`. Run `./bin/pixvqa`.
 
-Build scripts create executables under `build/`; they do **not** install multiple versions of PixVQA. The install step in Section 7 selects one build and copies it to `$PREFIX/bin/pixvqa`.
+## 7. Install into this checkout and check the executable
 
-| Executable | Capabilities |
-|---|---|
-| `build/cpu/pixvqa` | CPU metrics, raw YUV input only |
-| `build/cuda/pixvqa` | CPU and CUDA-supported metrics, raw YUV input only |
-| `build/swdec/pixvqa` | CPU metrics with FFmpeg software decoding |
-| `build/full/pixvqa` | CPU and CUDA-supported metrics with software decoding and NVDEC |
-| `$PREFIX/bin/pixvqa` | Installed copy of the selected build |
-| `$PREFIX/bin/pixvqa-with-libs` | Launcher generated **only by the guided installer**, for private runtime libraries |
-
-The manual procedure below installs `build/full/pixvqa` when `PIXVQA_ENABLE_NVIDIA=1`, otherwise `build/swdec/pixvqa`. Not all build variants must exist. `PREFIX` is the installation destination, while `PIXVQA_BIN` identifies the compiled executable to copy.
-
-## 7. Install into this checkout and check dynamic libraries
-
-This matches the default **repository-root installation prefix** of the updated guided installer. The binary is installed at `$PIXVQA_SRC/bin/pixvqa`, without depending on the checkout directory name. The manual `scripts/install.sh` does **not** generate the guided installer's `pixvqa-with-libs` launcher, so verify the ELF runtime dependencies with an explicit library path.
+This matches the guided installer. The program is `$PIXVQA_SRC/bin/pixvqa`. With `PIXVQA_ENABLE_NVIDIA=1` the installed program is the CUDA/NVDEC build. With dav1d enabled and NVIDIA disabled it is the software-decoding build. With `PIXVQA_ENABLE_DAV1D=0` it is the raw-YUV build; in that case run `bash build.sh` from Section 5's CPU step and skip the FFmpeg sections. The check below clears `LD_LIBRARY_PATH`, so a passing result is what a new terminal will do.
 
 ```bash
 (
     set -Eeuo pipefail
     : "${PIXVQA_SRC:?Run Section 0 first}"
     : "${PIXVQA_ENABLE_NVIDIA:?Run Section 0 first}"
+    : "${PIXVQA_ENABLE_DAV1D:?Run Section 0 first}"
     cd "$PIXVQA_SRC"
-    root="${PIXVQA_MANUAL_ROOT:-$PIXVQA_SRC/deps/manual}"
     export PREFIX="$PIXVQA_SRC"
     if [ "$PIXVQA_ENABLE_NVIDIA" = 1 ]; then
         export PIXVQA_BIN=build/full/pixvqa
-    else
+        expect_build=cuda
+        expect_decode="software nvdec"
+    elif [ "$PIXVQA_ENABLE_DAV1D" = 1 ]; then
         export PIXVQA_BIN=build/swdec/pixvqa
+        expect_build=cpu
+        expect_decode=software
+    else
+        export PIXVQA_BIN=build/cpu/pixvqa
+        expect_build=cpu
+        expect_decode=none
     fi
-    test -x "$PIXVQA_BIN" || { echo "STOP: binary $PIXVQA_BIN missing; complete earlier sections" >&2; exit 1; }
+    test -x "$PIXVQA_BIN" || { echo "STOP: $PIXVQA_BIN missing; complete the matching build section" >&2; exit 1; }
     PREFIX="$PREFIX" PIXVQA_BIN="$PIXVQA_BIN" bash scripts/install.sh
-    test -x "$PREFIX/bin/pixvqa" || { echo 'STOP: installed binary missing' >&2; exit 1; }
-    cmp "$PREFIX/bin/pixvqa" "$PIXVQA_BIN" || { echo 'STOP: installed executable differs from selected build' >&2; exit 1; }
-    dav1d_pc="$(find "$root/dav1d-1.5.1" -type f -name dav1d.pc -print -quit 2>/dev/null)"
-    test -n "$dav1d_pc" || { echo 'STOP: dav1d not installed' >&2; exit 1; }
-    export PKG_CONFIG_PATH="$(dirname "$dav1d_pc")${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    dav1d_lib="$(pkg-config --variable=libdir dav1d)"
-    libdirs="$root/ffmpeg-n8.1.3/lib:$dav1d_lib"
-    if [ "$PIXVQA_ENABLE_NVIDIA" = 1 ]; then
-        cuda="${CUDA_HOME:-/usr/local/cuda-12.8}"
-        for candidate in "$cuda/targets/x86_64-linux/lib" "$cuda/lib64" "$cuda/lib"; do
-            if [ -f "$candidate/libcudart.so" ]; then libdirs="$candidate:$libdirs"; break; fi
-        done
-        for candidate in /usr/lib/wsl/lib /usr/lib/x86_64-linux-gnu; do
-            if [ -f "$candidate/libcuda.so.1" ]; then libdirs="$candidate:$libdirs"; break; fi
-        done
-    fi
-    export LD_LIBRARY_PATH="$libdirs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    report="$(ldd "$PREFIX/bin/pixvqa")"
-    printf '%s\n' "$report"
-    if grep -Fq 'not found' <<< "$report"; then echo 'STOP: unresolved shared library' >&2; exit 1; fi
-    "$PREFIX/bin/pixvqa" --version
-    echo 'PASS: PixVQA manually installed and dynamic libraries resolved'
+    bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$expect_build" "$expect_decode"
+    echo 'PASS: PixVQA installed as bin/pixvqa'
 )
 ```
 
-**To run it in a later terminal**, restore the runtime library search paths (or add appropriate RPATH/RUNPATH during a separate packaging improvement). Do not assume that `bin/pixvqa` runs in a new shell without `LD_LIBRARY_PATH`. Unlike the guided installer, the manual procedure does not add an `LD_LIBRARY_PATH` launcher.
-
-`scripts/install.sh` copies the executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. Pass one file to `--model`.
+`scripts/install.sh` copies that one executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. Pass one file to `--model`. Run Section 8 before removing `build/`.
 
 ## 8. Quality assurance
 
@@ -383,7 +357,11 @@ From the root of **the checkout being installed**, with `PIXVQA_SRC` initialized
 ```bash
 cd "$PIXVQA_SRC"
 python3 scripts/run_qa.py --profile smoke
+PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
+./bin/pixvqa --version
 ```
+
+`scripts/finish_install.sh` removes `build/`. Set `PIXVQA_KEEP_BUILD=1` to retain those intermediates. It does not remove `deps/` or `PIXVQA_MANUAL_ROOT`.
 
 The smoke profile verifies the CPU build (16 cases in the previously validated environment). After a full NVIDIA build, optionally run:
 

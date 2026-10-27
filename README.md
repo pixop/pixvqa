@@ -43,7 +43,7 @@ pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
 
 ## Quick start
 
-The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes a binary on `PATH`; alternatively invoke `build/swdec/pixvqa` from the checkout, or `./bin/pixvqa-with-libs` from the checkout after guided installation with the default prefix. The GPU command requires the full NVIDIA build (`build/full/pixvqa` or its installed equivalent).
+The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
 
 Compressed video, software decoder:
 
@@ -116,11 +116,12 @@ Two installation methods are available.
 
 ### Option 1 — Automatic installation (recommended)
 
-The guided installer downloads and builds the required dependencies, compiles PixVQA, and installs the resulting executables.
+The guided installer downloads and builds the required dependencies, compiles the feature set you select, and installs that program as one executable.
 
 From the root of the cloned repository, run:
 
     bash install_pixvqa.sh
+    ./bin/pixvqa --version
 
 The installer asks two questions:
 
@@ -129,7 +130,11 @@ The installer asks two questions:
 
 **Recommended:** Select Yes for dav1d to enable software decoding of compressed video, and Yes for NVIDIA if you want GPU acceleration.
 
-NVIDIA acceleration requires a compatible NVIDIA driver and **CUDA toolkit 12.8** already installed. The installer does not install the NVIDIA driver or CUDA toolkit.
+NVIDIA acceleration requires a compatible NVIDIA driver and **CUDA toolkit 12.8** already installed. The installer does not install the NVIDIA driver or CUDA toolkit. `./bin/pixvqa` finds its private libraries through the executable's RPATH, so a new terminal does not need `LD_LIBRARY_PATH`.
+
+`--version` reports the selected features. A raw-YUV build prints `build: cpu` and `decode: none`. Software decoding prints `decode: software`. NVIDIA support prints `build: cuda` and `decode: software nvdec`.
+
+Files created under `build/` are compilation intermediates. They are removed after installation and smoke QA. Set `PIXVQA_KEEP_BUILD=1` to keep them.
 
 **Optional — Isolated dependency installation**
 
@@ -138,12 +143,6 @@ By default, the installer uses shared dependency directories under `$HOME`. To k
     PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
 
 This does not isolate system packages, the NVIDIA driver, or the CUDA toolkit.
-
-**Verify the installation**
-
-After installation, run:
-
-    ./bin/pixvqa-with-libs --version
 
 The guided installer is currently experimental. For additional requirements and troubleshooting, see [Installation Guide](docs/INSTALL.md).
 
@@ -161,29 +160,6 @@ The guide explains how to:
 - Enable NVIDIA CUDA acceleration and NVDEC hardware decoding.
 - Install PixVQA into a custom directory.
 - Verify the installation and troubleshoot common issues.
-
-### Build configurations and executables
-
-Compilation creates executables in `build/`. Installation copies **one selected executable** to `$PREFIX/bin/pixvqa` (by default, `bin/pixvqa` inside the checkout). These are build configurations, not separate PixVQA releases.
-
-| Executable | Capabilities |
-|---|---|
-| `build/cpu/pixvqa` | CPU metrics; raw YUV input only |
-| `build/cuda/pixvqa` | CPU and CUDA-supported metrics; raw YUV input only |
-| `build/swdec/pixvqa` | CPU metrics; raw YUV and FFmpeg software-decoded compressed video |
-| `build/full/pixvqa` | CPU and CUDA-supported metrics; software decoding and NVIDIA NVDEC |
-| `bin/pixvqa` | Installed copy of the build selected during installation |
-| `bin/pixvqa-with-libs` | Guided-install launcher that sets private library paths and runs `bin/pixvqa` |
-
-Not every installation builds all four configurations. With **dav1d = Yes** and **NVIDIA = Yes**, the guided installer selects `build/full/pixvqa` for installation.
-
-**Which one should I run?** After guided installation with the default prefix, use `./bin/pixvqa-with-libs` so that privately installed FFmpeg, dav1d, and CUDA runtime libraries can be found. The manual installation does **not** generate this launcher; see [docs/INSTALL.md](docs/INSTALL.md) for runtime-library setup.
-
-To check that a full NVIDIA build was installed (default prefix), run:
-
-```bash
-cmp bin/pixvqa build/full/pixvqa && echo "Installed binary matches the full build"
-```
 
 **VMAF:** SDR and HDR VMAF always execute on CPU libvmaf. When GPU execution is requested, PixVQA automatically falls back to CPU for VMAF and displays a warning. PSNR, SSIM, MS-SSIM, and XPSNR retain CUDA acceleration when supported.
 

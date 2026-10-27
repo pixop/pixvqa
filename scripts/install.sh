@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Install a built pixvqa into PREFIX. Does not copy CUDA or FFmpeg libraries.
-# Shared libraries are loaded from the build-time rpath or from LD_LIBRARY_PATH.
+# Install one PixVQA executable at PREFIX/bin/pixvqa.
+# Does not copy CUDA or FFmpeg libraries. The binary finds those libraries
+# through the RPATH recorded at link time.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${PREFIX:?Set PREFIX to the install directory}"
@@ -10,6 +11,7 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 install -d "$PREFIX/bin" "$PREFIX/share/pixvqa/model" "$PREFIX/share/doc/pixvqa/licenses"
+rm -f "$PREFIX/bin/pixvqa-with-libs"
 install -m 755 "$BIN" "$PREFIX/bin/pixvqa"
 cp -a "$ROOT/model/"*.json "$PREFIX/share/pixvqa/model/"
 # HDR VMAF v1.1.8 JSON files live in subdirectories. The top-level copy

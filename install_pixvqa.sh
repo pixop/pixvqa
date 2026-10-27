@@ -360,11 +360,17 @@ if (( WITH_DAV1D )); then
         full_version="$(build/full/pixvqa --version)"
         grep -q 'decode: software nvdec' <<< "$full_version" || die 'Full binary does not report NVDEC.'
         PIXVQA_BIN=build/full/pixvqa
+        PIXVQA_EXPECT_BUILD=cuda
+        PIXVQA_EXPECT_DECODE="software nvdec"
     else
         PIXVQA_BIN=build/swdec/pixvqa
+        PIXVQA_EXPECT_BUILD=cpu
+        PIXVQA_EXPECT_DECODE=software
     fi
 else
     PIXVQA_BIN=build/cpu/pixvqa
+    PIXVQA_EXPECT_BUILD=cpu
+    PIXVQA_EXPECT_DECODE=none
 fi
 export PIXVQA_BIN
 
@@ -372,24 +378,11 @@ info 'Installing PixVQA application'
 [[ -x "$PIXVQA_BIN" ]] || die "Selected binary not executable: $PIXVQA_BIN"
 PREFIX="$PREFIX" PIXVQA_BIN="$PIXVQA_BIN" bash scripts/install.sh
 [[ -x "$PREFIX/bin/pixvqa" ]] || die 'Installed executable missing.'
-"$PREFIX/bin/pixvqa" --version
-show_missing_libraries "$PREFIX/bin/pixvqa" || die 'Unresolved runtime libraries in installed PixVQA.'
-
-# Persist a documented launcher for NEW terminal sessions, which do not inherit
-# this installer's LD_LIBRARY_PATH. Do not alter user shell startup files.
-info 'Writing a launcher with the required private library paths'
-launcher="$PREFIX/bin/pixvqa-with-libs"
-{
-    printf '#!/usr/bin/env bash\nset -e\n'
-    printf 'export LD_LIBRARY_PATH=%q\n' "${LD_LIBRARY_PATH:-}"
-    printf 'exec %q "$@"\n' "$PREFIX/bin/pixvqa"
-} > "$launcher"
-chmod +x "$launcher"
-"$launcher" --version
+bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$PIXVQA_EXPECT_BUILD" "$PIXVQA_EXPECT_DECODE"
 
 info 'Running CPU smoke QA'
 python3 scripts/run_qa.py --profile smoke
+PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"
-printf 'Portable-to-new-shell launcher (same machine): %s\n' "$launcher"
-printf 'NOTE: direct pixvqa execution in a new shell may require LD_LIBRARY_PATH; use the launcher.\n'
+printf 'Run it directly. Private libraries are recorded in the executable RPATH.\n'
