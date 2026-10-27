@@ -19,7 +19,7 @@ sudo apt-get install -y build-essential python3 git meson ninja-build nasm pkg-c
 
 `GCC_ENV` is a GCC prefix whose `bin/g++` is the C++17 compiler. The decode script refuses to run unless that file exists, and it puts `$GCC_ENV/bin` on `PATH`. A distribution `g++` is enough when you point `GCC_ENV` at its prefix, for example `/usr` if `/usr/bin/g++` exists.
 
-`scripts/build_libvmaf.sh` uses `GCC_ENV` the same way. If `GCC_ENV` is unset and `$HOME/gcc-env/bin` exists, that script adds the latter directory to `PATH`. Set `GCC_ENV` when the compiler should be explicit.
+`scripts/build_libvmaf.sh`, `scripts/build_libvmaf_3.2.1.sh`, and `scripts/build_zimg.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They do not search a user-specific compiler directory. `gcc`, `g++`, and GNU `make` must be on `PATH` for the zimg build. Ubuntu's `build-essential` package supplies `make`. If autoconf, automake, libtool, or m4 are missing, `scripts/build_zimg.sh` downloads the Ubuntu 24.04 packages named in that script and checks their SHA-256 values. The libvmaf and zimg commits stay pinned.
 
 ## 2. libdav1d 1.5.1
 

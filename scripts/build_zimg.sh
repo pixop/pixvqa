@@ -14,10 +14,9 @@ PREFIX="${ZIMG_PREFIX:-$ROOT/deps/zimg-3.0.6}"
 HOST="${ROOT}/deps/src/host-autotools"
 DEBS="${ROOT}/deps/src/host-debs"
 
+# Optional explicit compiler prefix. There is no default user directory.
 if [[ -n "${GCC_ENV:-}" ]]; then
   export PATH="${GCC_ENV}/bin:${PATH}"
-elif [[ -d "${HOME}/gcc-env/bin" ]]; then
-  export PATH="${HOME}/gcc-env/bin:${PATH}"
 fi
 
 for tool in git gcc g++ nasm pkg-config perl; do

@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -18,7 +19,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PIX = Path(os.environ.get("PIXVQA", ROOT / "build" / "cpu" / "pixvqa"))
 CLI = Path(os.environ.get("VMAF_CLI", ROOT / "deps" / "libvmaf-74f930d" / "bin" / "vmaf"))
-FFMPEG = os.environ.get("FFMPEG", "/home/sergio/bin/ffmpeg")
+
+
+def resolve_ffmpeg() -> str:
+    explicit = os.environ.get("FFMPEG", "").strip()
+    if explicit:
+        return explicit
+    return shutil.which("ffmpeg") or ""
+
+
+FFMPEG = resolve_ffmpeg()
+WARN = "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf."
 TOL = 1e-4
 HDR = [
     "--hdr-transfer", "pq",
@@ -136,6 +147,34 @@ def compare(model_rel: str, ref: Path, dist: Path, w: int, h: int, label: str) -
             "clip": clip, "frames": len(frames)}
 
 
+def expect_gpu_matches_cpu(ref: Path, dist: Path) -> bool:
+    model = ROOT / "model" / "hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json"
+    base = pix_cmd(model, ref, dist, 1920, 1080) + ["-v", "0"]
+    cpu = run(base + ["--metric-device", "cpu"])
+    gpu = run(base + ["--metric-device", "gpu"])
+    pattern = r"\[ VMAF mean:[0-9.eE+-]+ harmonic:[0-9.eE+-]+ min:[0-9.eE+-]+ max:[0-9.eE+-]+ frames:\d+ \]"
+    cpu_sum = re.search(pattern, cpu.stdout)
+    gpu_sum = re.search(pattern, gpu.stdout)
+    ok = (
+        cpu.returncode == 0
+        and gpu.returncode == 0
+        and cpu_sum is not None
+        and gpu_sum is not None
+        and cpu_sum.group(0) == gpu_sum.group(0)
+        and WARN in gpu.stderr
+        and WARN not in cpu.stderr
+        and "backend=cpu" in gpu.stdout
+        and "backend=cuda" not in gpu.stdout
+        and "VMAF: cpu libvmaf" in gpu.stdout
+        and "color_ref=limited:bt2020:pq:bt2020nc" in gpu.stdout
+        and "CUDA HDR" not in gpu.stderr
+    )
+    print(f"{'OK  ' if ok else 'FAIL'} gpu-vmaf-matches-cpu rc={gpu.returncode}")
+    if not ok:
+        print((gpu.stderr + gpu.stdout)[-500:])
+    return ok
+
+
 def expect_fail(label, args, needle):
     pix = run([str(PIX), *args])
     text = pix.stderr + pix.stdout
@@ -195,7 +234,7 @@ def main() -> int:
             expect_fail("hlg", ["--metrics", "vmaf", "--model", hdr_model, "--hdr-transfer", "hlg", "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc", "--hdr-range", "limited", *base], "unsupported and unvalidated"),
             expect_fail("full-range", ["--metrics", "vmaf", "--model", hdr_model, "--hdr-transfer", "pq", "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc", "--hdr-range", "full", *base], "full-range PQ"),
             expect_fail("sdr-model-pq", ["--metrics", "vmaf", "--model", sdr_model, "--hdr-transfer", "pq", *base], "rejects explicit HDR"),
-            expect_fail("gpu-vmaf-only", ["--metrics", "vmaf", "--model", hdr_model, "--metric-device", "gpu", *HDR, *base], "no GPU"),
+            expect_gpu_matches_cpu(pairs["1080"][2], pairs["1080"][2]),
         ]
         if not all(checks):
             fails.append("error-cases")

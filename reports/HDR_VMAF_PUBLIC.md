@@ -202,7 +202,7 @@ Metadata adds one line. `backend` is `cpu`. `conversion` comes from the model JS
 VMAF-EXT: commit=74f930d17de8c58e7c2ce55e2b897b0030ebd8ef zimg=3.0.6 backend=cpu conversion=... display=... hfr_temporal=... color_ref=limited:bt2020:pq:bt2020nc color_dist=limited:bt2020:pq:bt2020nc
 ```
 
-`--metric-device` is unchanged: `cpu`, `gpu`, or `auto`. VMAF alone with `gpu` is an error on this branch.
+`--metric-device` is unchanged: `cpu`, `gpu`, or `auto`. VMAF alone with `gpu`, including an HDR model, runs CPU libvmaf and prints `pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.` The summary reports `VMAF: cpu libvmaf`.
 
 ## 7. Installation and compatibility
 
@@ -249,7 +249,7 @@ Intended fallback behavior, already implemented there and not reimplemented here
 - other CUDA-capable metrics stay on CUDA
 - GPU decode stays independent of the VMAF compute backend
 
-This HDR branch keeps the pre-existing public rejection: VMAF alone with `--metric-device gpu` is an error (`VMAF has no GPU implementation` when CUDA is compiled in, `this build has no GPU metrics` on the CPU-only binary).
+The integration applies that fallback to SDR and HDR VMAF. A CPU-only binary accepts a VMAF-only GPU request and uses CPU libvmaf. The warning names CPU libvmaf and does not describe a CUDA HDR score. HLG, full-range PQ, and incomplete colorimetry stay errors.
 
 The two branches both edit `src/main.cpp` (help text and device resolution), `include/pixvqa/types.hpp`, `README.md`, `.gitattributes`, and `scripts/qa/inventory.py`. The fallback branch also edits `scripts/test_vmaf_errors.py`. It does not edit `src/vmaf.cpp`. HDR color checks can sit beside the fallback device policy.
 

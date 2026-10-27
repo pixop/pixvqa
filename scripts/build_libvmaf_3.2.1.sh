@@ -10,10 +10,9 @@ SRC="${LIBVMAF_SRC:-$ROOT/deps/src/vmaf}"
 PREFIX="${LIBVMAF_PREFIX:-$ROOT/deps/libvmaf-3.2.1}"
 BUILD="${LIBVMAF_BUILD:-$ROOT/deps/build/libvmaf-3.2.1}"
 
+# Optional explicit compiler prefix. There is no default user directory.
 if [[ -n "${GCC_ENV:-}" ]]; then
   export PATH="${GCC_ENV}/bin:${PATH}"
-elif [[ -d "${HOME}/gcc-env/bin" ]]; then
-  export PATH="${HOME}/gcc-env/bin:${PATH}"
 fi
 
 for tool in git meson ninja nasm pkg-config; do
