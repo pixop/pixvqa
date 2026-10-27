@@ -50,12 +50,10 @@ Select metrics using `--metrics`. QCS can additionally be enabled using `--qcs`.
 - ❌ Unsupported metric/model and format combination
 
 **Notes:**
-
-- Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on stored sample values without HDR perceptual adaptation. The transfer does not change the score: the same codes score the same under SDR, PQ, or HLG. PQ codes are a perceptual encoding, so the result is a usable engineering comparison, but PU21 predicts HDR quality better. HLG codes are scene-referred and are not tied to display luminance. PixVQA does not run them through a display model.
-- SDR VMAF models are rejected when the effective transfer of either input is PQ or HLG, from a stream tag or `--hdr-transfer`. PixVQA does not infer PQ or HLG from 10-bit input, BT.2020, or a filename, so an untagged raw input is scored as SDR. Netflix states that an SDR model on HDR pictures is not meaningful.
-- HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG. Both inputs must be 10-bit 4:2:0, with PQ, BT.2020 primaries, the bt2020nc matrix, and limited range, each from a stream tag or an explicit option. Assumed values are not used. Full range, 8-bit, 4:4:4, and BT.709 primaries are rejected. HDR10 static metadata (SMPTE ST 2086, MaxCLL, MaxFALL) is not read or validated, and no display mapping is applied. The HDR column describes the PQ / BT.2020 signal. `hdr_vmaf_v1.1.8_3d0h_2160` and `hdr_vmaf_v1.1.8_hfr_3d0h_2160` can score up to 110.
-- PU21 requires a PQ or HLG transfer. SDR, `linear`, and an unspecified transfer are rejected, so the SDR cells are ❌. The PU21 paper describes an SDR path through a display model, but PixVQA does not implement it. PQ is decoded to absolute luminance up to 10 000 cd/m² and is clipped only when `--hdr-peak-nits` is set. PixVQA does not tone-map to a display. HLG uses the BT.2100 inverse OETF and OOTF, with a 1000 cd/m² evaluation peak unless `--hdr-peak-nits` sets another. PU21-PSNR uses display RGB. PU21-SSIM and PU21-MS-SSIM use luminance only. PQ and HLG are also accepted with BT.709 primaries.
-- QCS is not a row in this table. It inherits the compatibility of the selected metric: `--qcs` is available for every metric PixVQA runs, on CPU or GPU, and it is not available when that metric is rejected. QCS is a post-processing descriptor, not a standalone VQA metric.
+- Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
+- SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
+- PU21 metrics support PQ and HLG, but not SDR in PixVQA.
+- QCS can be applied to any supported metric using `--qcs`.
 
 ## Quality Consistency Score (QCS)
 
