@@ -160,7 +160,7 @@ void usage(const char* argv0) {
       "                       No default, preset, or automatic model selection.\n"
       "   --vmaf-model PATH   Alias for --model. Rejected if both disagree.\n"
       "   Displayed names are PSNR, XPSNR, SSIM, MS-SSIM, and VMAF.\n"
-      "   GPU PSNR, SSIM, MS-SSIM, and XPSNR accept 8-bit and 10-bit.\n"
+      "   GPU PSNR, SSIM, MS-SSIM, XPSNR, and PU21 accept 8-bit and 10-bit.\n"
       "   GPU PSNR, SSIM, and MS-SSIM use FP64.\n"
       "   VMAF always runs on the CPU, including when other metrics use the GPU\n"
       "   and when -t was decoded on the GPU. An SDR model rejects PQ and HLG.\n"
@@ -171,7 +171,7 @@ void usage(const char* argv0) {
       "   on CPU libvmaf and warns. It does not compute HDR VMAF on CUDA.\n"
       "   HDR scores keep the model clip, including [0,110].\n"
       "   pu21-psnr (PU21-PSNR), pu21-ssim (PU21-SSIM), and pu21-msssim\n"
-      "   (PU21-MS-SSIM) run on the CPU. They have no GPU implementation.\n"
+      "   (PU21-MS-SSIM) accept 8-bit and 10-bit PQ or HLG on CPU and CUDA.\n"
       "\n"
       "4. Execution\n"
       "   --metric-device auto|cpu|gpu\n"
@@ -187,7 +187,7 @@ void usage(const char* argv0) {
       "                       auto does not benchmark at startup. It uses the CPU unless\n"
       "                       a checked profile applies. The only profile is 10-bit\n"
       "                       3840x2160 or larger, GPU decoding, no VMAF, and a CUDA\n"
-      "                       build: PSNR, SSIM, MS-SSIM, and XPSNR then use the GPU.\n"
+      "                       build: PSNR, SSIM, MS-SSIM, XPSNR, and PU21 then use the GPU.\n"
       "                       That profile is one 4K HEVC comparison. It is not a claim\n"
       "                       that a GPU is faster in general.\n"
       "   --threads auto|N    Default auto. auto counts the processors visible to this\n"
@@ -278,7 +278,8 @@ void print_help_hdr() {
       "PDF: https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2021_PU21.pdf\n"
       "Reference code: https://github.com/gfxdisp/pu21\n"
       "\n"
-      "Metrics: pu21-psnr, pu21-ssim, pu21-msssim. They run on the CPU.\n"
+      "Metrics: pu21-psnr, pu21-ssim, pu21-msssim. CPU is the reference.\n"
+      "CUDA accepts 8-bit and 10-bit. --metric-device gpu selects it.\n"
       "\n"
       "Order for every field: per-input option, shared option, stream metadata,\n"
       "documented default, then an error if the value is still ambiguous.\n"
@@ -847,6 +848,7 @@ int resolve_execution(Options& opt) {
   const bool ssim_ok = gpu_depth_ok;
   const bool msssim_ok = gpu_depth_ok;
   const bool xpsnr_ok = gpu_depth_ok;
+  const bool pu21_ok = gpu_depth_ok;
   const bool resident_profile = cuda && opt.decode == DecodeMode::Nvdec && !opt.enable_vmaf &&
                                 opt.format.bit_depth == 10 && opt.format.width >= 3840 &&
                                 opt.format.height >= 2160;
@@ -859,6 +861,7 @@ int resolve_execution(Options& opt) {
   opt.psnr_gpu = false;
   opt.ssim_gpu = false;
   opt.msssim_gpu = false;
+  opt.pu21_gpu = false;
   opt.xpsnr_backend = XpsnrBackend::Cpu;
   opt.vmaf_cpu_notice = false;
   opt.vmaf_backend = VmafBackend::Cpu;
@@ -893,12 +896,14 @@ int resolve_execution(Options& opt) {
         return 2;
       }
     }
-    if (pu21 && !other) {
-      std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation\n");
-      return 2;
+    if (pu21) {
+      if (!pu21_ok) {
+        refuse_gpu("pu21", "GPU PU21 supports 8-bit and 10-bit only");
+        return 2;
+      }
+      opt.pu21_gpu = true;
     }
     if (other) {
-      opt.pu21_cpu_notice = pu21;
       opt.psnr_gpu = opt.enable_psnr;
       opt.ssim_gpu = opt.enable_ssim;
       opt.msssim_gpu = opt.enable_msssim;
@@ -910,9 +915,10 @@ int resolve_execution(Options& opt) {
     opt.ssim_gpu = opt.enable_ssim;
     opt.msssim_gpu = opt.enable_msssim;
     if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    if (pu21_selected(opt) && pu21_ok) opt.pu21_gpu = true;
   }
 
-  opt.use_cuda = opt.psnr_gpu || opt.ssim_gpu || opt.msssim_gpu ||
+  opt.use_cuda = opt.psnr_gpu || opt.ssim_gpu || opt.msssim_gpu || opt.pu21_gpu ||
                  opt.xpsnr_backend == XpsnrBackend::Cuda;
   // Public GPU PSNR, SSIM, and MS-SSIM use FP64. PIXVQA_CUDA_PREC is not a control.
   opt.cuda_prec = CudaPrecision::Fp64;
@@ -995,9 +1001,9 @@ void print_execution_summary(const Options& opt) {
          opt.msssim_gpu ? "fp64" : cpu_impl_label(msssim_cpu_is_avx2()));
   }
   if (opt.enable_vmaf) line("VMAF", false, "libvmaf");
-  if (opt.enable_pu21_psnr) line("PU21-PSNR", false, nullptr);
-  if (opt.enable_pu21_ssim) line("PU21-SSIM", false, nullptr);
-  if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", false, nullptr);
+  if (opt.enable_pu21_psnr) line("PU21-PSNR", opt.pu21_gpu, nullptr);
+  if (opt.enable_pu21_ssim) line("PU21-SSIM", opt.pu21_gpu, nullptr);
+  if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", opt.pu21_gpu, nullptr);
   std::printf("\n");
 }
 
@@ -1691,9 +1697,6 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.\n");
   }
-  if (opt.pu21_cpu_notice) {
-    std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation and stay on the CPU\n");
-  }
   if (opt.enable_vmaf) {
 #ifndef PIXVQA_HAS_VMAF
     std::fprintf(stderr,
@@ -2024,9 +2027,15 @@ int main(int argc, char** argv) {
 
       Pu21FrameScore pu21{};
       if (pu21_selected(opt)) {
-        const std::string pu_err =
-            pu21_score_frame(ref_fr, test_fr, opt.format, ref_hdr_eff, dist_hdr_eff, opt.enable_pu21_psnr,
-                             opt.enable_pu21_ssim, opt.enable_pu21_msssim, opt.threads, pu21);
+        std::string pu_err;
+#ifdef PIXVQA_HAS_CUDA
+        if (opt.pu21_gpu) {
+          pu_err = cuda_score_pu21(ref_fr, test_fr, opt.format, ref_hdr_eff, dist_hdr_eff, opt.enable_pu21_psnr,
+                                   opt.enable_pu21_ssim, opt.enable_pu21_msssim, pu21);
+        } else
+#endif
+        pu_err = pu21_score_frame(ref_fr, test_fr, opt.format, ref_hdr_eff, dist_hdr_eff, opt.enable_pu21_psnr,
+                                  opt.enable_pu21_ssim, opt.enable_pu21_msssim, opt.threads, pu21);
         if (!pu_err.empty()) {
           std::fprintf(stderr, "pixvqa: %s\n", pu_err.c_str());
           return 2;

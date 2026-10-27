@@ -10,7 +10,7 @@ Video Quality Assessment
 
 PixVQA compares a reference sequence with a distorted sequence and prints text scores for the selected metrics. The default lists each frame and then a summary. There is no JSON mode. It reads raw planar YUV and, when built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports.
 
-PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU21-SSIM, and PU21-MS-SSIM compare light after PQ or HLG is interpreted. All eight metrics have a CPU implementation. PSNR, SSIM, MS-SSIM, and XPSNR also have optional CUDA implementations. An optional CUDA build adds NVDEC for HEVC and AV1.
+PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU21-SSIM, and PU21-MS-SSIM compare light after PQ or HLG is interpreted. All eight metrics have a CPU implementation. PSNR, SSIM, MS-SSIM, XPSNR, and the three PU21 metrics also have optional CUDA implementations. An optional CUDA build adds NVDEC for HEVC and AV1.
 
 ## Supported metrics
 
@@ -239,10 +239,11 @@ Compressed video support depends on the installed FFmpeg build. Other codecs may
 | XPSNR | ✅ | ✅ | ✅ | ✅ |
 | SSIM | ✅ | ✅ | ✅ | ✅ |
 | MS-SSIM | ✅ | ✅ | ✅ | ✅ |
-| VMAF | ✅ | ✅ | — | — |
-| PU21-PSNR | ✅ | ✅ | — | — |
-| PU21-SSIM | ✅ | ✅ | — | — |
-| PU21-MS-SSIM | ✅ | ✅ | — | — |
+| VMAF (SDR models) | ✅ | ✅ | — | — |
+| VMAF (HDR models) | ❌ | ✅ | — | — |
+| PU21-PSNR | ✅ | ✅ | ✅ | ✅ |
+| PU21-SSIM | ✅ | ✅ | ✅ | ✅ |
+| PU21-MS-SSIM | ✅ | ✅ | ✅ | ✅ |
 
 HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested.
 

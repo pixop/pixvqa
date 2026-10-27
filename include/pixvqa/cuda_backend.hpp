@@ -3,6 +3,7 @@
 // Optional CUDA metric backend. Only the CUDA build provides these symbols.
 // The CPU-only build does not include this header and does not link it.
 
+#include "pixvqa/pu21.hpp"
 #include "pixvqa/types.hpp"
 
 namespace pixvqa {
@@ -49,6 +50,13 @@ void cuda_score_frame(const Frame& ref, const Frame& test, const VideoFormat& fm
                       CudaPrecision prec, bool do_psnr, bool do_ssim, bool do_msssim,
                       PsnrFrame* psnr, PlaneScore* ssim, PlaneScore* msssim,
                       CudaXpsnrRequest* xpsnr = nullptr);
+
+// PU21 on the same host frames. One upload, one encode of display light, then
+// RGB PSNR and luminance SSIM / MS-SSIM. Does not use the integer metric planes.
+// Empty on success. The CPU score remains the numerical reference.
+std::string cuda_score_pu21(const Frame& ref, const Frame& dist, const VideoFormat& fmt,
+                            const HdrEffective& ref_hdr, const HdrEffective& dist_hdr, bool want_psnr,
+                            bool want_ssim, bool want_msssim, Pu21FrameScore& out);
 
 // Tightly packed or pitched host 4:2:0 planes. pitch_samples is in samples.
 struct CudaHostPlane {

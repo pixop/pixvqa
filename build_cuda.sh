@@ -65,6 +65,13 @@ $NVCC -O3 -std=c++17 -Iinclude --compiler-bindir "$GCC13/bin" \
   -gencode arch=compute_120,code=compute_120 \
   -c src/cuda_metrics.cu -o "$OUT/cuda_metrics.o"
 
+echo "NVCC src/cuda_pu21.cu (sm_89 + sm_120)"
+$NVCC -O3 -std=c++17 -Iinclude --fmad=false --compiler-bindir "$GCC13/bin" \
+  -gencode arch=compute_89,code=sm_89 \
+  -gencode arch=compute_120,code=sm_120 \
+  -gencode arch=compute_120,code=compute_120 \
+  -c src/cuda_pu21.cu -o "$OUT/cuda_pu21.o"
+
 if [[ -z "${PIXVQA_LIBCUDA_DIR:-}" ]]; then
   if [[ -d /usr/lib/wsl/lib ]]; then
     PIXVQA_LIBCUDA_DIR=/usr/lib/wsl/lib
@@ -93,7 +100,7 @@ if [[ ! -f "${CUDART_LIBDIR:-}/libcudart.so" ]]; then
   echo "CUDA runtime library libcudart.so was not found under $CUDA_HOME." >&2
   exit 1
 fi
-$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${objs[@]}" "$OUT/cuda_metrics.o" \
+$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${objs[@]}" "$OUT/cuda_metrics.o" "$OUT/cuda_pu21.o" \
   -o "$OUT/pixvqa" \
   -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda \
   -Wl,--disable-new-dtags,-rpath,"$CUDART_LIBDIR:$GCC13/lib:$PIXVQA_LIBCUDA_DIR" \

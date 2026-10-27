@@ -156,7 +156,7 @@ struct Options {
   bool enable_pu21_psnr = false;
   bool enable_pu21_ssim = false;
   bool enable_pu21_msssim = false;
-  bool pu21_cpu_notice = false;
+  bool pu21_gpu = false;
   // Required when enable_vmaf. Filesystem path to a VMAF model JSON.
   // Set by --model or the backward-compatible alias --vmaf-model.
   std::string vmaf_model_path;
