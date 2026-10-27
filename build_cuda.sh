@@ -97,6 +97,6 @@ $CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${objs[@]}" "$OUT/cuda
   -o "$OUT/pixvqa" \
   -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda \
   -Wl,--disable-new-dtags,-rpath,"$CUDART_LIBDIR:$GCC13/lib:$PIXVQA_LIBCUDA_DIR" \
-  $LINK_LIBS
+  $LINK_LIBS -L"$GCC13/lib" -lstdc++
 echo "CUDA build OK: $OUT/pixvqa"
 echo "CPU-only binary: build/cpu/pixvqa (bash build.sh)."

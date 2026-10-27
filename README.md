@@ -234,12 +234,11 @@ Compressed video support depends on the installed FFmpeg build. Other codecs may
 ### CPU and GPU support
 
 - **CPU:** All quality metrics are supported.
-- **GPU:** PSNR, XPSNR, SSIM, and MS-SSIM support CUDA acceleration.
+- **GPU:** GPU acceleration is available for PSNR, XPSNR, SSIM, and MS-SSIM on both 8-bit and 10-bit input.
 - **VMAF:** Always runs on CPU, including when GPU execution is requested.
 - **NVDEC:** Supports HEVC and AV1 decoding. Other codecs use software decoding.
 
 **Limitations:**
-- GPU PSNR and SSIM require 10-bit input; GPU XPSNR and MS-SSIM support 8-bit and 10-bit.
 - HDR transfer characteristics (PQ/HLG) must be correctly specified; they are not inferred from bit depth or filename.
 - Unsupported pixel formats are rejected rather than automatically converted.
 

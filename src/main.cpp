@@ -160,8 +160,8 @@ void usage(const char* argv0) {
       "                       No default, preset, or automatic model selection.\n"
       "   --vmaf-model PATH   Alias for --model. Rejected if both disagree.\n"
       "   Displayed names are PSNR, XPSNR, SSIM, MS-SSIM, and VMAF.\n"
-      "   GPU PSNR and GPU SSIM require 10-bit input. GPU MS-SSIM and GPU XPSNR\n"
-      "   accept 8-bit and 10-bit. GPU PSNR, SSIM, and MS-SSIM use FP64.\n"
+      "   GPU PSNR, SSIM, MS-SSIM, and XPSNR accept 8-bit and 10-bit.\n"
+      "   GPU PSNR, SSIM, and MS-SSIM use FP64.\n"
       "   VMAF always runs on the CPU, including when other metrics use the GPU\n"
       "   and when -t was decoded on the GPU. An SDR model rejects PQ and HLG.\n"
       "   An HDR VMAF v1.1.8 model requires explicit PQ, BT.2020 primaries,\n"
@@ -842,10 +842,11 @@ int resolve_execution(Options& opt) {
   }
 
   const bool cuda = gpu_metrics_built();
-  const bool psnr_ok = cuda && opt.format.bit_depth == 10;
-  const bool ssim_ok = cuda && opt.format.bit_depth == 10;
-  const bool msssim_ok = cuda && (opt.format.bit_depth == 8 || opt.format.bit_depth == 10);
-  const bool xpsnr_ok = cuda && (opt.format.bit_depth == 8 || opt.format.bit_depth == 10);
+  const bool gpu_depth_ok = cuda && (opt.format.bit_depth == 8 || opt.format.bit_depth == 10);
+  const bool psnr_ok = gpu_depth_ok;
+  const bool ssim_ok = gpu_depth_ok;
+  const bool msssim_ok = gpu_depth_ok;
+  const bool xpsnr_ok = gpu_depth_ok;
   const bool resident_profile = cuda && opt.decode == DecodeMode::Nvdec && !opt.enable_vmaf &&
                                 opt.format.bit_depth == 10 && opt.format.width >= 3840 &&
                                 opt.format.height >= 2160;
@@ -876,11 +877,11 @@ int resolve_execution(Options& opt) {
     }
     if (other) {
       if (opt.enable_psnr && !psnr_ok) {
-        refuse_gpu("psnr", "GPU PSNR requires 10-bit input");
+        refuse_gpu("psnr", "GPU PSNR supports 8-bit and 10-bit only");
         return 2;
       }
       if (opt.enable_ssim && !ssim_ok) {
-        refuse_gpu("ssim", "GPU SSIM requires 10-bit input");
+        refuse_gpu("ssim", "GPU SSIM supports 8-bit and 10-bit only");
         return 2;
       }
       if (opt.enable_msssim && !msssim_ok) {
@@ -1928,7 +1929,10 @@ int main(int argc, char** argv) {
                                  (opt.enable_msssim && !opt.msssim_gpu) ||
                                  (opt.enable_xpsnr && !xpsnr_cuda) || opt.enable_vmaf ||
                                  pu21_selected(opt);
-        const bool resident = opt.decode == DecodeMode::Nvdec && opt.use_cuda && !host_metric;
+        // 10-bit NVDEC stays on the P010 device path. 8-bit NVDEC is NV12 and
+        // is deinterleaved on the host, then uploaded like any other host frame.
+        const bool resident = opt.decode == DecodeMode::Nvdec && opt.use_cuda && !host_metric &&
+                              opt.format.bit_depth == 10;
         ok_t = test_dec.read_frame(test_fr, dec_err, !resident);
         if (!dec_err.empty()) {
           std::fprintf(stderr, "pixvqa: %s\n", dec_err.c_str());
@@ -1979,7 +1983,7 @@ int main(int argc, char** argv) {
           }
           std::fprintf(stderr, "pixvqa: device pitch check did not fail\n");
           return 1;
-        } else if (opt.decode == DecodeMode::Nvdec && opt.use_cuda) {
+        } else if (opt.decode == DecodeMode::Nvdec && opt.use_cuda && opt.format.bit_depth == 10) {
           const DevicePlanarFrame dev = cuda_metric_test_frame(opt.format);
           cuda_score_device_frame(&ref_fr, nullptr, nullptr, &dev, opt.format, opt.peak, opt.cuda_prec, opt.psnr_gpu, opt.ssim_gpu, opt.msssim_gpu, opt.psnr_gpu ? &psnr : nullptr, opt.ssim_gpu ? &ssim : nullptr, opt.msssim_gpu ? &msssim : nullptr, xpsnr_cuda ? &xreq : nullptr);
         } else {

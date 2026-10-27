@@ -162,6 +162,8 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     FULL_OBJS+=(build/cuda/vmaf.o)
     FULL_LIBS+=($PIXVQA_VMAF_LIBS)
   fi
+  # After libvmaf's -lstdc++, so the GCC 13 host runtime resolves __cxa_call_terminate.
+  FULL_LIBS+=(-L"$GCC13/lib" -lstdc++)
   echo "Final link compiler: $FULL_LINK_CXX (system glibc)"
   "$FULL_LINK_CXX" $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${FULL_OBJS[@]}" \
     -o "$FULL/pixvqa" "${FULL_LIBS[@]}"

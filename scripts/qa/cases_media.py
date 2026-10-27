@@ -584,7 +584,7 @@ def _hardware_cases() -> list:
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
         gpu_run = run_cmd([str(full), "--metrics", "psnr,ssim,msssim", "--metric-device", "gpu", "-v", "0",
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
-        eight = run_cmd([str(full), "--metrics", "psnr", "--metric-device", "gpu", "-v", "0",
+        eight = run_cmd([str(full), "--metrics", "psnr,ssim", "--qcs", "--metric-device", "gpu", "-v", "0",
                          "-r", str(ref8), "-s", size8, "-f", fmt8, "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=60)
         only_vmaf = run_cmd([str(full), "--metrics", "vmaf", "--model", str(world.model), "--metric-device", "gpu",
                              "-v", "0", "-r", str(ref8), "-s", size8, "-f", fmt8,
@@ -609,8 +609,16 @@ def _hardware_cases() -> list:
                     nums_g = [float(v) for v in re.findall(r"[-0-9.]+", g)]
                     if len(nums_c) != len(nums_g) or any(abs(a - b) > 1e-4 for a, b in zip(nums_c, nums_g)):
                         problems.append(f"{token} CPU/GPU differ beyond 1e-4")
-        if eight.returncode == 0 or "10-bit" not in eight.stderr:
-            problems.append("8-bit GPU PSNR was not rejected")
+        eight_cpu = run_cmd([str(cpu), "--metrics", "psnr,ssim", "--qcs", "-v", "0",
+                             "-r", str(ref8), "-s", size8, "-f", fmt8, "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=60)
+        if eight.returncode != 0 or eight_cpu.returncode != 0:
+            problems.append("8-bit GPU PSNR/SSIM failed: " + (eight.stderr or eight_cpu.stderr)[-200:])
+        else:
+            for token in ("[ PSNR", "[ SSIM", "PSNR-QCS", "SSIM-QCS"):
+                c = next((ln for ln in eight_cpu.stdout.splitlines() if token in ln), "")
+                g = next((ln for ln in eight.stdout.splitlines() if token in ln), "")
+                if c != g:
+                    problems.append(f"8-bit {token} CPU/GPU text differs")
         if only_vmaf.returncode != 0 or "using CPU libvmaf" not in only_vmaf.stderr or "VMAF: cpu libvmaf" not in only_vmaf.stdout:
             problems.append("VMAF-only GPU did not fall back to CPU libvmaf")
         if mixed.returncode != 0 or "using CPU libvmaf" not in mixed.stderr or "VMAF: cpu libvmaf" not in mixed.stdout or "PSNR: gpu" not in mixed.stdout:
