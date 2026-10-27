@@ -158,12 +158,16 @@ pixvqa --metrics psnr --decode gpu \
 
 PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
 
-### Automatic installation (recommended)
-
 From the root of the cloned repository, run:
 
 ```bash
 bash install_pixvqa.sh
+```
+
+**Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
+
+```bash
+PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
 ```
 
 The installer downloads the required dependencies, builds PixVQA, and asks whether to enable:
@@ -178,14 +182,6 @@ After installation, verify:
 ```
 
 PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
-
-**Optional — Isolated dependencies**
-
-To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
-
-```bash
-PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
-```
 
 System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
 
