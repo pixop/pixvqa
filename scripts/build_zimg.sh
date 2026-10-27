@@ -14,8 +14,8 @@ PIN_TAG="release-3.0.6"
 PIN_COMMIT="f819b14e8f39d1282400b0d9543e8ef73c1b2bbd"
 SRC="${ZIMG_SRC:-$ROOT/deps/src/zimg}"
 PREFIX="${ZIMG_PREFIX:-$ROOT/deps/zimg-3.0.6}"
-HOST="${ROOT}/deps/src/host-autotools"
-DEBS="${ROOT}/deps/src/host-debs"
+HOST="${ZIMG_AUTOTOOLS_PREFIX:-$ROOT/deps/src/host-autotools}"
+DEBS="${ZIMG_AUTOTOOLS_DEBS:-$ROOT/deps/src/host-debs}"
 
 # Optional explicit compiler prefix. There is no default user directory.
 if [[ -n "${GCC_ENV:-}" ]]; then
@@ -145,7 +145,7 @@ for tool in autoconf automake libtoolize m4; do
   fi
 done
 
-mkdir -p "$ROOT/deps/src"
+mkdir -p "$(dirname "$SRC")"
 if [[ ! -d "$SRC/.git" ]]; then
   git init -q -b main "$SRC"
   git -C "$SRC" remote add origin https://github.com/sekrit-twc/zimg.git

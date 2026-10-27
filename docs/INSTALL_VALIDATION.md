@@ -15,16 +15,18 @@ An alternative clean-room CPU-only test can use Ubuntu containers/VMs (no GPU); 
 ## Before either run
 
 1. Review the snapshot for approved publication. Ensure `tests/fixtures/vvc/bbb_360p.vvc` is **not** included because redistribution permission is unverified. Also exclude root-level duplicate `libvmaf_flags.sh`, installation logs and generated files.
-2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/build_zimg.sh`, `scripts/libvmaf_flags.sh` and `scripts/install.sh`.
+2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/build_zimg.sh`, `scripts/deps_layout.sh`, `scripts/libvmaf_flags.sh`, `scripts/test_deps_layout.sh` and `scripts/install.sh`. Run `bash scripts/test_deps_layout.sh` before either installation. It checks the legacy home paths and an isolated `PIXVQA_DEPS_ROOT` without installing packages or touching `$HOME/dav1d-1.5.1`.
 3. Verify `git status --short` in the snapshot and record file checksums/commit ID. A clean installation tests the exact same snapshot under AUTO and MANUAL.
 
 ## AUTO instance
 
 Start with a new distribution/VM and a fresh checkout. The system may already have the NVIDIA driver and CUDA toolkit when testing GPU installation; document these explicitly. In the checkout root:
 
+On a machine that already has `$HOME/dav1d-1.5.1` or `$HOME/ffmpeg-n8.1.3`, set `PIXVQA_DEPS_ROOT` so the guided installer does not reuse or overwrite those prefixes. `apt` packages, the NVIDIA driver, and the CUDA toolkit stay outside that directory. Omitting the variable preserves the legacy home paths.
+
 ```bash
 set -o pipefail
-bash install_pixvqa.sh 2>&1 | tee auto_install.log
+PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh 2>&1 | tee auto_install.log
 ```
 
 For the full NVIDIA path answer `y` to dav1d and `y` to NVIDIA. The installer is interactive; CLI flags like `--with-dav1d` are **not** supported. Assert that the installed launcher works from a **new shell**:
@@ -41,7 +43,7 @@ Check the actual `ldd` output if the command is inconclusive. The full build mus
 
 ## MANUAL instance
 
-Start with a **second** fresh distribution/VM and the **same source snapshot**, but no PixVQA-specific dependencies. Follow `docs/INSTALL.md` from Section 1 through Section 8 exactly, without running `install_pixvqa.sh` or copying AUTO's generated dependencies. Set `PIXVQA_CHECKOUT` to the new checkout root in Section 0. For the NVIDIA variant, select NVDEC configuration before building FFmpeg, discover `dav1d.pc`, and ensure `CUDART_LIBDIR`, `LIBRARY_PATH`, `LD_LIBRARY_PATH`, and `PIXVQA_FULL_LINK_CXX=/usr/bin/g++` are set as documented. The manual install script alone does not generate the guided installer's `pixvqa-with-libs` launcher; verify the executable with its documented runtime library environment.
+Start with a **second** fresh distribution/VM and the **same source snapshot**, but no PixVQA-specific dependencies. Follow `docs/INSTALL.md` from Section 1 through Section 8 exactly, without running `install_pixvqa.sh` or copying AUTO's generated dependencies. Section 0 sets `PIXVQA_MANUAL_ROOT` to `$PIXVQA_SRC/deps/manual` unless you assign another checkout-local directory. Do not point it at AUTO's `PIXVQA_DEPS_ROOT`. Set `PIXVQA_CHECKOUT` to the new checkout root in Section 0. For the NVIDIA variant, select NVDEC configuration before building FFmpeg, discover `dav1d.pc`, and ensure `CUDART_LIBDIR`, `LIBRARY_PATH`, `LD_LIBRARY_PATH`, and `PIXVQA_FULL_LINK_CXX=/usr/bin/g++` are set as documented. The manual install script alone does not generate the guided installer's `pixvqa-with-libs` launcher; verify the executable with its documented runtime library environment.
 
 Capture `manual_install.log`, `build/full/pixvqa --version`, `ldd` and smoke QA result. Neither run may rely on the other instance's compiled artifacts.
 

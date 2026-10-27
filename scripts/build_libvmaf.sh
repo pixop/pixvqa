@@ -47,7 +47,7 @@ if ! pkg-config --exists zimg; then
 fi
 ZVER="$(pkg-config --modversion zimg)"
 
-mkdir -p "$ROOT/deps/src"
+mkdir -p "$(dirname "$SRC")"
 if [[ ! -d "$SRC/.git" ]]; then
   git init -q -b main "$SRC"
   git -C "$SRC" remote add origin https://github.com/Netflix/vmaf.git

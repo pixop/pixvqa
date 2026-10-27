@@ -80,10 +80,23 @@ pixvqa_detect_libvmaf() {
 
 pixvqa_zimg_pc_dir() {
   local root="$1" candidate
-  for candidate in \
-      "$root/deps/zimg-3.0.6/lib64/pkgconfig" \
-      "$root/deps/zimg-3.0.6/lib/pkgconfig" \
-      "$root/deps/zimg-3.0.6/lib/x86_64-linux-gnu/pkgconfig"; do
+  local -a candidates
+  # An explicit ZIMG_PREFIX is the only acceptable zimg. Do not fall back to
+  # the checkout or to a library found elsewhere on the system.
+  if [[ -n "${ZIMG_PREFIX:-}" ]]; then
+    candidates=(
+      "$ZIMG_PREFIX/lib64/pkgconfig"
+      "$ZIMG_PREFIX/lib/pkgconfig"
+      "$ZIMG_PREFIX/lib/x86_64-linux-gnu/pkgconfig"
+    )
+  else
+    candidates=(
+      "$root/deps/zimg-3.0.6/lib64/pkgconfig"
+      "$root/deps/zimg-3.0.6/lib/pkgconfig"
+      "$root/deps/zimg-3.0.6/lib/x86_64-linux-gnu/pkgconfig"
+    )
+  fi
+  for candidate in "${candidates[@]}"; do
     if [[ -f "$candidate/zimg.pc" ]]; then
       printf '%s\n' "$candidate"
       return 0
@@ -93,10 +106,21 @@ pixvqa_zimg_pc_dir() {
 
 pixvqa_zimg_lib_flag() {
   local root="$1" candidate
-  for candidate in \
-      "$root/deps/zimg-3.0.6/lib64" \
-      "$root/deps/zimg-3.0.6/lib" \
-      "$root/deps/zimg-3.0.6/lib/x86_64-linux-gnu"; do
+  local -a candidates
+  if [[ -n "${ZIMG_PREFIX:-}" ]]; then
+    candidates=(
+      "$ZIMG_PREFIX/lib64"
+      "$ZIMG_PREFIX/lib"
+      "$ZIMG_PREFIX/lib/x86_64-linux-gnu"
+    )
+  else
+    candidates=(
+      "$root/deps/zimg-3.0.6/lib64"
+      "$root/deps/zimg-3.0.6/lib"
+      "$root/deps/zimg-3.0.6/lib/x86_64-linux-gnu"
+    )
+  fi
+  for candidate in "${candidates[@]}"; do
     if [[ -f "$candidate/libzimg.a" ]]; then
       printf '%s\n' "-L$candidate"
       return 0

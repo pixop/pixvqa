@@ -122,6 +122,14 @@ From the repository root, run the interactive installer in an Ubuntu/Linux termi
 bash install_pixvqa.sh
 ```
 
+By default the installer keeps its existing home paths: `$HOME/pixvqa-deps`, `$HOME/dav1d-1.5.1`, and `$HOME/ffmpeg-n8.1.3`. To put every PixVQA-managed third-party checkout, toolchain, and prefix under one directory instead, set `PIXVQA_DEPS_ROOT` first:
+
+```bash
+PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
+```
+
+That does not move Ubuntu `apt` packages, the NVIDIA driver, or the CUDA toolkit. `CUDA_HOME` is still discovered from the system. An existing `$HOME/dav1d-1.5.1` is not used or replaced when `PIXVQA_DEPS_ROOT` is set. libvmaf remains commit `74f930d` and zimg remains 3.0.6, both under the selected root.
+
 The installer asks two independent questions:
 
 1. **Install dav1d 1.5.1 for software AV1 decoding?** `[Y/n]` (default: yes).
