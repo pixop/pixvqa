@@ -4,9 +4,9 @@ This file records the dependencies PixVQA is built and validated against.
 It is an engineering inventory for legal review. It is not a certification
 that a particular distribution complies with those licenses.
 
-PixVQA's own source license has not been selected. Do not publish the
-repository, and do not ship a binary, until that license is chosen and a
-`LICENSE` file is added.
+PixVQA's own source is under the MIT License in `LICENSE`. Copyright (c) 2026
+Pixop ApS. That license does not relicense the third-party components below.
+See `docs/LICENSING.md`.
 
 ## FFmpeg
 
@@ -76,5 +76,6 @@ are not enabled. No proprietary video dataset is included.
 ## Trademark
 
 The Pixop name and logo are not covered by the dependency licenses above.
-The logo file is not in this tree. See `docs/brand/README.md`.
-A project license has not been selected. See `docs/LICENSING.md`.
+The logo shipped with this repository is `docs/brand/pixop-vqa-logo.png`.
+The MIT license does not grant unrestricted trademark or logo use.
+See `docs/brand/README.md`.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -159,7 +160,7 @@ def main() -> int:
         else:
             print("OK   integer PSNR unchanged beside CUDA PU21")
 
-        ffmpeg = Path("/home/sergio/bin/ffmpeg")
+        ffmpeg = Path(os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "")
         swdec = Path(os.environ.get("PIXVQA_SWDEC_BIN", ROOT / "build" / "swdec" / "pixvqa"))
         full = Path(os.environ.get("PIXVQA_FULL_BIN", ROOT / "build" / "full" / "pixvqa"))
         if ffmpeg.is_file() and swdec.is_file() and full.is_file():

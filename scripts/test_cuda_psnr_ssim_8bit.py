@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """CPU versus CUDA PSNR and SSIM on 8-bit and 10-bit planar YUV."""
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -134,7 +136,7 @@ def main():
 def compressed():
     """Software-decoded 8-bit and 10-bit 4:2:0, then CPU versus GPU PSNR and SSIM."""
     full = ROOT / "build" / "full" / "pixvqa"
-    ffmpeg = Path("/home/sergio/bin/ffmpeg")
+    ffmpeg = Path(os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "")
     if not full.is_file() or not ffmpeg.is_file():
         print("SKIP compressed (full binary or ffmpeg is absent)")
         return
