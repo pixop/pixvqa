@@ -29,7 +29,7 @@ PU21 is a perceptually uniform encoding of display light for HDR quality assessm
 
 Select metrics using `--metrics`. QCS can additionally be enabled using `--qcs`.
 
-### Recommended metrics by video format
+## Recommended metrics by video format
 
 | Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
 |---|:---:|:---:|:---:|
@@ -158,65 +158,46 @@ pixvqa --metrics psnr --decode gpu \
 
 PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
 
-Two installation methods are available.
-
-### Option 1 — Automatic installation (recommended)
-
-The guided installer downloads and builds the required dependencies, compiles the feature set you select, and installs that program as one executable.
+### Automatic installation (recommended)
 
 From the root of the cloned repository, run:
 
-    bash install_pixvqa.sh
+```bash
+bash install_pixvqa.sh
+```
 
-    ./bin/pixvqa --version
+The installer downloads the required dependencies, builds PixVQA, and asks whether to enable:
 
-The installer asks two questions:
+1. **Software decoding (dav1d/FFmpeg):** Recommended for compressed video support.
+2. **NVIDIA GPU acceleration (CUDA/NVDEC):** Optional. Requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
 
-1. **Install dav1d for software AV1 decoding?** `[Y/n]` (default: Yes).
+After installation, verify:
 
-2. **Build NVIDIA GPU support (CUDA metrics + NVDEC)?** `[y/N]` (default: No).
+```bash
+./bin/pixvqa --version
+```
 
-**Recommended:** Select Yes for dav1d to enable software decoding of compressed video, and Yes for NVIDIA if you want GPU acceleration.
+PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
 
-NVIDIA acceleration requires a compatible NVIDIA driver and **CUDA toolkit 12.8** already installed. The installer does not install the NVIDIA driver or CUDA toolkit. `./bin/pixvqa` finds its private libraries through the executable's RPATH, so a new terminal does not need `LD_LIBRARY_PATH`.
+**Optional — Isolated dependencies**
 
-`--version` reports the selected features. A raw-YUV build prints `build: cpu` and `decode: none`. Software decoding prints `decode: software`. NVIDIA support prints `build: cuda` and `decode: software nvdec`.
+To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
 
-Files created under `build/` are compilation intermediates. They are removed after installation and smoke QA. Set `PIXVQA_KEEP_BUILD=1` to keep them.
+```bash
+PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
+```
 
-**Optional — Isolated dependency installation**
+System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
 
-By default, the installer uses shared dependency directories under `$HOME`. To keep all PixVQA-managed third-party dependencies inside the repository instead, run:
+### Troubleshooting and manual installation
 
-    PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
+If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
 
-This does not isolate system packages, the NVIDIA driver, or the CUDA toolkit.
+The guide provides step-by-step instructions for installing dependencies and compiling PixVQA manually. Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
 
-The guided installer is currently experimental. For additional requirements and troubleshooting, see [Installation Guide](docs/INSTALL.md).
+For clean-install testing and known validation limitations, see [Installation Validation](docs/INSTALL_VALIDATION.md).
 
-### Option 2 — Manual installation (advanced)
-
-For custom builds or manual control over dependencies and compilation, follow the step-by-step instructions in:
-
-**[Manual Installation Guide](docs/INSTALL.md)**
-
-The guide explains how to:
-
-- Build the required dependencies, including FFmpeg, libvmaf, and zimg.
-
-- Compile the CPU-only version for raw YUV input.
-
-- Enable software decoding for compressed video, including AV1 and VVC.
-
-- Enable NVIDIA CUDA acceleration and NVDEC hardware decoding.
-
-- Install PixVQA into a custom directory.
-
-- Verify the installation and troubleshoot common issues.
-
-**VMAF:** SDR and HDR VMAF always execute on CPU libvmaf. When GPU execution is requested, PixVQA automatically falls back to CPU for VMAF and displays a warning. PSNR, SSIM, MS-SSIM, and XPSNR retain CUDA acceleration when supported.
-
-For independent clean-install testing of both methods, see [Installation Validation](docs/INSTALL_VALIDATION.md).
+**Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
 
 ## Command-line options
 
@@ -241,16 +222,32 @@ For independent clean-install testing of both methods, see [Installation Validat
 
 ## Formats and limitations
 
-FFmpeg chooses the demuxer and decoder. There is no container or codec allowlist. A picture is scored only when it is already planar 8-bit or 10-bit 4:2:0, 4:2:2, or 4:4:4. Other layouts are rejected and are not converted. The tested set is smaller than the set FFmpeg can open.
+PixVQA supports raw YUV and compressed video through FFmpeg.
 
-| Path | Tested behavior |
+### Supported formats
+
+| Format | Support |
 |---|---|
-| Raw YUV | Planar 8-bit and 10-bit 4:2:0, 4:2:2, and 4:4:4 |
-| AV1 | libdav1d, or libaom-av1 if libdav1d is absent. The native `av1` decoder is not used. NVDEC for 8-bit and 10-bit 4:2:0 |
-| VVC | FFmpeg native decoder, short 10-bit 4:2:0 clips. No NVDEC |
-| HEVC | Software decoding, and NVDEC for 10-bit 4:2:0 |
+| Raw YUV | 8-bit and 10-bit planar 4:2:0, 4:2:2, and 4:4:4 |
+| HEVC | Software decoding and NVIDIA NVDEC |
+| AV1 | Software decoding (libdav1d) and NVIDIA NVDEC |
+| VVC | Software decoding only |
 
-`--decode` accepts `auto`, `cpu`, or `gpu`. `--decode software` and `--decode nvdec` are rejected, and `cpu` and `gpu` do not substitute for each other. GPU PSNR and GPU SSIM are 10-bit only. GPU XPSNR and GPU MS-SSIM accept 8-bit and 10-bit. VMAF has no GPU path. `--metric-device gpu` with VMAF, alone or with other metrics, runs VMAF on CPU libvmaf and prints `pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.` XPSNR, PSNR, SSIM, and MS-SSIM still use the GPU when they have an implementation. The execution summary prints `requested device` and each metric's actual device. VMAF is `cpu libvmaf`, not a GPU backend. A GPU metric that cannot run is an error, with no CPU substitute. `--metric-device auto` uses GPU scoring for 10-bit 3840×2160 or larger NVDEC input when VMAF is not selected. PQ and HLG are not inferred from bit depth, a filename, or BT.2020 primaries. `--hdr-peak-nits` is an evaluation-display value, not MaxCLL. Identical samples print PSNR `999.99`. `--psnr`, `--ssim`, `--msssim`, `--xpsnr`, `--vmaf`, `--xpsnr-backend`, `--vmaf-backend`, `--wang-msssim`, and `--kernel` are rejected. An unknown option exits 1 with `PARSE ERROR`. A flag this version explicitly removed exits 2. Metric selection is `--metrics`.
+Compressed video support depends on the installed FFmpeg build. Other codecs may work if supported by FFmpeg.
+
+### CPU and GPU support
+
+- **CPU:** All quality metrics are supported.
+- **GPU:** PSNR, XPSNR, SSIM, and MS-SSIM support CUDA acceleration.
+- **VMAF:** Always runs on CPU, including when GPU execution is requested.
+- **NVDEC:** Supports HEVC and AV1 decoding. Other codecs use software decoding.
+
+**Limitations:**
+- GPU PSNR and SSIM require 10-bit input; GPU XPSNR and MS-SSIM support 8-bit and 10-bit.
+- HDR transfer characteristics (PQ/HLG) must be correctly specified; they are not inferred from bit depth or filename.
+- Unsupported pixel formats are rejected rather than automatically converted.
+
+For detailed backend behavior, supported options, and restrictions, use `pixvqa --help` or consult the technical documentation.
 
 ## References
 
