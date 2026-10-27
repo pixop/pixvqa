@@ -58,7 +58,7 @@ CONSTRAINTS = [
         "id": "vmaf-hdr",
         "file": "src/main.cpp",
         "needle": "vmaf rejects HDR transfer",
-        "rule": "VMAF is refused when the effective transfer is PQ or HLG. An explicit SDR transfer scores stored samples.",
+        "rule": "An SDR VMAF model is refused when the effective transfer is PQ or HLG. An explicit SDR transfer scores stored samples. An HDR model uses a separate explicit-colorimetry check.",
     },
     {
         "id": "xpsnr-fps",
@@ -136,7 +136,7 @@ CONSTRAINTS = [
         "id": "gpu-metrics",
         "file": "src/main.cpp",
         "needle": "no CPU substitute",
-        "rule": "--metric-device gpu does not fall back to the CPU. GPU PSNR and SSIM require 10-bit. GPU MS-SSIM and XPSNR accept 8-bit and 10-bit. VMAF and PU21 have no GPU implementation.",
+        "rule": "--metric-device gpu does not fall back to the CPU for PSNR, SSIM, MS-SSIM, or XPSNR. GPU PSNR and SSIM require 10-bit. GPU MS-SSIM and XPSNR accept 8-bit and 10-bit. VMAF has no GPU implementation and uses CPU libvmaf, with a warning, including when it is the only metric. PU21 has no GPU implementation.",
     },
     {
         "id": "auto-metric-profile",
@@ -234,7 +234,7 @@ def build_inventory(root: Path) -> dict:
         },
         "metric_backends": {
             "cpu": "Every selected metric.",
-            "gpu": "PSNR, SSIM, MS-SSIM, and XPSNR when the layout is supported. VMAF and PU21 stay on the CPU or are rejected when they are the only GPU request.",
+            "gpu": "PSNR, SSIM, MS-SSIM, and XPSNR when the layout is supported. VMAF stays on CPU libvmaf and warns, including when it is the only GPU request. PU21 is rejected when it is the only GPU request.",
             "auto": "CPU, except the single 4K HEVC GPU-decode profile.",
         },
         "codecs": CODECS,

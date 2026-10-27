@@ -12,6 +12,14 @@ fi
 install -d "$PREFIX/bin" "$PREFIX/share/pixvqa/model" "$PREFIX/share/doc/pixvqa/licenses"
 install -m 755 "$BIN" "$PREFIX/bin/pixvqa"
 cp -a "$ROOT/model/"*.json "$PREFIX/share/pixvqa/model/"
+# HDR VMAF v1.1.8 JSON files live in subdirectories. The top-level copy
+# above is the SDR v1.0.16 set and does not include those directories.
+for dir in hdr_vmaf_v1.1.8 hdr_vmaf_v1.1.8_hfr; do
+  if [[ -d "$ROOT/model/$dir" ]]; then
+    install -d "$PREFIX/share/pixvqa/model/$dir"
+    cp -a "$ROOT/model/$dir/"*.json "$PREFIX/share/pixvqa/model/$dir/"
+  fi
+done
 cp -a "$ROOT/README.md" "$ROOT/THIRD_PARTY_NOTICES.md" "$PREFIX/share/doc/pixvqa/"
 cp -a "$ROOT/licenses/PU21_BSD.txt" "$PREFIX/share/doc/pixvqa/licenses/"
 cp -a "$ROOT/third_party/netflix-vmaf/LICENSE" "$PREFIX/share/doc/pixvqa/licenses/VMAF_LICENSE"

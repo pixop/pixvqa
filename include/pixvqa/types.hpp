@@ -111,7 +111,8 @@ enum class CudaPrecision { Fp32, Fp64, Mixed };
 // MS-SSIM already run on CUDA. Cuda is opt-in and does not use CudaPrecision.
 enum class XpsnrBackend { Cpu, Cuda };
 
-// VMAF device selection. Phase 1 supports Cpu only. Cuda is rejected explicitly.
+// VMAF execution. Cpu is the only implemented backend. A GPU metric-device
+// request keeps this value and warns; it is never reported as CUDA.
 enum class VmafBackend { Cpu, Cuda };
 
 // raw: both inputs are planar YUV. software/nvdec decode -t only.
@@ -195,8 +196,9 @@ struct Options {
   CudaPrecision cuda_prec = CudaPrecision::Fp64;
   int strip_height = 0;  // 0 = library default; the public CLI does not set this
   double peak = 1023.0;  // 10-bit
-  // Color overrides. They do not enter PSNR, SSIM, MS-SSIM, XPSNR, or VMAF.
-  // When set, they replace stream metadata for the HDR interpretation.
+  // Color overrides. They do not enter PSNR, SSIM, MS-SSIM, or XPSNR.
+  // HDR VMAF uses an explicit complete description of each input. SDR VMAF
+  // leaves picture color unset. When set, these replace stream metadata.
   std::string color_space = "bt709l";
   std::string transfer = "sdr";
   bool color_space_set = false;

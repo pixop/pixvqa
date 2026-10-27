@@ -13,6 +13,7 @@ These stay under their own terms. Keep their notices when you redistribute or sh
 | Component | License / terms | Where documented |
 |---|---|---|
 | Netflix libvmaf (linked at build time; not vendored as a full tree here) | BSD-2-Clause-Patent | `third_party/netflix-vmaf/`, `scripts/build_libvmaf.sh` |
+| zimg 3.0.6 (linked for HDR VMAF picture conversion) | WTFPL | `scripts/build_zimg.sh`, `THIRD_PARTY_NOTICES.md` |
 | VMAF model JSON files in `model/` | BSD-2-Clause-Patent (Netflix VMAF) | `model/README.md`, `third_party/netflix-vmaf/NOTICE` |
 | FFmpeg (user-built dependency) | LGPL 2.1 or later when built without `--enable-gpl` and without `--enable-version3` | `docs/INSTALL.md`, `THIRD_PARTY_NOTICES.md` |
 | libdav1d (user-built dependency) | BSD-2-Clause | `THIRD_PARTY_NOTICES.md` |

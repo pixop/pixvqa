@@ -9,6 +9,7 @@
 #include <libvmaf/picture.h>
 #include <libvmaf/version.h>
 
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -34,6 +35,7 @@ struct ModelInfo {
   const char* feat_speed_chroma;
   const char* feat_adm3;
   const char* feat_motion3;
+  bool hdr;
 };
 
 // SHA-256 of the JSON files at Netflix/vmaf tag v3.2.1
@@ -42,43 +44,93 @@ constexpr ModelInfo kModels[] = {
     {"vmaf_v1.0.16_3d0h",
      "e4cf8c147e1368b35497d772920bc92f98c1ad7853c1033d8a836947f427140e", 100.0, false, 320, 240,
      "cambi_hrs_1080_cmxv_17_vlt_0.06", "speed_chroma_uv_mxv_45_nnf_0.1_snn_0.19_wvm_5",
-     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02", "integer_motion3_mmxv_18"},
+     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02", "integer_motion3_mmxv_18", false},
     {"vmaf_v1.0.16_5d0h",
      "64e12d9c1e4ed5d79da7fa515b82fac7247a9e2ccc91e0ebce31d05489500385", 100.0, false, 1920, 1080,
      "cambi_hrs_1080_cmxv_17_vlt_0.06",
      "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.6_psm_bilinear_snn_0.19_wvm_5",
-     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_5", "integer_motion3_mmxv_18"},
+     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_5", "integer_motion3_mmxv_18", false},
     {"vmaf_v1.0.16_1d5h_2160",
      "634d36e0502cb797384726cdd1a106a2c207827595a9e4958d3dae1bd517b139", 100.0, false, 320, 240,
      "cambi_hrs_1080_cmxv_17_vlt_0.06", "speed_chroma_uv_mxv_45_nnf_0.1_snn_0.19_wvm_5",
      "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_1.5_rdh_2160",
-     "integer_motion3_mmxv_18"},
+     "integer_motion3_mmxv_18", false},
     {"vmaf_v1.0.16_3d0h_2160",
      "77f552fd8d5b6c6a2166bfc4470c9368ec68d2425ed40f1cc235b0cc500f33c2", 110.0, false, 1920, 1080,
      "cambi_hrs_1080_cmxv_17_vlt_0.06",
      "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.5_psm_bilinear_snn_0.19_wvm_5",
-     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_rdh_2160", "integer_motion3_mmxv_18"},
+     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_rdh_2160", "integer_motion3_mmxv_18",
+     false},
     {"vmaf_v1.0.16_hfr_3d0h",
      "dcfdfab1c00685c1e5f75b6f1078bb4a44c722654e4de090fa5c66784c75241b", 100.0, true, 320, 240,
      "cambi_hrs_1080_cmxv_17_vlt_0.06", "speed_chroma_uv_mxv_45_nnf_0.1_snn_0.19_wvm_5",
-     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02", "integer_motion3_mffw_mmxv_18_mma"},
+     "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02", "integer_motion3_mffw_mmxv_18_mma", false},
     {"vmaf_v1.0.16_hfr_5d0h",
      "590f612c87df94badca58e563b318fa9958eac631ab8aadd73bff8cc1adfc515", 100.0, true, 1920, 1080,
      "cambi_hrs_1080_cmxv_17_vlt_0.06",
      "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.6_psm_bilinear_snn_0.19_wvm_5",
      "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_5",
-     "integer_motion3_mffw_mmxv_18_mma"},
+     "integer_motion3_mffw_mmxv_18_mma", false},
     {"vmaf_v1.0.16_hfr_1d5h_2160",
      "0371db55d3de81a760125f6d65eb4386f1d38af6cf1d00c2f48158e3596246d4", 100.0, true, 320, 240,
      "cambi_hrs_1080_cmxv_17_vlt_0.06", "speed_chroma_uv_mxv_45_nnf_0.1_snn_0.19_wvm_5",
      "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_1.5_rdh_2160",
-     "integer_motion3_mffw_mmxv_18_mma"},
+     "integer_motion3_mffw_mmxv_18_mma", false},
     {"vmaf_v1.0.16_hfr_3d0h_2160",
      "1bc502f00aeee11433e2d09468186bbf1bbce56ee650c9bade06c7435ebdd4db", 110.0, true, 1920, 1080,
      "cambi_hrs_1080_cmxv_17_vlt_0.06",
      "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.5_psm_bilinear_snn_0.19_wvm_5",
      "integer_adm3_csf_2_dlmw_0.7_egl_1_min_0.5_nw_0.02_rdh_2160",
-     "integer_motion3_mffw_mmxv_18_mma"},
+     "integer_motion3_mffw_mmxv_18_mma", false},
+    // HDR VMAF v1.1.8 at 74f930d17de8c58e7c2ce55e2b897b0030ebd8ef.
+    // min size 0: libvmaf scales to the model's display. Clip hi is the model's.
+    {"hdr_vmaf_v1.1.8_3d0h",
+     "10c9ad02b10ebf77507cf2ba5825c9b60d0a1d95c811e5f382085bb9f26103ad", 100.0, false, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_ssz", "integer_motion3_mmxv_18", true},
+    {"hdr_vmaf_v1.1.8_5d0h",
+     "f2ca19c167c31c7e6b9d567770ee151a727757e601bcb954c2228c33768d6af8", 100.0, false, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.6_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_5_ssz", "integer_motion3_mmxv_18",
+     true},
+    {"hdr_vmaf_v1.1.8_1d5h_2160",
+     "53d36d3173012efa6eb65ada92aa3967d3caceee68d088275b2a51a320948510", 100.0, false, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_1.5_rdh_2160_ssz",
+     "integer_motion3_mmxv_18", true},
+    {"hdr_vmaf_v1.1.8_3d0h_2160",
+     "6e1bb29ade13e1cad05e1d13fed2ad76fc8e3d3621bd5e02ab23e5c98c0afffd", 110.0, false, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.5_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_rdh_2160_ssz", "integer_motion3_mmxv_18",
+     true},
+    {"hdr_vmaf_v1.1.8_hfr_3d0h",
+     "e881b71d283bad7886afff0e5f6bd35fd59c8e9d58f7b8823bac9435e226d34f", 100.0, true, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_ssz", "integer_motion3_mffw_mmxv_18_mma",
+     true},
+    {"hdr_vmaf_v1.1.8_hfr_5d0h",
+     "0c33ee5c588307b3790703b958cf5e9dc5f7907f98cdb4e58e3b91648d8c48c2", 100.0, true, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.6_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_5_ssz",
+     "integer_motion3_mffw_mmxv_18_mma", true},
+    {"hdr_vmaf_v1.1.8_hfr_1d5h_2160",
+     "c8a979574c0d79bb22198323e6b4024b47bd305e5aa09575c4735fef43476bd8", 100.0, true, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_nvd_1.5_rdh_2160_ssz",
+     "integer_motion3_mffw_mmxv_18_mma", true},
+    {"hdr_vmaf_v1.1.8_hfr_3d0h_2160",
+     "f32904ac748319a8dc584aeffa776df30e5002e95270414a57a9802a9c2b31d1", 110.0, true, 0, 0,
+     "cambi_ceot_pq_hrs_1080_cmxv_17_vlt_0.06",
+     "speed_chroma_uv_mxv_45_nnf_0.1_ps_0.5_psm_bilinear_snn_0.19_wvm_5",
+     "integer_adm3_csf_3_dlmw_0.7_egl_1_min_0.5_nw_0.02_rdh_2160_ssz",
+     "integer_motion3_mffw_mmxv_18_mma", true},
 };
 
 const ModelInfo* find_by_sha256(const std::string& digest) {
@@ -264,6 +316,116 @@ void copy_plane_u8_from_u16(const PlaneBuffer& src, uint8_t* dst, ptrdiff_t stri
   }
 }
 
+#define PIXVQA_STR_IMPL(x) #x
+#define PIXVQA_STR(x) PIXVQA_STR_IMPL(x)
+
+size_t json_value_at(const std::string& s, const char* key, size_t from, size_t end) {
+  const std::string needle = std::string("\"") + key + "\"";
+  const size_t found = s.find(needle, from);
+  if (found == std::string::npos || found >= end) return std::string::npos;
+  size_t i = found + needle.size();
+  while (i < end && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r' || s[i] == ':')) ++i;
+  return i < end ? i : std::string::npos;
+}
+
+size_t match_brace(const std::string& s, size_t open) {
+  int depth = 0;
+  bool in_str = false;
+  for (size_t i = open; i < s.size(); ++i) {
+    const char c = s[i];
+    if (in_str) {
+      if (c == '\\' && i + 1 < s.size()) {
+        ++i;
+        continue;
+      }
+      if (c == '"') in_str = false;
+      continue;
+    }
+    if (c == '"') in_str = true;
+    else if (c == '{') ++depth;
+    else if (c == '}') {
+      --depth;
+      if (depth == 0) return i;
+    }
+  }
+  return std::string::npos;
+}
+
+std::string json_scalar_at(const std::string& s, size_t i, size_t end) {
+  if (i >= end) return {};
+  if (s[i] == '"') {
+    std::string out;
+    for (size_t j = i + 1; j < end; ++j) {
+      if (s[j] == '\\') {
+        if (j + 1 < end) out.push_back(s[++j]);
+        continue;
+      }
+      if (s[j] == '"') return out;
+      out.push_back(s[j]);
+    }
+    return {};
+  }
+  size_t e = i;
+  while (e < end && (std::isdigit(static_cast<unsigned char>(s[e])) || s[e] == '.')) ++e;
+  return s.substr(i, e - i);
+}
+
+std::vector<std::string> split_color_spec(const std::string& spec) {
+  std::vector<std::string> parts;
+  size_t start = 0;
+  while (start <= spec.size()) {
+    const size_t colon = spec.find(':', start);
+    if (colon == std::string::npos) {
+      parts.push_back(spec.substr(start));
+      break;
+    }
+    parts.push_back(spec.substr(start, colon - start));
+    start = colon + 1;
+  }
+  return parts;
+}
+
+bool spec_trc_is_pq(const std::string& spec) {
+  if (spec.empty()) return false;
+  const auto parts = split_color_spec(spec);
+  if (parts.size() < 3) return false;
+  return parts[2] == "pq" || parts[2] == "smpte2084";
+}
+
+bool spec_mentions_hlg(const std::string& spec) {
+  return spec.find("hlg") != std::string::npos || spec.find("stdb67") != std::string::npos;
+}
+
+VmafColor color_from_spec(const std::string& spec) {
+  const auto parts = split_color_spec(spec);
+  if (parts.size() != 4) {
+    throw std::runtime_error(
+        "VMAF colorimetry must be RANGE:PRIMARIES:TRC:MATRIX "
+        "(limited|full, bt709|bt2020|smpte432, bt709|pq, bt709|bt2020nc|ictcp)");
+  }
+  VmafColor color{};
+  if (parts[0] == "limited") color.range = VMAF_COLOR_RANGE_LIMITED;
+  else if (parts[0] == "full") color.range = VMAF_COLOR_RANGE_FULL;
+  else throw std::runtime_error("unsupported VMAF color range '" + parts[0] + "'");
+  if (parts[1] == "bt709") color.primaries = VMAF_COLOR_PRIMARIES_BT709;
+  else if (parts[1] == "bt2020") color.primaries = VMAF_COLOR_PRIMARIES_BT2020;
+  else if (parts[1] == "smpte432") color.primaries = VMAF_COLOR_PRIMARIES_SMPTE432;
+  else throw std::runtime_error("unsupported VMAF color primaries '" + parts[1] + "'");
+  if (parts[2] == "hlg" || parts[2] == "stdb67") {
+    throw std::runtime_error(
+        "HLG is unsupported and unvalidated for VMAF "
+        "(libvmaf at 74f930d has no HLG transfer characteristic)");
+  }
+  if (parts[2] == "bt709") color.trc = VMAF_COLOR_TRC_BT709;
+  else if (parts[2] == "pq" || parts[2] == "smpte2084") color.trc = VMAF_COLOR_TRC_SMPTE2084;
+  else throw std::runtime_error("unsupported VMAF transfer '" + parts[2] + "'");
+  if (parts[3] == "bt709") color.matrix = VMAF_COLOR_MATRIX_BT709;
+  else if (parts[3] == "bt2020nc") color.matrix = VMAF_COLOR_MATRIX_BT2020_NCL;
+  else if (parts[3] == "ictcp") color.matrix = VMAF_COLOR_MATRIX_ICTCP;
+  else throw std::runtime_error("unsupported VMAF matrix '" + parts[3] + "'");
+  return color;
+}
+
 }  // namespace
 
 std::string vmaf_file_sha256(const std::string& path) {
@@ -285,6 +447,46 @@ std::string vmaf_resolve_model_path(const std::string& requested) {
   fs::path p = fs::absolute(fs::path(requested), ec);
   if (ec) throw std::runtime_error("cannot resolve VMAF model path: " + requested);
   return p.lexically_normal().string();
+}
+
+VmafModelFileInfo vmaf_inspect_model_file(const std::string& path) {
+  std::ifstream in(path);
+  if (!in) throw std::runtime_error("failed to read VMAF model file: " + path);
+  const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  VmafModelFileInfo info;
+  const size_t conv = json_value_at(text, "conversion_target", 0, text.size());
+  if (conv != std::string::npos && text[conv] == '{') {
+    const size_t close = match_brace(text, conv);
+    if (close == std::string::npos) {
+      throw std::runtime_error("VMAF model conversion_target is not a complete JSON object");
+    }
+    const auto field = [&](const char* key) {
+      const size_t v = json_value_at(text, key, conv, close);
+      if (v == std::string::npos) return std::string();
+      return json_scalar_at(text, v, close);
+    };
+    const std::string range = field("range");
+    const std::string primaries = field("primaries");
+    const std::string trc = field("trc");
+    const std::string matrix = field("matrix");
+    const std::string pix = field("pixel_format");
+    const std::string bits = field("bit_depth");
+    const std::string display = field("display");
+    if (range.empty() || primaries.empty() || trc.empty() || matrix.empty() || pix.empty() ||
+        bits.empty()) {
+      throw std::runtime_error("VMAF model conversion_target is missing a required field");
+    }
+    info.has_conversion = true;
+    info.conversion = range + ":" + primaries + ":" + trc + ":" + matrix + ":" + pix + ":" + bits;
+    if (!display.empty()) info.display_short_side = std::stoi(display);
+  }
+  const auto flag = [&](const char* key) {
+    const size_t v = json_value_at(text, key, 0, text.size());
+    return v != std::string::npos && text.compare(v, 4, "true") == 0;
+  };
+  info.motion_five_frame = flag("motion_five_frame_window");
+  info.motion_moving_average = flag("motion_moving_average");
+  return info;
 }
 
 bool vmaf_min_size_for_sha256(const std::string& sha256, int& min_w, int& min_h) {
@@ -322,6 +524,9 @@ void VmafMeter::destroy() {
   feat_speed_chroma_.clear();
   feat_adm3_.clear();
   feat_motion3_.clear();
+  apply_color_ = false;
+  color_ref_spec_.clear();
+  color_dist_spec_.clear();
   meta_ = VmafMeta{};
 }
 
@@ -329,7 +534,8 @@ void VmafMeter::ensure_started() const {
   if (!started_) throw std::runtime_error("VmafMeter::start was not called");
 }
 
-void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int n_threads) {
+void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int n_threads,
+                      const std::string& color_ref, const std::string& color_dist) {
   destroy();
   if (fmt.bit_depth != 8 && fmt.bit_depth != 10) {
     throw std::runtime_error("VMAF accepts only 8-bit or 10-bit planar YUV");
@@ -342,6 +548,16 @@ void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int
   meta_.model_path_resolved = vmaf_resolve_model_path(model_path);
   meta_.libvmaf_version = vmaf_version();
   meta_.backend = "cpu";
+#ifdef PIXVQA_LIBVMAF_COMMIT
+  meta_.libvmaf_commit = PIXVQA_STR(PIXVQA_LIBVMAF_COMMIT);
+#else
+  meta_.libvmaf_commit = "unrecorded";
+#endif
+#ifdef PIXVQA_ZIMG_VERSION
+  meta_.zimg_version = PIXVQA_STR(PIXVQA_ZIMG_VERSION);
+#else
+  meta_.zimg_version = "unrecorded";
+#endif
 
   if (!fs::is_regular_file(meta_.model_path_resolved)) {
     throw std::runtime_error("VMAF model file not found or not a regular file: " +
@@ -372,7 +588,7 @@ void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int
 
   const ModelInfo* known = find_by_sha256(meta_.model_sha256);
   if (known) {
-    meta_.known_v1_model = true;
+    meta_.known_v1_model = !known->hdr;
     meta_.model_id = known->id;
     meta_.hfr_model = known->hfr;
     feat_cambi_ = known->feat_cambi;
@@ -388,6 +604,42 @@ void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int
   } else {
     meta_.known_v1_model = false;
     meta_.hfr_model = meta_.model_id.find("_hfr_") != std::string::npos;
+  }
+
+  const VmafModelFileInfo inspected = vmaf_inspect_model_file(meta_.model_path_resolved);
+  meta_.conversion = inspected.has_conversion ? inspected.conversion : "none";
+  meta_.display_short_side = inspected.display_short_side;
+  meta_.motion_five_frame = inspected.motion_five_frame;
+  meta_.motion_moving_average = inspected.motion_moving_average;
+  if (known && known->hdr != inspected.has_conversion) {
+    throw std::runtime_error(
+        "VMAF model contents do not match the vendored conversion_target for this SHA-256");
+  }
+  if (inspected.has_conversion) {
+    if (color_ref.empty() || color_dist.empty()) {
+      throw std::runtime_error(
+          "HDR VMAF model requires explicit complete colorimetry on both inputs "
+          "(PQ, BT.2020 primaries, bt2020nc matrix, limited range)");
+    }
+    (void)color_from_spec(color_ref);
+    (void)color_from_spec(color_dist);
+    apply_color_ = true;
+    color_ref_spec_ = color_ref;
+    color_dist_spec_ = color_dist;
+    meta_.color_ref = color_ref;
+    meta_.color_dist = color_dist;
+  } else {
+    if (spec_trc_is_pq(color_ref) || spec_trc_is_pq(color_dist)) {
+      throw std::runtime_error("SDR VMAF model rejects explicit HDR colorimetry");
+    }
+    if (spec_mentions_hlg(color_ref) || spec_mentions_hlg(color_dist)) {
+      throw std::runtime_error(
+          "HLG is unsupported and unvalidated for VMAF "
+          "(libvmaf at 74f930d has no HLG transfer characteristic)");
+    }
+    apply_color_ = false;
+    meta_.color_ref = color_ref.empty() ? "unset" : color_ref;
+    meta_.color_dist = color_dist.empty() ? "unset" : color_dist;
   }
 
   fmt_ = fmt;
@@ -441,13 +693,15 @@ void VmafMeter::start(const VideoFormat& fmt, const std::string& model_path, int
   frames_.clear();
 }
 
-void VmafMeter::fill_picture(const Frame& src, void* pic_out) {
+void VmafMeter::fill_picture(const Frame& src, void* pic_out, const std::string& color_spec) {
   auto* pic = static_cast<VmafPicture*>(pic_out);
   const enum VmafPixelFormat pix_fmt = to_pix_fmt(fmt_.chroma);
   const unsigned bpc = static_cast<unsigned>(fmt_.bit_depth);
   check_err(vmaf_picture_alloc(pic, pix_fmt, bpc, static_cast<unsigned>(fmt_.width),
                                static_cast<unsigned>(fmt_.height)),
             "vmaf_picture_alloc");
+  pic->color = {};
+  if (apply_color_) pic->color = color_from_spec(color_spec);
 
   if (fmt_.bit_depth > 8) {
     copy_plane_u16(src.y, static_cast<uint16_t*>(pic->data[0]), pic->stride[0], src.y.width,
@@ -472,9 +726,9 @@ void VmafMeter::push(const Frame& reference, const Frame& distorted) {
 
   VmafPicture ref{};
   VmafPicture dist{};
-  fill_picture(reference, &ref);
+  fill_picture(reference, &ref, color_ref_spec_);
   try {
-    fill_picture(distorted, &dist);
+    fill_picture(distorted, &dist, color_dist_spec_);
   } catch (...) {
     vmaf_picture_unref(&ref);
     throw;
@@ -485,6 +739,11 @@ void VmafMeter::push(const Frame& reference, const Frame& distorted) {
   if (err) {
     if (ref.ref) vmaf_picture_unref(&ref);
     if (dist.ref) vmaf_picture_unref(&dist);
+    if (apply_color_) {
+      throw std::runtime_error(
+          "libvmaf HDR picture conversion failed (" + std::to_string(err) +
+          "). zimg support is required; refusing an SDR-style score");
+    }
     check_err(err, "vmaf_read_pictures");
   }
   ++submitted_;

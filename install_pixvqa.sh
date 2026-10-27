@@ -58,7 +58,8 @@ fi
 export GCC_ENV=/usr
 export DAV1D_PREFIX="$HOME/dav1d-1.5.1"
 export FFMPEG_PREFIX="$HOME/ffmpeg-n8.1.3"
-export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-3.2.1"
+# Active HDR pin. scripts/build_libvmaf_3.2.1.sh remains the historical recipe.
+export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-74f930d"
 export GCC13="${GCC13:-$HOME/pixvqa-deps/gcc13}"
 export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$HOME/pixvqa-deps/micromamba-root}"
 DEPS_SRC="$HOME/pixvqa-deps/src"
@@ -258,6 +259,15 @@ if [[ "$PIXVQA_HAS_VMAF" != 1 ]]; then
     die 'libvmaf archive exists but detection is disabled. Ensure the new helper is installed at scripts/libvmaf_flags.sh (not repository root).'
 fi
 printf 'Pinned libvmaf enabled: CFLAGS=%s LIBS=%s\n' "$PIXVQA_VMAF_CFLAGS" "$PIXVQA_VMAF_LIBS"
+case "$PIXVQA_VMAF_LIBS" in
+    *-lzimg*) ;;
+    *) die 'Pinned libvmaf is not linked with zimg.' ;;
+esac
+case "$PIXVQA_VMAF_CFLAGS" in
+    *74f930d17de8c58e7c2ce55e2b897b0030ebd8ef*) ;;
+    *) die 'Pinned libvmaf stamp is not commit 74f930d.' ;;
+esac
+grep -q vmaf_picture_convert "$LIBVMAF_PREFIX/include/libvmaf/picture.h" || die 'Pinned picture.h has no vmaf_picture_convert.'
 
 bash build.sh
 [[ -x build/cpu/pixvqa ]] || die 'CPU binary missing.'

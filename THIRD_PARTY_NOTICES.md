@@ -37,12 +37,20 @@ runtime. It does not require CUDA.
 
 ## libvmaf and the VMAF models
 
-libvmaf 3.2.1, Netflix commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`.
-The license text redistributed in this tree is BSD-2-Clause-Patent:
-`third_party/netflix-vmaf/LICENSE` and `third_party/netflix-vmaf/NOTICE`.
+Netflix libvmaf commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. This is
+not a tagged release. The previous tag is v3.2.1, commit
+`f85a853692a8c730d0270cd733c8bb30b5b93b7c`, still reproducible with
+`scripts/build_libvmaf_3.2.1.sh`. The license text redistributed in this tree
+is BSD-2-Clause-Patent: `third_party/netflix-vmaf/LICENSE` and
+`third_party/netflix-vmaf/NOTICE`.
 
-The eight JSON files under `model/` are byte copies of the VMAF v1.0.16
-models from that commit. See `model/README.md`. PixVQA does not select a
+HDR picture conversion links zimg 3.0.6, commit
+`f819b14e8f39d1282400b0d9543e8ef73c1b2bbd` (https://github.com/sekrit-twc/zimg).
+zimg's own COPYING file identifies the WTFPL.
+
+The eight SDR JSON files under `model/` are byte copies of the VMAF v1.0.16
+models from v3.2.1. The eight HDR JSON files are byte copies of HDR VMAF
+v1.1.8 from commit 74f930d. See `model/README.md`. PixVQA does not select a
 model automatically. The user passes `--model`.
 
 ## PU21

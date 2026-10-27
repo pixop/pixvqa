@@ -163,8 +163,13 @@ void usage(const char* argv0) {
       "   GPU PSNR and GPU SSIM require 10-bit input. GPU MS-SSIM and GPU XPSNR\n"
       "   accept 8-bit and 10-bit. GPU PSNR, SSIM, and MS-SSIM use FP64.\n"
       "   VMAF always runs on the CPU, including when other metrics use the GPU\n"
-      "   and when -t was decoded on the GPU. HDR transfers pq and hlg are\n"
-      "   rejected when vmaf is selected.\n"
+      "   and when -t was decoded on the GPU. An SDR model rejects PQ and HLG.\n"
+      "   An HDR VMAF v1.1.8 model requires explicit PQ, BT.2020 primaries,\n"
+      "   the bt2020nc matrix, and limited range on both inputs, from stream\n"
+      "   tags or --hdr-transfer, --hdr-primaries, --hdr-matrix, and --hdr-range.\n"
+      "   HLG and full-range PQ stay rejected. A GPU request still runs HDR VMAF\n"
+      "   on CPU libvmaf and warns. It does not compute HDR VMAF on CUDA.\n"
+      "   HDR scores keep the model clip, including [0,110].\n"
       "   pu21-psnr (PU21-PSNR), pu21-ssim (PU21-SSIM), and pu21-msssim\n"
       "   (PU21-MS-SSIM) run on the CPU. They have no GPU implementation.\n"
       "\n"
@@ -174,9 +179,11 @@ void usage(const char* argv0) {
       "                       gpu uses a validated GPU implementation for each selected\n"
       "                       metric that has one. A format the GPU metric does not\n"
       "                       support is an error, with no CPU substitute.\n"
-      "                       VMAF has no GPU implementation. Selecting vmaf alone with\n"
-      "                       gpu is an error. Selecting vmaf with other GPU metrics\n"
-      "                       keeps VMAF on the CPU and says so.\n"
+      "                       VMAF has no GPU implementation. Selecting vmaf with gpu\n"
+      "                       uses CPU libvmaf and prints a warning, including when\n"
+      "                       vmaf is the only metric. Other selected GPU metrics stay\n"
+      "                       on the GPU. The summary names the requested device and\n"
+      "                       the actual device of each metric.\n"
       "                       auto does not benchmark at startup. It uses the CPU unless\n"
       "                       a checked profile applies. The only profile is 10-bit\n"
       "                       3840x2160 or larger, GPU decoding, no VMAF, and a CUDA\n"
@@ -511,6 +518,15 @@ void print_vmaf_meta(const VmafMeta& m) {
         m.model_id.c_str(), m.model_path_requested.c_str(), m.model_path_resolved.c_str(),
         m.libvmaf_version.c_str(), m.backend.c_str(), m.model_sha256.c_str());
   }
+  const char* temporal = "none";
+  if (m.motion_five_frame && m.motion_moving_average) temporal = "five_frame+moving_average";
+  else if (m.motion_five_frame) temporal = "five_frame";
+  else if (m.motion_moving_average) temporal = "moving_average";
+  std::printf(
+      "VMAF-EXT: commit=%s zimg=%s backend=%s conversion=%s display=%d "
+      "hfr_temporal=%s color_ref=%s color_dist=%s\n",
+      m.libvmaf_commit.c_str(), m.zimg_version.c_str(), m.backend.c_str(), m.conversion.c_str(),
+      m.display_short_side, temporal, m.color_ref.c_str(), m.color_dist.c_str());
 }
 #endif
 
@@ -831,41 +847,44 @@ int resolve_execution(Options& opt) {
   if (opt.metric_device == DeviceChoice::Cpu) {
     // Every selected metric stays on the CPU.
   } else if (opt.metric_device == DeviceChoice::Gpu) {
-    if (!cuda) {
+    const bool other = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr;
+    const bool pu21 = pu21_selected(opt);
+    // VMAF has no CUDA path. A GPU request still runs libvmaf on the CPU.
+    // That does not require a CUDA build and does not substitute for another metric.
+    const bool vmaf_only = opt.enable_vmaf && !other && !pu21;
+    if (!cuda && !vmaf_only) {
       std::fprintf(stderr, "pixvqa: this build has no GPU metrics; refusing --metric-device gpu\n");
       return 2;
     }
-    if (opt.enable_psnr && !psnr_ok) {
-      refuse_gpu("psnr", "GPU PSNR requires 10-bit input");
-      return 2;
-    }
-    if (opt.enable_ssim && !ssim_ok) {
-      refuse_gpu("ssim", "GPU SSIM requires 10-bit input");
-      return 2;
-    }
-    if (opt.enable_msssim && !msssim_ok) {
-      refuse_gpu("msssim", "GPU MS-SSIM supports 8-bit and 10-bit only");
-      return 2;
-    }
-    if (opt.enable_xpsnr && !xpsnr_ok) {
-      refuse_gpu("xpsnr", "GPU XPSNR supports 8-bit and 10-bit only");
-      return 2;
-    }
-    const bool other = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr;
-    const bool pu21 = pu21_selected(opt);
-    if (opt.enable_vmaf && !other && !pu21) {
-      std::fprintf(stderr, "pixvqa: VMAF has no GPU implementation\n");
-      return 2;
+    if (other) {
+      if (opt.enable_psnr && !psnr_ok) {
+        refuse_gpu("psnr", "GPU PSNR requires 10-bit input");
+        return 2;
+      }
+      if (opt.enable_ssim && !ssim_ok) {
+        refuse_gpu("ssim", "GPU SSIM requires 10-bit input");
+        return 2;
+      }
+      if (opt.enable_msssim && !msssim_ok) {
+        refuse_gpu("msssim", "GPU MS-SSIM supports 8-bit and 10-bit only");
+        return 2;
+      }
+      if (opt.enable_xpsnr && !xpsnr_ok) {
+        refuse_gpu("xpsnr", "GPU XPSNR supports 8-bit and 10-bit only");
+        return 2;
+      }
     }
     if (pu21 && !other) {
       std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation\n");
       return 2;
     }
-    opt.pu21_cpu_notice = pu21;
-    opt.psnr_gpu = opt.enable_psnr;
-    opt.ssim_gpu = opt.enable_ssim;
-    opt.msssim_gpu = opt.enable_msssim;
-    if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    if (other) {
+      opt.pu21_cpu_notice = pu21;
+      opt.psnr_gpu = opt.enable_psnr;
+      opt.ssim_gpu = opt.enable_ssim;
+      opt.msssim_gpu = opt.enable_msssim;
+      if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    }
     opt.vmaf_cpu_notice = opt.enable_vmaf;
   } else if (resident_profile) {
     opt.psnr_gpu = opt.enable_psnr;
@@ -911,8 +930,15 @@ const char* input_label(DecodeMode mode) {
   return "raw";
 }
 
+const char* device_choice_name(DeviceChoice choice) {
+  if (choice == DeviceChoice::Cpu) return "cpu";
+  if (choice == DeviceChoice::Gpu) return "gpu";
+  return "auto";
+}
+
 void print_execution_summary(const Options& opt) {
   std::printf("Execution:\n");
+  std::printf("  requested device: %s\n", device_choice_name(opt.metric_device));
   std::printf("  reference: %s\n", input_label(opt.ref_decode));
   std::printf("  distorted: %s\n", input_label(opt.decode));
   if (opt.threads_auto) {
@@ -949,7 +975,7 @@ void print_execution_summary(const Options& opt) {
     line("MS-SSIM", opt.msssim_gpu,
          opt.msssim_gpu ? "fp64" : cpu_impl_label(msssim_cpu_is_avx2()));
   }
-  if (opt.enable_vmaf) line("VMAF", false, nullptr);
+  if (opt.enable_vmaf) line("VMAF", false, "libvmaf");
   if (opt.enable_pu21_psnr) line("PU21-PSNR", false, nullptr);
   if (opt.enable_pu21_ssim) line("PU21-SSIM", false, nullptr);
   if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", false, nullptr);
@@ -1024,8 +1050,40 @@ int resolve_prepared_side(const HdrSide& side, const Options& opt, bool referenc
   return 0;
 }
 
+bool vmaf_color_explicit(HdrSource source) {
+  return source == HdrSource::Stream || source == HdrSource::Override;
+}
+
+// The validated HDR VMAF tuple only. Assumptions filled by hdr_resolve are not accepted.
+// spec is limited:bt2020:pq:bt2020nc when the side is explicit and complete.
+std::string vmaf_hdr_color_spec(const char* role, const HdrSide& side, std::string& spec) {
+  spec.clear();
+  if (side.transfer == HdrTransfer::Hlg) {
+    return std::string(role) +
+           " HLG is unsupported and unvalidated for VMAF "
+           "(libvmaf at 74f930d has no HLG transfer characteristic)";
+  }
+  if (side.transfer != HdrTransfer::Pq || !vmaf_color_explicit(side.transfer_source)) {
+    return std::string("HDR VMAF model requires an explicit PQ transfer on the ") + role +
+           " (a stream tag or --hdr-transfer pq). PQ is not inferred from 10-bit input";
+  }
+  if (side.range == HdrRange::Full) {
+    return std::string(role) + " full-range PQ is unsupported and unvalidated for VMAF";
+  }
+  if (side.primaries != HdrPrimaries::Bt2020 || !vmaf_color_explicit(side.primaries_source) ||
+      side.matrix != HdrMatrix::Bt2020Ncl || !vmaf_color_explicit(side.matrix_source) ||
+      side.range != HdrRange::Limited || !vmaf_color_explicit(side.range_source)) {
+    return std::string("HDR VMAF model requires explicit complete colorimetry on the ") + role +
+           ": PQ, BT.2020 primaries, bt2020nc matrix, and limited range. "
+           "Assumed fields are not used";
+  }
+  spec = "limited:bt2020:pq:bt2020nc";
+  return {};
+}
+
 int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Options& opt, bool emit,
-               HdrEffective* ref_out, HdrEffective* dist_out) {
+               HdrEffective* ref_out, HdrEffective* dist_out, std::string* vmaf_color_ref,
+               std::string* vmaf_color_dist) {
   HdrEffective ref_eff;
   HdrEffective dist_eff;
   HdrSide ref = ref_stream;
@@ -1133,6 +1191,37 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   }
   if (resolve_prepared_side(ref, opt, true, ref_eff) != 0) return 2;
   if (resolve_prepared_side(dist, opt, false, dist_eff) != 0) return 2;
+#ifdef PIXVQA_HAS_VMAF
+  bool hdr_model = false;
+  if (opt.enable_vmaf && !opt.vmaf_model_path.empty()) {
+    try {
+      hdr_model = vmaf_inspect_model_file(vmaf_resolve_model_path(opt.vmaf_model_path)).has_conversion;
+    } catch (const std::exception& ex) {
+      std::fprintf(stderr, "pixvqa: %s\n", ex.what());
+      return 2;
+    }
+  }
+  if (opt.enable_vmaf && hdr_model) {
+    if (opt.format.chroma != ChromaFormat::YUV420 || opt.format.bit_depth != 10) {
+      std::fprintf(stderr, "pixvqa: HDR VMAF supports limited-range YUV420p10 only\n");
+      return 2;
+    }
+    std::string ref_spec;
+    std::string dist_spec;
+    const std::string ref_err = vmaf_hdr_color_spec("reference", ref, ref_spec);
+    if (!ref_err.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", ref_err.c_str());
+      return 2;
+    }
+    const std::string dist_err = vmaf_hdr_color_spec("distorted", dist, dist_spec);
+    if (!dist_err.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", dist_err.c_str());
+      return 2;
+    }
+    if (vmaf_color_ref) *vmaf_color_ref = ref_spec;
+    if (vmaf_color_dist) *vmaf_color_dist = dist_spec;
+  } else
+#endif
   if (opt.enable_vmaf &&
       (ref_eff.side.transfer == HdrTransfer::Pq || ref_eff.side.transfer == HdrTransfer::Hlg ||
        dist_eff.side.transfer == HdrTransfer::Pq || dist_eff.side.transfer == HdrTransfer::Hlg)) {
@@ -1590,7 +1679,8 @@ int main(int argc, char** argv) {
   }
   if (resolve_execution(opt) != 0) return 2;
   if (opt.vmaf_cpu_notice) {
-    std::fprintf(stderr, "pixvqa: VMAF has no GPU implementation and stays on the CPU\n");
+    std::fprintf(stderr,
+                 "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.\n");
   }
   if (opt.pu21_cpu_notice) {
     std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation and stay on the CPU\n");
@@ -1611,16 +1701,12 @@ int main(int argc, char** argv) {
     auto explicit_hdr = [](bool set, const std::string& token) {
       return set && (token == "st2084" || token == "stdb67" || token == "pq" || token == "hlg");
     };
-    if (explicit_hdr(opt.transfer_set, opt.transfer) || explicit_hdr(opt.ref_transfer_set, opt.ref_transfer) ||
+    const bool explicit_hdr_flag =
+        explicit_hdr(opt.transfer_set, opt.transfer) || explicit_hdr(opt.ref_transfer_set, opt.ref_transfer) ||
         explicit_hdr(opt.dist_transfer_set, opt.dist_transfer) ||
         explicit_hdr(opt.hdr.transfer_set, opt.hdr.transfer) ||
         explicit_hdr(opt.ref_hdr.transfer_set, opt.ref_hdr.transfer) ||
-        explicit_hdr(opt.dist_hdr.transfer_set, opt.dist_hdr.transfer)) {
-      std::fprintf(stderr,
-                   "pixvqa: vmaf rejects explicit HDR transfer "
-                   "(SDR-trained VMAF v1 model; not a validated PQ/HLG score)\n");
-      return 2;
-    }
+        explicit_hdr(opt.dist_hdr.transfer_set, opt.dist_hdr.transfer);
     if (opt.format.bit_depth != 8 && opt.format.bit_depth != 10) {
       std::fprintf(stderr, "pixvqa: vmaf supports only 8-bit or 10-bit planar YUV\n");
       return 2;
@@ -1634,6 +1720,13 @@ int main(int argc, char** argv) {
                        resolved.c_str());
           return 2;
         }
+      }
+      const bool hdr_model = vmaf_inspect_model_file(resolved).has_conversion;
+      if (explicit_hdr_flag && !hdr_model) {
+        std::fprintf(stderr,
+                     "pixvqa: vmaf rejects explicit HDR transfer "
+                     "(SDR-trained VMAF v1 model; not a validated PQ/HLG score)\n");
+        return 2;
       }
       const std::string digest = vmaf_file_sha256(resolved);
       int min_w = 0, min_h = 0;
@@ -1738,6 +1831,8 @@ int main(int argc, char** argv) {
       if (xpsnr_cuda) cuda_xpsnr_reset(opt.format, xrate);
 #endif
     }
+    std::string vmaf_color_ref;
+    std::string vmaf_color_dist;
     {
       HdrSide ref_meta;
       HdrSide dist_meta;
@@ -1745,7 +1840,9 @@ int main(int argc, char** argv) {
       if (opt.ref_decode != DecodeMode::Raw) ref_meta = ref_dec.stream_hdr();
       if (opt.decode != DecodeMode::Raw) dist_meta = test_dec.stream_hdr();
 #endif
-      if (report_hdr(ref_meta, dist_meta, opt, false, nullptr, nullptr) != 0) return 2;
+      if (report_hdr(ref_meta, dist_meta, opt, false, nullptr, nullptr, &vmaf_color_ref,
+                     &vmaf_color_dist) != 0)
+        return 2;
     }
 #ifdef PIXVQA_HAS_VMAF
     VmafMeter vmaf;
@@ -1761,7 +1858,7 @@ int main(int argc, char** argv) {
     };
     std::vector<DeferredFrame> deferred;
     if (opt.enable_vmaf) {
-      vmaf.start(opt.format, opt.vmaf_model_path, opt.threads);
+      vmaf.start(opt.format, opt.vmaf_model_path, opt.threads, vmaf_color_ref, vmaf_color_dist);
       print_vmaf_meta(vmaf.meta());
       if (opt.verbosity >= 1) deferred.reserve(64);
     }
@@ -1839,7 +1936,9 @@ int main(int argc, char** argv) {
         if (opt.ref_decode != DecodeMode::Raw) ref_meta = ref_dec.stream_hdr();
         if (opt.decode != DecodeMode::Raw) dist_meta = test_dec.stream_hdr();
 #endif
-        if (report_hdr(ref_meta, dist_meta, opt, true, &ref_hdr_eff, &dist_hdr_eff) != 0) return 2;
+        if (report_hdr(ref_meta, dist_meta, opt, true, &ref_hdr_eff, &dist_hdr_eff, nullptr,
+                       nullptr) != 0)
+          return 2;
         hdr_reported = true;
       }
       const auto t_comp = std::chrono::steady_clock::now();

@@ -26,7 +26,9 @@ else
 fi
 ```
 
-**Directory layout:** All project-specific dependencies and generated files use the detected checkout root: `deps/manual/` contains dav1d, FFmpeg, CUDA codec headers and GCC; `deps/libvmaf-3.2.1/` contains pinned libvmaf; `build/` contains intermediate binaries; `bin/pixvqa` is the installed executable. These are relative to `$PIXVQA_SRC`, not fixed home-directory paths.
+**Directory layout:** All project-specific dependencies and generated files use the detected checkout root: `deps/manual/` contains dav1d, FFmpeg, CUDA codec headers and GCC; `deps/libvmaf-74f930d/` contains the pinned libvmaf; `deps/zimg-3.0.6/` contains zimg 3.0.6; `build/` contains intermediate binaries; `bin/pixvqa` is the installed executable. These are relative to `$PIXVQA_SRC`, not fixed home-directory paths. `scripts/build_libvmaf_3.2.1.sh` can still build the previous tag into `deps/libvmaf-3.2.1`, and that prefix is not linked.
+
+`scripts/build_libvmaf.sh`, `scripts/build_libvmaf_3.2.1.sh`, and `scripts/build_zimg.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They do not search a user-specific compiler directory. `gcc`, `g++`, and GNU `make` must be on `PATH` for the zimg build. Ubuntu's `build-essential` package supplies `make`. If autoconf, automake, libtool, or m4 are missing, `scripts/build_zimg.sh` downloads the Ubuntu 24.04 packages named in that script and checks their SHA-256 values. The libvmaf and zimg commits stay pinned.
 
 If you reopen the terminal, navigate back to **your** checkout and repeat Section 0. Subsequent blocks rediscover dependency paths. The manual process does not delete or reuse the automatic install's private dependency directories.
 
@@ -170,7 +172,11 @@ The manual decoder needs FFmpeg **libraries**, not its CLI. This build enables l
 
 **If you do not see `PASS: FFmpeg ...`, stop here.** In particular, a missing `config.h` means FFmpeg never configured successfully; do not continue to libvmaf or PixVQA builds. The FFmpeg library build deliberately does not provide an `ffmpeg` CLI; full QA requires a separate executable.
 
-## 4. Build pinned libvmaf 3.2.1
+## 4. Build libvmaf commit 74f930d and zimg 3.0.6
+
+GNU `make` must be on `PATH`. `scripts/build_libvmaf.sh` builds zimg first, then checks out Netflix `vmaf` commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. This is not a tagged release. The previous tag is v3.2.1, commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`, still built only by `scripts/build_libvmaf_3.2.1.sh`. Meson reports project version 3.2.0. `vmaf --version` prints `74f930d`.
+
+zimg is tag `release-3.0.6`, commit `f819b14e8f39d1282400b0d9543e8ef73c1b2bbd`, static, prefix `deps/zimg-3.0.6`. libvmaf is static, prefix `deps/libvmaf-74f930d`, with `-Denable_zimg=true` and CUDA off. The script stops unless `pkg-config` resolves the file installed under that prefix, `--libs --static` contains `-lzimg`, and `picture.h` declares `vmaf_picture_convert`.
 
 ```bash
 (
@@ -179,18 +185,21 @@ The manual decoder needs FFmpeg **libraries**, not its CLI. This build enables l
     cd "$PIXVQA_SRC"
     test -f scripts/build_libvmaf.sh || { echo 'STOP: wrong PixVQA checkout' >&2; exit 1; }
     export GCC_ENV=/usr
-    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-3.2.1"
+    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-74f930d"
     bash scripts/build_libvmaf.sh
     archive="$(find "$LIBVMAF_PREFIX" -type f -name libvmaf.a -print -quit 2>/dev/null)"
     test -n "$archive" && test -f "$archive" || { echo 'STOP: pinned libvmaf.a missing' >&2; exit 1; }
+    grep -q vmaf_picture_convert "$LIBVMAF_PREFIX/include/libvmaf/picture.h" || { echo 'STOP: picture.h has no vmaf_picture_convert' >&2; exit 1; }
     source scripts/libvmaf_flags.sh
     pixvqa_detect_libvmaf "$PIXVQA_SRC"
     test "${PIXVQA_HAS_VMAF:-0}" = 1 || { echo 'STOP: PixVQA did not detect pinned libvmaf' >&2; exit 1; }
+    case "$PIXVQA_VMAF_LIBS" in *-lzimg*) ;; *) echo 'STOP: libvmaf is not linked with zimg' >&2; exit 1 ;; esac
+    case "$PIXVQA_VMAF_CFLAGS" in *74f930d17de8c58e7c2ce55e2b897b0030ebd8ef*) ;; *) echo 'STOP: libvmaf stamp is not 74f930d' >&2; exit 1 ;; esac
     printf 'PASS: pinned libvmaf enabled (%s)\n' "$archive"
 )
 ```
 
-Note: the libvmaf `v3.2.1` Git tag may report Meson project version `3.2.0`; the pinned source commit in `scripts/build_libvmaf.sh` determines the intended dependency.
+The eight SDR model files and the eight HDR v1.1.8 model files in [model/](../model/README.md) are what `--model` loads. Without the 74f930d prefix the PixVQA binary still builds, and selecting `vmaf` is an error.
 
 ## 5. Build CPU and software-decoding PixVQA
 
@@ -201,7 +210,7 @@ Note: the libvmaf `v3.2.1` Git tag may report Meson project version `3.2.0`; the
     cd "$PIXVQA_SRC"
     root="$PIXVQA_SRC/deps/manual"
     export GCC_ENV=/usr
-    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-3.2.1"
+    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-74f930d"
     bash build.sh
     test -x build/cpu/pixvqa || { echo 'STOP: CPU executable missing' >&2; exit 1; }
     dav1d_pc="$(find "$root/dav1d-1.5.1" -type f -name dav1d.pc -print -quit 2>/dev/null)"
@@ -276,7 +285,7 @@ Requires NVIDIA driver/GPU, the **CUDA 12.8** toolkit, and conda-forge GCC **13.
     test -f "$FFMPEG_PREFIX/lib/libavcodec.so" || { echo 'STOP: FFmpeg libraries missing' >&2; exit 1; }
     export LD_LIBRARY_PATH="$cudart:$FFMPEG_PREFIX/lib:$DAV1D_LIB:$PIXVQA_LIBCUDA_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export GCC_ENV=/usr
-    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-3.2.1"
+    export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-74f930d"
     export PIXVQA_FULL_LINK_CXX=/usr/bin/g++
     cd "$PIXVQA_SRC"
     bash build_cuda.sh
@@ -332,6 +341,8 @@ This matches the default **repository-root installation prefix** of the updated 
 
 **To run it in a later terminal**, restore the runtime library search paths (or add appropriate RPATH/RUNPATH during a separate packaging improvement). Do not assume that `bin/pixvqa` runs in a new shell without `LD_LIBRARY_PATH`. Unlike the guided installer, the manual procedure does not add an `LD_LIBRARY_PATH` launcher.
 
+`scripts/install.sh` copies the executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. Pass one file to `--model`.
+
 ## 8. Quality assurance
 
 From the root of **the checkout being installed**, with `PIXVQA_SRC` initialized in Section 0:
@@ -361,8 +372,10 @@ python3 scripts/run_qa.py --profile full
 |---|---|
 | dav1d | 1.5.1 shared; commit `42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa` |
 | FFmpeg | `n8.1.3`; commit `1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7` |
-| libvmaf | `v3.2.1`; pinned by `scripts/build_libvmaf.sh`, static |
-| CUDA / NVDEC | CUDA 12.8, preinstalled GPU driver, private `nv-codec-headers` |
+| libvmaf | commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef` (not a release tag; previous tag v3.2.1), static, zimg 3.0.6, CUDA off |
+| zimg | tag `release-3.0.6`, commit `f819b14e8f39d1282400b0d9543e8ef73c1b2bbd` |
+| VMAF models | eight SDR v1.0.16 JSON files and eight HDR v1.1.8 JSON files in `model/` |
+| CUDA / NVDEC | CUDA 12.8, preinstalled GPU driver, private `nv-codec-headers`, `sm_89` and `sm_120` |
 | CUDA host compiler | conda-forge GCC 13.4; final FFmpeg/PixVQA combined linker `/usr/bin/g++` |
 
 **Previously observed:** The guided installer has passed smoke QA and the built GPU executable reported `build: cuda` / `decode: software nvdec` on the Ubuntu 22.04 WSL2 RTX 4070 setup. A separate prior hardware QA run passed 3/3. These observations are **not** evidence that this rewritten manual procedure has been executed end to end. The NVIDIA header-bootstrap and CPU-only branches also require independent validation.
@@ -373,7 +386,7 @@ python3 scripts/run_qa.py --profile full
 - **FFmpeg `config.h` or `libavcodec.so` missing:** Section 3B did not succeed. Inspect `deps/manual/src/ffmpeg/ffbuild/config.log` or `config.log` where present; do not run `make install` before configure and compilation succeed.
 - **Git clone fails (HTTP/2/RPC):** Retry the clone after inspecting its destination. The FFmpeg block uses HTTP/1.1 and has an official mirror fallback; it will not delete a partial checkout automatically.
 - **libdav1d not found:** The blocks find `dav1d.pc` and put its directory on `PKG_CONFIG_PATH`; library dirs may be `lib/x86_64-linux-gnu` rather than `lib`.
-- **`libvmaf: disabled`:** Verify the static archive under `deps/libvmaf-3.2.1` and `scripts/libvmaf_flags.sh`; a system-wide libvmaf is not a substitute.
+- **`libvmaf: disabled`:** Verify `deps/libvmaf-74f930d` and `scripts/libvmaf_flags.sh`. The helper refuses a prefix without `vmaf_picture_convert` or `-lzimg`, including a leftover `deps/libvmaf-3.2.1`. A system-wide libvmaf is not a substitute.
 - **CUDA `-lcudart` unresolved:** The GPU block searches `$CUDA_HOME/targets/x86_64-linux/lib`, `$CUDA_HOME/lib64` and `$CUDA_HOME/lib`, exporting both `LIBRARY_PATH` and `LD_LIBRARY_PATH`.
 - **`hypot@GLIBC_2.35` in the combined link:** Preserve `PIXVQA_FULL_LINK_CXX=/usr/bin/g++`; the conda-forge host compiler is used for CUDA compilation, not the final Linux link.
 - **Reopened terminal:** Repeat Section 0; each subsequent build block rediscovers its dependencies. Do not set `PIXVQA_SRC` from the FFmpeg directory.
