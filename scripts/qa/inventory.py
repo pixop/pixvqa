@@ -136,7 +136,7 @@ CONSTRAINTS = [
         "id": "gpu-metrics",
         "file": "src/main.cpp",
         "needle": "no CPU substitute",
-        "rule": "--metric-device gpu does not fall back to the CPU. GPU PSNR and SSIM require 10-bit. GPU MS-SSIM and XPSNR accept 8-bit and 10-bit. VMAF and PU21 have no GPU implementation.",
+        "rule": "--metric-device gpu does not fall back to the CPU for PSNR, SSIM, MS-SSIM, or XPSNR. GPU PSNR and SSIM require 10-bit. GPU MS-SSIM and XPSNR accept 8-bit and 10-bit. VMAF has no GPU implementation and uses CPU libvmaf, with a warning, including when it is the only metric. PU21 has no GPU implementation.",
     },
     {
         "id": "auto-metric-profile",

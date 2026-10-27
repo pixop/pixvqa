@@ -611,10 +611,10 @@ def _hardware_cases() -> list:
                         problems.append(f"{token} CPU/GPU differ beyond 1e-4")
         if eight.returncode == 0 or "10-bit" not in eight.stderr:
             problems.append("8-bit GPU PSNR was not rejected")
-        if only_vmaf.returncode == 0 or "no GPU implementation" not in only_vmaf.stderr:
-            problems.append("VMAF-only GPU was accepted")
-        if mixed.returncode != 0 or "stays on the CPU" not in mixed.stderr or "VMAF: cpu" not in mixed.stdout:
-            problems.append("mixed VMAF did not stay on the CPU")
+        if only_vmaf.returncode != 0 or "using CPU libvmaf" not in only_vmaf.stderr or "VMAF: cpu libvmaf" not in only_vmaf.stdout:
+            problems.append("VMAF-only GPU did not fall back to CPU libvmaf")
+        if mixed.returncode != 0 or "using CPU libvmaf" not in mixed.stderr or "VMAF: cpu libvmaf" not in mixed.stdout or "PSNR: gpu" not in mixed.stdout:
+            problems.append("mixed VMAF did not stay on the CPU beside GPU PSNR")
         if problems:
             return Result("FAIL", "; ".join(problems), "gpu-metrics")
         return Result("PASS", "GPU metrics match the CPU within the existing tolerance and do not silently substitute", "gpu-metrics")

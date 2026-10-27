@@ -174,9 +174,11 @@ void usage(const char* argv0) {
       "                       gpu uses a validated GPU implementation for each selected\n"
       "                       metric that has one. A format the GPU metric does not\n"
       "                       support is an error, with no CPU substitute.\n"
-      "                       VMAF has no GPU implementation. Selecting vmaf alone with\n"
-      "                       gpu is an error. Selecting vmaf with other GPU metrics\n"
-      "                       keeps VMAF on the CPU and says so.\n"
+      "                       VMAF has no GPU implementation. Selecting vmaf with gpu\n"
+      "                       uses CPU libvmaf and prints a warning, including when\n"
+      "                       vmaf is the only metric. Other selected GPU metrics stay\n"
+      "                       on the GPU. The summary names the requested device and\n"
+      "                       the actual device of each metric.\n"
       "                       auto does not benchmark at startup. It uses the CPU unless\n"
       "                       a checked profile applies. The only profile is 10-bit\n"
       "                       3840x2160 or larger, GPU decoding, no VMAF, and a CUDA\n"
@@ -831,41 +833,44 @@ int resolve_execution(Options& opt) {
   if (opt.metric_device == DeviceChoice::Cpu) {
     // Every selected metric stays on the CPU.
   } else if (opt.metric_device == DeviceChoice::Gpu) {
-    if (!cuda) {
+    const bool other = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr;
+    const bool pu21 = pu21_selected(opt);
+    // VMAF has no CUDA path. A GPU request still runs libvmaf on the CPU.
+    // That does not require a CUDA build and does not substitute for another metric.
+    const bool vmaf_only = opt.enable_vmaf && !other && !pu21;
+    if (!cuda && !vmaf_only) {
       std::fprintf(stderr, "pixvqa: this build has no GPU metrics; refusing --metric-device gpu\n");
       return 2;
     }
-    if (opt.enable_psnr && !psnr_ok) {
-      refuse_gpu("psnr", "GPU PSNR requires 10-bit input");
-      return 2;
-    }
-    if (opt.enable_ssim && !ssim_ok) {
-      refuse_gpu("ssim", "GPU SSIM requires 10-bit input");
-      return 2;
-    }
-    if (opt.enable_msssim && !msssim_ok) {
-      refuse_gpu("msssim", "GPU MS-SSIM supports 8-bit and 10-bit only");
-      return 2;
-    }
-    if (opt.enable_xpsnr && !xpsnr_ok) {
-      refuse_gpu("xpsnr", "GPU XPSNR supports 8-bit and 10-bit only");
-      return 2;
-    }
-    const bool other = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr;
-    const bool pu21 = pu21_selected(opt);
-    if (opt.enable_vmaf && !other && !pu21) {
-      std::fprintf(stderr, "pixvqa: VMAF has no GPU implementation\n");
-      return 2;
+    if (other) {
+      if (opt.enable_psnr && !psnr_ok) {
+        refuse_gpu("psnr", "GPU PSNR requires 10-bit input");
+        return 2;
+      }
+      if (opt.enable_ssim && !ssim_ok) {
+        refuse_gpu("ssim", "GPU SSIM requires 10-bit input");
+        return 2;
+      }
+      if (opt.enable_msssim && !msssim_ok) {
+        refuse_gpu("msssim", "GPU MS-SSIM supports 8-bit and 10-bit only");
+        return 2;
+      }
+      if (opt.enable_xpsnr && !xpsnr_ok) {
+        refuse_gpu("xpsnr", "GPU XPSNR supports 8-bit and 10-bit only");
+        return 2;
+      }
     }
     if (pu21 && !other) {
       std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation\n");
       return 2;
     }
-    opt.pu21_cpu_notice = pu21;
-    opt.psnr_gpu = opt.enable_psnr;
-    opt.ssim_gpu = opt.enable_ssim;
-    opt.msssim_gpu = opt.enable_msssim;
-    if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    if (other) {
+      opt.pu21_cpu_notice = pu21;
+      opt.psnr_gpu = opt.enable_psnr;
+      opt.ssim_gpu = opt.enable_ssim;
+      opt.msssim_gpu = opt.enable_msssim;
+      if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    }
     opt.vmaf_cpu_notice = opt.enable_vmaf;
   } else if (resident_profile) {
     opt.psnr_gpu = opt.enable_psnr;
@@ -911,8 +916,15 @@ const char* input_label(DecodeMode mode) {
   return "raw";
 }
 
+const char* device_choice_name(DeviceChoice choice) {
+  if (choice == DeviceChoice::Cpu) return "cpu";
+  if (choice == DeviceChoice::Gpu) return "gpu";
+  return "auto";
+}
+
 void print_execution_summary(const Options& opt) {
   std::printf("Execution:\n");
+  std::printf("  requested device: %s\n", device_choice_name(opt.metric_device));
   std::printf("  reference: %s\n", input_label(opt.ref_decode));
   std::printf("  distorted: %s\n", input_label(opt.decode));
   if (opt.threads_auto) {
@@ -949,7 +961,7 @@ void print_execution_summary(const Options& opt) {
     line("MS-SSIM", opt.msssim_gpu,
          opt.msssim_gpu ? "fp64" : cpu_impl_label(msssim_cpu_is_avx2()));
   }
-  if (opt.enable_vmaf) line("VMAF", false, nullptr);
+  if (opt.enable_vmaf) line("VMAF", false, "libvmaf");
   if (opt.enable_pu21_psnr) line("PU21-PSNR", false, nullptr);
   if (opt.enable_pu21_ssim) line("PU21-SSIM", false, nullptr);
   if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", false, nullptr);
@@ -1590,7 +1602,8 @@ int main(int argc, char** argv) {
   }
   if (resolve_execution(opt) != 0) return 2;
   if (opt.vmaf_cpu_notice) {
-    std::fprintf(stderr, "pixvqa: VMAF has no GPU implementation and stays on the CPU\n");
+    std::fprintf(stderr,
+                 "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.\n");
   }
   if (opt.pu21_cpu_notice) {
     std::fprintf(stderr, "pixvqa: PU21 metrics have no GPU implementation and stay on the CPU\n");

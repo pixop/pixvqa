@@ -111,7 +111,8 @@ enum class CudaPrecision { Fp32, Fp64, Mixed };
 // MS-SSIM already run on CUDA. Cuda is opt-in and does not use CudaPrecision.
 enum class XpsnrBackend { Cpu, Cuda };
 
-// VMAF device selection. Phase 1 supports Cpu only. Cuda is rejected explicitly.
+// VMAF execution. Cpu is the only implemented backend. A GPU metric-device
+// request keeps this value and warns; it is never reported as CUDA.
 enum class VmafBackend { Cpu, Cuda };
 
 // raw: both inputs are planar YUV. software/nvdec decode -t only.

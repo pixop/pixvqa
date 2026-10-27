@@ -60,12 +60,12 @@ def main() -> int:
             "-f",
             "420p:10"]
         expect_fail("missing-model", ["--metrics", "vmaf", *base], "--model")
-        version = run(["--version"])
-        gpu_metrics = "build: cuda" in version.stdout
+        # 64x64 is below the feature extractor. The GPU request must warn and
+        # select CPU libvmaf before that failure, rather than refusing the device.
         expect_fail(
-            "cuda-backend",
+            "gpu-vmaf-falls-back-then-feature-size",
             ["--metrics", "vmaf", "--metric-device", "gpu", "--model", str(MODEL), *base],
-            "no GPU implementation" if gpu_metrics else "no GPU metrics",
+            "using CPU libvmaf",
         )
         expect_fail(
             "missing-file",
