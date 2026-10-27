@@ -313,6 +313,21 @@ Requires NVIDIA driver/GPU, the **CUDA 12.8** toolkit, and conda-forge GCC **13.
 )
 ```
 
+### Build outputs: which executable is which?
+
+Build scripts create executables under `build/`; they do **not** install multiple versions of PixVQA. The install step in Section 7 selects one build and copies it to `$PREFIX/bin/pixvqa`.
+
+| Executable | Capabilities |
+|---|---|
+| `build/cpu/pixvqa` | CPU metrics, raw YUV input only |
+| `build/cuda/pixvqa` | CPU and CUDA-supported metrics, raw YUV input only |
+| `build/swdec/pixvqa` | CPU metrics with FFmpeg software decoding |
+| `build/full/pixvqa` | CPU and CUDA-supported metrics with software decoding and NVDEC |
+| `$PREFIX/bin/pixvqa` | Installed copy of the selected build |
+| `$PREFIX/bin/pixvqa-with-libs` | Launcher generated **only by the guided installer**, for private runtime libraries |
+
+The manual procedure below installs `build/full/pixvqa` when `PIXVQA_ENABLE_NVIDIA=1`, otherwise `build/swdec/pixvqa`. Not all build variants must exist. `PREFIX` is the installation destination, while `PIXVQA_BIN` identifies the compiled executable to copy.
+
 ## 7. Install into this checkout and check dynamic libraries
 
 This matches the default **repository-root installation prefix** of the updated guided installer. The binary is installed at `$PIXVQA_SRC/bin/pixvqa`, without depending on the checkout directory name. The manual `scripts/install.sh` does **not** generate the guided installer's `pixvqa-with-libs` launcher, so verify the ELF runtime dependencies with an explicit library path.
@@ -333,6 +348,7 @@ This matches the default **repository-root installation prefix** of the updated 
     test -x "$PIXVQA_BIN" || { echo "STOP: binary $PIXVQA_BIN missing; complete earlier sections" >&2; exit 1; }
     PREFIX="$PREFIX" PIXVQA_BIN="$PIXVQA_BIN" bash scripts/install.sh
     test -x "$PREFIX/bin/pixvqa" || { echo 'STOP: installed binary missing' >&2; exit 1; }
+    cmp "$PREFIX/bin/pixvqa" "$PIXVQA_BIN" || { echo 'STOP: installed executable differs from selected build' >&2; exit 1; }
     dav1d_pc="$(find "$root/dav1d-1.5.1" -type f -name dav1d.pc -print -quit 2>/dev/null)"
     test -n "$dav1d_pc" || { echo 'STOP: dav1d not installed' >&2; exit 1; }
     export PKG_CONFIG_PATH="$(dirname "$dav1d_pc")${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"

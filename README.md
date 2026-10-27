@@ -43,7 +43,7 @@ pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
 
 ## Quick start
 
-The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes a binary on `PATH`; alternatively invoke `build/swdec/pixvqa` from the checkout, or `$HOME/pixvqa/bin/pixvqa-with-libs` after the guided installation. The GPU command requires the full NVIDIA build (`build/full/pixvqa` or its installed equivalent).
+The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes a binary on `PATH`; alternatively invoke `build/swdec/pixvqa` from the checkout, or `./bin/pixvqa-with-libs` from the checkout after guided installation with the default prefix. The GPU command requires the full NVIDIA build (`build/full/pixvqa` or its installed equivalent).
 
 Compressed video, software decoder:
 
@@ -162,13 +162,28 @@ The guide explains how to:
 - Install PixVQA into a custom directory.
 - Verify the installation and troubleshoot common issues.
 
-### Available configurations
+### Build configurations and executables
 
-| Configuration | Capabilities |
+Compilation creates executables in `build/`. Installation copies **one selected executable** to `$PREFIX/bin/pixvqa` (by default, `bin/pixvqa` inside the checkout). These are build configurations, not separate PixVQA releases.
+
+| Executable | Capabilities |
 |---|---|
-| **CPU-only** | Raw YUV input and CPU quality metrics |
-| **Software decoding** | Raw YUV and compressed video input, CPU quality metrics |
-| **Full NVIDIA** | Raw YUV and compressed video input, CUDA-supported metrics, and NVDEC |
+| `build/cpu/pixvqa` | CPU metrics; raw YUV input only |
+| `build/cuda/pixvqa` | CPU and CUDA-supported metrics; raw YUV input only |
+| `build/swdec/pixvqa` | CPU metrics; raw YUV and FFmpeg software-decoded compressed video |
+| `build/full/pixvqa` | CPU and CUDA-supported metrics; software decoding and NVIDIA NVDEC |
+| `bin/pixvqa` | Installed copy of the build selected during installation |
+| `bin/pixvqa-with-libs` | Guided-install launcher that sets private library paths and runs `bin/pixvqa` |
+
+Not every installation builds all four configurations. With **dav1d = Yes** and **NVIDIA = Yes**, the guided installer selects `build/full/pixvqa` for installation.
+
+**Which one should I run?** After guided installation with the default prefix, use `./bin/pixvqa-with-libs` so that privately installed FFmpeg, dav1d, and CUDA runtime libraries can be found. The manual installation does **not** generate this launcher; see [docs/INSTALL.md](docs/INSTALL.md) for runtime-library setup.
+
+To check that a full NVIDIA build was installed (default prefix), run:
+
+```bash
+cmp bin/pixvqa build/full/pixvqa && echo "Installed binary matches the full build"
+```
 
 **VMAF:** SDR and HDR VMAF always execute on CPU libvmaf. When GPU execution is requested, PixVQA automatically falls back to CPU for VMAF and displays a warning. PSNR, SSIM, MS-SSIM, and XPSNR retain CUDA acceleration when supported.
 
