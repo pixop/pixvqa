@@ -16,85 +16,92 @@ PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU2
 
 | Name | Description |
 |---|---|
-| `psnr` | Peak signal-to-noise ratio, and MSE, on stored sample codes |
-| `xpsnr` | XPSNR. Requires `--fps` |
-| `ssim` | Single-scale structural similarity |
-| `msssim` | One five-scale product MS-SSIM. `ssim` does not select it |
-| `vmaf` | Netflix VMAF v1 through libvmaf, on the CPU. Requires `--model` |
+| `psnr` | Peak signal-to-noise ratio (PSNR) and MSE on stored sample codes |
+| `xpsnr` | Extended PSNR (XPSNR). Requires `--fps` |
+| `ssim` | Structural similarity index (SSIM) |
+| `msssim` | Multi-scale structural similarity (MS-SSIM) |
+| `vmaf` | Netflix VMAF v1 through CPU libvmaf. Requires `--model` |
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
 
-PU21 is a perceptually uniform encoding of display light, so those three metrics can take HDR as input. `pu21-xpsnr` and `pu21-vmaf` are not supported. Pass names to `--metrics`. There is no second MS-SSIM metric.
+PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
 
-## Recommended metrics by video format
+Select metrics using `--metrics`. QCS can additionally be enabled using `--qcs`.
 
-✅ supported and recommended. ⚠️ supported, but not a perceptual HDR measure. ❌ rejected by PixVQA.
+### Recommended metrics by video format
 
-| Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG / BT.2020 |
+| Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
 |---|:---:|:---:|:---:|
 | PSNR | ✅ | ⚠️ | ⚠️ |
 | XPSNR | ✅ | ⚠️ | ⚠️ |
 | SSIM | ✅ | ⚠️ | ⚠️ |
 | MS-SSIM | ✅ | ⚠️ | ⚠️ |
-| VMAF, SDR models | ✅ | ❌ (1) | ❌ (1) |
-| VMAF, HDR v1.1.8 models | ❌ | ✅ (2) | ❌ |
-| PU21-PSNR | ❌ (3) | ✅ (4) | ✅ (4) |
-| PU21-SSIM | ❌ (3) | ✅ (4) | ✅ (4) |
-| PU21-MS-SSIM | ❌ (3) | ✅ (4) | ✅ (4) |
+| VMAF (SDR models) | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | ❌ | ✅ | ❌ |
+| PU21-PSNR | ❌ | ✅ | ✅ |
+| PU21-SSIM | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | ❌ | ✅ | ✅ |
 
-QCS is not a separate column entry. It is printed for every metric that runs, so it is available exactly where the metric's cell is ✅ or ⚠️, and it inherits that metric's suitability.
+**Legend:**
 
-PSNR, XPSNR, SSIM, and MS-SSIM compare the stored Y′CbCr sample codes. The transfer does not change their result: the same codes score the same under SDR, PQ, or HLG. SDR gamma coding is close enough to perceptually uniform for these metrics. PQ codes are a perceptual encoding, so these scores are a usable engineering comparison, but PU21 predicts HDR quality better than PQ encoding does. HLG codes are scene-referred and are not tied to display luminance. PixVQA does not run them through a display model.
+- ✅ Recommended
+- ⚠️ Supported, but not generally recommended for HDR perceptual assessment
+- ❌ Unsupported metric/model and format combination
 
-1. Rejected when the effective transfer of either input is PQ or HLG, from a stream tag or `--hdr-transfer`. PixVQA does not infer PQ or HLG from 10-bit input, BT.2020, or a filename. An untagged raw input is therefore scored as SDR. Netflix states that an SDR model on HDR pictures is not meaningful.
-2. Only limited-range 10-bit 4:2:0. Both inputs need PQ, BT.2020 primaries, the bt2020nc matrix, and limited range, each from a stream tag or an explicit option. Assumed values are not used. Full range, 8-bit, 4:4:4, and BT.709 primaries are rejected. HDR10 static metadata (SMPTE ST 2086, MaxCLL, MaxFALL) is not read, and no display mapping is applied. `hdr_vmaf_v1.1.8_3d0h_2160` and `hdr_vmaf_v1.1.8_hfr_3d0h_2160` can score up to 110.
-3. PU21 requires a PQ or HLG transfer. SDR, `linear`, and an unspecified transfer are rejected. The PU21 paper describes an SDR path through a display model, but PixVQA does not implement it. Use the conventional metrics for SDR.
-4. PU21 needs display luminance. PQ is decoded to absolute luminance up to 10 000 cd/m² and is clipped only when `--hdr-peak-nits` is set. PixVQA does not tone-map to a display. HLG uses the BT.2100 inverse OETF and OOTF with a 1000 cd/m² evaluation peak unless `--hdr-peak-nits` sets another. PU21-PSNR uses display RGB. PU21-SSIM and PU21-MS-SSIM use luminance only. PQ and HLG are also accepted with BT.709 primaries.
+**Notes:**
 
-The HDR10 column describes the PQ / BT.2020 signal. HDR10 also implies 10-bit samples and static metadata. PixVQA evaluates the signal and ignores that metadata.
+- Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on stored sample values without HDR perceptual adaptation. The transfer does not change the score: the same codes score the same under SDR, PQ, or HLG. PQ codes are a perceptual encoding, so the result is a usable engineering comparison, but PU21 predicts HDR quality better. HLG codes are scene-referred and are not tied to display luminance. PixVQA does not run them through a display model.
+- SDR VMAF models are rejected when the effective transfer of either input is PQ or HLG, from a stream tag or `--hdr-transfer`. PixVQA does not infer PQ or HLG from 10-bit input, BT.2020, or a filename, so an untagged raw input is scored as SDR. Netflix states that an SDR model on HDR pictures is not meaningful.
+- HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG. Both inputs must be 10-bit 4:2:0, with PQ, BT.2020 primaries, the bt2020nc matrix, and limited range, each from a stream tag or an explicit option. Assumed values are not used. Full range, 8-bit, 4:4:4, and BT.709 primaries are rejected. HDR10 static metadata (SMPTE ST 2086, MaxCLL, MaxFALL) is not read or validated, and no display mapping is applied. The HDR column describes the PQ / BT.2020 signal. `hdr_vmaf_v1.1.8_3d0h_2160` and `hdr_vmaf_v1.1.8_hfr_3d0h_2160` can score up to 110.
+- PU21 requires a PQ or HLG transfer. SDR, `linear`, and an unspecified transfer are rejected, so the SDR cells are ❌. The PU21 paper describes an SDR path through a display model, but PixVQA does not implement it. PQ is decoded to absolute luminance up to 10 000 cd/m² and is clipped only when `--hdr-peak-nits` is set. PixVQA does not tone-map to a display. HLG uses the BT.2100 inverse OETF and OOTF, with a 1000 cd/m² evaluation peak unless `--hdr-peak-nits` sets another. PU21-PSNR uses display RGB. PU21-SSIM and PU21-MS-SSIM use luminance only. PQ and HLG are also accepted with BT.709 primaries.
+- QCS is not a row in this table. It inherits the compatibility of the selected metric: `--qcs` is available for every metric PixVQA runs, on CPU or GPU, and it is not available when that metric is rejected. QCS is a post-processing descriptor, not a standalone VQA metric.
 
 ## Quality Consistency Score (QCS)
 
-Quality Consistency Score (QCS) is a metric-agnostic descriptor of temporal quality reliability. It measures the proportion of viewing time during which video quality meets or exceeds thresholds within a specified quality range, summarized as the normalized area under the survival curve of frame-level quality scores. QCS complements conventional average quality metrics by revealing the prevalence and severity of quality degradations that averages may obscure.
+**Publication:** S. Sanz-Rodríguez and J. Frydensbjerg, "[Quality Consistency Score (QCS): A Survival-Based Reliability Descriptor for Video Quality Assessment](https://ieeexplore.ieee.org/document/11629873/)," *IEEE International Conference on Image Processing (ICIP)*, 2026.
 
-QCS characterizes the distribution of frame-level quality scores over time, not their temporal ordering. Different temporal arrangements of the same quality scores therefore produce the same QCS.
+Quality Consistency Score (QCS) is a metric-agnostic descriptor of **temporal quality reliability**. It measures the proportion of viewing time during which video quality meets or exceeds specified thresholds, revealing degradations that may be hidden by average quality metrics or conventional rate-distortion (RD/BD-rate) analysis.
 
-Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. `--qcs` prints one QCS value for every metric named in `--metrics`, on CPU or GPU. The frame score is the value that metric already produced. QCS does not clip or rescale it first. HDR VMAF, and the SDR models whose clip is 110, can score above 100. With the default upper bound of 100 those scores contribute 100%. Raising the upper bound, for example `--qcs-range vmaf=70:120`, keeps the difference.
+### Definition
 
-Default ranges:
+Let $Q(t)$ represent the frame-level quality scores and $S(x)=P(Q\ge x)$ their survival function. QCS is the normalized area under the survival curve over a quality interval $[a,b]$:
+$$
+\mathrm{QCS}_{[a,b]} = \frac{1}{b-a}\int_a^b S(x)\,dx
+$$
+QCS ranges from 0% to 100% when expressed as a percentage. Scores at or below $a$ contribute 0%, scores at or above $b$ contribute 100%, and intermediate scores contribute proportionally. NaN values are excluded. +inf contributes 100% and -inf contributes 0%. A VMAF score above 100 is kept. With the default upper bound of 100 it contributes 100%.
 
-| Metric | Default | Why this band |
-|---|---|---|
-| `psnr`, `xpsnr` | `[30, 50]` | Decibel scores. Unchanged. |
-| `ssim`, `msssim` | `[0.8, 1.0]` | Similarity scores. Unchanged. |
-| `vmaf` | `[70, 100]` | The QCS paper's VMAF interval. One default for every SDR and HDR model. |
-| `pu21-psnr` | `[30, 50]` | PSNR on PU21 codes with peak 256, about 100 cd/m². That is an 8-bit-style decibel scale, not the VMAF scale. |
-| `pu21-ssim`, `pu21-msssim` | `[0.8, 1.0]` | SSIM and MS-SSIM on PU21 luminance with the same peak. The score is still a similarity in about `[0, 1]`. |
+Each frame contributes equally (constant-frame-rate assumption). QCS describes the **distribution of quality scores**, not their temporal ordering.
 
-`--qcs-range psnr=40:55` sets one range. The name is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
+### Default QCS intervals
 
+| Metric | Interval |
+|---|---|
+| PSNR / XPSNR | [30, 50] dB |
+| SSIM / MS-SSIM | [0.8, 1.0] |
+| VMAF (SDR / HDR) | [70, 100] |
+| PU21-PSNR | [30, 50] dB |
+| PU21-SSIM / PU21-MS-SSIM | [0.8, 1.0] |
+
+VMAF uses one interval for every SDR and HDR model. PU21-PSNR uses the PSNR interval because its peak is 256, about 100 cd/m², which is an 8-bit-style decibel scale. PU21-SSIM and PU21-MS-SSIM use the SSIM interval because they are similarities on that same peak.
+
+### Usage
+
+Enable QCS with `--qcs` and optionally override the default interval using `--qcs-range`.
 ```bash
-pixvqa --metrics psnr,ssim,vmaf,pu21-psnr --qcs \
-  --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json \
-  --qcs-range vmaf=60:90 --qcs-range pu21-psnr=30:50 \
-  --hdr-transfer pq --hdr-primaries bt2020 --hdr-matrix bt2020nc --hdr-range limited \
-  -r reference10.yuv -s 1920x1080 -f 420p:10 \
-  -t distorted10.yuv -s 1920x1080 -f 420p:10
-```
-
-```bash
-pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
+pixvqa --metrics psnr,vmaf --model model/vmaf_v1.0.16_3d0h.json \
+  --qcs --qcs-range psnr=40:55 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
+
+QCS is computed independently for each selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
 
 ## Quick start
 
 The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
 
 Compressed video, software decoder:
-
 ```bash
 pixvqa --metrics psnr --decode cpu \
   -r reference.mp4 --input compressed -s 1920x1080 -f 420p:8 \
@@ -102,7 +109,6 @@ pixvqa --metrics psnr --decode cpu \
 ```
 
 PSNR, XPSNR, SSIM, and MS-SSIM together. XPSNR needs a frame rate:
-
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
@@ -110,15 +116,13 @@ pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
 ```
 
 VMAF has no default model. Picture size does not choose a model. An SDR model is refused when the effective transfer is PQ or HLG.
-
 ```bash
-pixvqa --metrics vmaf --qcs --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
+pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
 HDR VMAF v1.1.8 requires the transfer, primaries, matrix, and range on both inputs. This is the validated limited-range PQ BT.2020 case. The score keeps that model's clip, including values above 100.
-
 ```bash
 pixvqa --metrics vmaf --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json --threads 1 \
   --hdr-transfer pq --hdr-primaries bt2020 --hdr-matrix bt2020nc --hdr-range limited \
@@ -127,7 +131,6 @@ pixvqa --metrics vmaf --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json --
 ```
 
 Raw planar YUV. `--input raw` does not probe the file:
-
 ```bash
 pixvqa --metrics psnr --input raw \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
@@ -135,13 +138,11 @@ pixvqa --metrics psnr --input raw \
 ```
 
 PQ, then HLG. PU21 uses the transfer. A stored-sample metric such as `psnr` does not.
-
 ```bash
-pixvqa --metrics pu21-psnr,pu21-ssim --qcs --hdr-transfer pq \
+pixvqa --metrics pu21-psnr,pu21-ssim --hdr-transfer pq \
   -r reference10.yuv -s 1920x1080 -f 420p:10 \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
-
 ```bash
 pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg --hdr-peak-nits 1000 \
   -r reference10.yuv -s 1920x1080 -f 420p:10 \
@@ -149,7 +150,6 @@ pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg --hdr-peak-nits 1000 \
 ```
 
 HEVC 10-bit 4:2:0 on NVDEC:
-
 ```bash
 pixvqa --metrics psnr --decode gpu \
   -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
@@ -169,11 +169,13 @@ The guided installer downloads and builds the required dependencies, compiles th
 From the root of the cloned repository, run:
 
     bash install_pixvqa.sh
+
     ./bin/pixvqa --version
 
 The installer asks two questions:
 
 1. **Install dav1d for software AV1 decoding?** `[Y/n]` (default: Yes).
+
 2. **Build NVIDIA GPU support (CUDA metrics + NVDEC)?** `[y/N]` (default: No).
 
 **Recommended:** Select Yes for dav1d to enable software decoding of compressed video, and Yes for NVIDIA if you want GPU acceleration.
@@ -203,16 +205,20 @@ For custom builds or manual control over dependencies and compilation, follow th
 The guide explains how to:
 
 - Build the required dependencies, including FFmpeg, libvmaf, and zimg.
+
 - Compile the CPU-only version for raw YUV input.
+
 - Enable software decoding for compressed video, including AV1 and VVC.
+
 - Enable NVIDIA CUDA acceleration and NVDEC hardware decoding.
+
 - Install PixVQA into a custom directory.
+
 - Verify the installation and troubleshoot common issues.
 
 **VMAF:** SDR and HDR VMAF always execute on CPU libvmaf. When GPU execution is requested, PixVQA automatically falls back to CPU for VMAF and displays a warning. PSNR, SSIM, MS-SSIM, and XPSNR retain CUDA acceleration when supported.
 
 For independent clean-install testing of both methods, see [Installation Validation](docs/INSTALL_VALIDATION.md).
-
 
 ## Command-line options
 
@@ -232,8 +238,8 @@ For independent clean-install testing of both methods, see [Installation Validat
 | `--model` | VMAF model JSON. No default |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
-| `--qcs` | Enable QCS for every selected metric |
-| `--qcs-range` | `metric=lower:upper`, with lower < upper. Defaults are listed under QCS |
+| `--qcs` | Enable QCS for selected supported per-frame metrics |
+| `--qcs-range` | `metric=lower:upper`, with lower < upper |
 
 ## Formats and limitations
 
@@ -251,10 +257,16 @@ FFmpeg chooses the demuxer and decoder. There is no container or codec allowlist
 ## References
 
 - PSNR. Peak-signal form of mean squared error on the stored sample codes.
+
 - XPSNR. C. R. Helmrich, M. Siekmann, S. Becker, S. Bosse, D. Marpe, and T. Wiegand, “XPSNR: A Low-Complexity Extension of the Perceptually Weighted Peak Signal-to-Noise Ratio for High-Resolution Video Quality Assessment,” ICASSP 2020. [DOI 10.1109/ICASSP40776.2020.9054089](https://doi.org/10.1109/ICASSP40776.2020.9054089).
+
 - SSIM. Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image Quality Assessment: From Error Visibility to Structural Similarity,” IEEE Transactions on Image Processing, vol. 13, no. 4, pp. 600–612, April 2004. [DOI 10.1109/TIP.2003.819861](https://doi.org/10.1109/TIP.2003.819861).
+
 - MS-SSIM. Z. Wang, E. P. Simoncelli, and A. C. Bovik, “Multiscale Structural Similarity for Image Quality Assessment,” Asilomar Conference on Signals, Systems and Computers, 2003. [DOI 10.1109/ACSSC.2003.1292216](https://doi.org/10.1109/ACSSC.2003.1292216).
+
 - VMAF. Z. Li, A. Aaron, I. Katsavounidis, A. Moorthy, and M. Manohara, “Toward a Practical Perceptual Video Quality Metric,” Netflix Technology Blog, 2016. [Blog](https://netflixtechblog.com/toward-a-practical-perceptual-video-quality-metric-653f208b9652). Models and attribution: [model/README.md](model/README.md), [Netflix/vmaf](https://github.com/Netflix/vmaf) commit `74f930d` (not a release tag; the previous tag is v3.2.1), [third_party/netflix-vmaf/NOTICE](third_party/netflix-vmaf/NOTICE).
+
+- QCS. S. Sanz-Rodríguez and J. Frydensbjerg, "[Quality Consistency Score (QCS): A Survival-Based Reliability Descriptor for Video Quality Assessment](https://ieeexplore.ieee.org/document/11629873/)," *IEEE ICIP*, 2026.
 - PU21. R. K. Mantiuk and M. Azimi, “PU21: A Novel Perceptually Uniform Encoding for Adapting Existing Quality Metrics for HDR,” Picture Coding Symposium, 2021. [DOI 10.1109/PCS50896.2021.9477471](https://doi.org/10.1109/PCS50896.2021.9477471). Reference implementation: [gfxdisp/pu21](https://github.com/gfxdisp/pu21). Notice: [licenses/PU21_BSD.txt](licenses/PU21_BSD.txt).
 - HDR VMAF. Netflix, “VMAF v1 models: HDR models,” [resource/doc/models_v1.md](https://github.com/Netflix/vmaf/blob/master/resource/doc/models_v1.md#hdr-models). A. Mavlankar, Z. Li, L. Krasula, and C. Bampis, “All of Netflix’s HDR video streaming is now dynamically optimized,” Netflix Technology Blog, 2023. [Blog](https://netflixtechblog.com/all-of-netflixs-hdr-video-streaming-is-now-dynamically-optimized-e9e0cb15f2ba).
 - HDR metric benchmark. P. Hanhart, M. V. Bernardo, M. Pereira, A. M. G. Pinheiro, and T. Ebrahimi, “Benchmarking of objective quality metrics for HDR image quality assessment,” EURASIP Journal on Image and Video Processing, 2015. [DOI 10.1186/s13640-015-0091-4](https://doi.org/10.1186/s13640-015-0091-4).
