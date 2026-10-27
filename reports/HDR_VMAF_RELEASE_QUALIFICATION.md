@@ -4,7 +4,7 @@ Recommendation for merging `feature/hdr-vmaf-remote-reconcile` into GitHub `main
 
 This addendum qualifies the branch after CPU review of `ce21c7b14fdac00e5f0158b4aa1860b709598175`. The historical measurements in [HDR_VMAF_INTEGRATION.md](HDR_VMAF_INTEGRATION.md) stay as recorded. Do not publish `feature/hdr-vmaf-public-integration` from that earlier report.
 
-The qualification fixes sit on top of the reviewed commit. Their commit is the child of `ce21c7b14fdac00e5f0158b4aa1860b709598175` on `feature/hdr-vmaf-remote-reconcile`. No remote was updated.
+The qualification fixes are `c48061009ab33b2c1840d65468ddd02ddbd770c8` on `feature/hdr-vmaf-remote-reconcile`. That commit's parent is the reviewed commit `ce21c7b14fdac00e5f0158b4aa1860b709598175`. No remote was updated.
 
 ## 1. Workspace
 
