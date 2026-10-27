@@ -170,6 +170,14 @@ struct Options {
   double qcs_xpsnr_lo = 30.0, qcs_xpsnr_hi = 50.0;
   double qcs_ssim_lo = 0.8, qcs_ssim_hi = 1.0;
   double qcs_msssim_lo = 0.8, qcs_msssim_hi = 1.0;
+  // One range for every VMAF model. HDR scores above 100 stay unclipped.
+  double qcs_vmaf_lo = 70.0, qcs_vmaf_hi = 100.0;
+  // PU21-PSNR uses peak 256, the PU code of about 100 cd/m2, so its dB
+  // band matches PSNR rather than VMAF. PU21-SSIM and PU21-MS-SSIM are
+  // similarities on that same peak, so they use the SSIM band.
+  double qcs_pu21_psnr_lo = 30.0, qcs_pu21_psnr_hi = 50.0;
+  double qcs_pu21_ssim_lo = 0.8, qcs_pu21_ssim_hi = 1.0;
+  double qcs_pu21_msssim_lo = 0.8, qcs_pu21_msssim_hi = 1.0;
   XpsnrBackend xpsnr_backend = XpsnrBackend::Cpu;
   bool fps_set = false;
   int fps_num = 0;

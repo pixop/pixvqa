@@ -754,6 +754,40 @@ int main() {
     check("qcs_nan_mixed", {40.0, nan}, true, 50.0);
   }
 
+  // VMAF default band [70, 100]. A score above 100 is kept and contributes
+  // 100% at this upper bound. The same closed form, not a second formula.
+  {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    auto check = [&](const char* name, std::initializer_list<double> qs, bool want, double exp) {
+      QcsAccum acc{70.0, 100.0, 0.0, 0};
+      for (double q : qs) acc.add(q);
+      if (!want) {
+        if (acc.available()) {
+          std::fprintf(stderr, "FAIL %s: expected unavailable\n", name);
+          ++g_fail;
+        } else {
+          std::printf("OK   %s: unavailable\n", name);
+        }
+        return;
+      }
+      expect_near(name, acc.percent(), exp, 1e-12);
+    };
+    check("qcs_vmaf_60", {60.0}, true, 0.0);
+    check("qcs_vmaf_70", {70.0}, true, 0.0);
+    check("qcs_vmaf_85", {85.0}, true, 50.0);
+    check("qcs_vmaf_100", {100.0}, true, 100.0);
+    check("qcs_vmaf_105", {105.0}, true, 100.0);
+    check("qcs_vmaf_110", {110.0}, true, 100.0);
+    check("qcs_vmaf_above_posinf", {110.0, inf}, true, 100.0);
+    check("qcs_vmaf_mixed_above", {60.0, 85.0, 110.0}, true, 50.0);
+    check("qcs_vmaf_nan_above", {110.0, nan}, true, 100.0);
+    // Upper bound past the score: 110 is not clipped to 100 before the formula.
+    QcsAccum wide{70.0, 120.0, 0.0, 0};
+    wide.add(110.0);
+    expect_near("qcs_vmaf_110_on_70_120", wide.percent(), 80.0, 1e-12);
+  }
+
   if (g_fail) {
     std::fprintf(stderr, "%d selftests failed\n", g_fail);
     return 1;

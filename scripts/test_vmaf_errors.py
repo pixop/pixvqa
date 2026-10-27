@@ -101,16 +101,17 @@ def main() -> int:
             ["--metrics", "vmaf", "--model", str(MODEL),  "--tf", "stdb67", *base],
             "rejects explicit HDR",
         )
+        # QCS accepts vmaf. This geometry is too small for the model, so the
+        # failure is the feature-extractor size check, after QCS is allowed.
         expect_fail(
-            "qcs-vmaf-range",
-            ["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100", *base],
-            "not supported",
-        )
-        expect_fail(
-            "qcs-vmaf-only",
+            "qcs-vmaf-only-too-small",
             ["--metrics", "vmaf", "--model", str(MODEL),  "--qcs", *base],
-            "not a QCS metric",
+            "needs at least",
         )
+        p = run(["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100", *base])
+        if p.returncode != 0 or "PSNR-QCS" not in p.stdout:
+            raise SystemExit(f"qcs-vmaf-range: unexpected fail\n{p.stderr}{p.stdout}")
+        print("OK   qcs-vmaf-range")
         # Valid pre-existing QCS with a supported metric must still succeed
         # (geometry here is fine for PSNR; ignore VMAF).
         p = run(["--metrics", "psnr", "--qcs", *base])

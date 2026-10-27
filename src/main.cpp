@@ -205,21 +205,28 @@ void usage(const char* argv0) {
       "   remains above selected quality thresholds over time, using the normalized\n"
       "   area under the survival curve of frame-level quality scores.\n"
       "   It is not a ninth quality metric. It is an optional descriptor of the\n"
-      "   selected base scores.\n"
-      "   --qcs               Print one QCS value for each supported base metric.\n"
-      "   --qcs-range M=A:B   Repeatable. M is psnr, xpsnr, ssim, or msssim.\n"
-      "                       Requires --qcs and A < B.\n"
-      "   Defaults: psnr and xpsnr [30,50]; ssim and msssim [0.8,1.0].\n"
+      "   selected base scores. Every metric in --metrics has a QCS value,\n"
+      "   whether that metric runs on the CPU or the GPU.\n"
+      "   --qcs               Print one QCS value for each selected metric.\n"
+      "   --qcs-range M=A:B   Repeatable. M is a --metrics name: psnr, xpsnr,\n"
+      "                       ssim, msssim, vmaf, pu21-psnr, pu21-ssim, or\n"
+      "                       pu21-msssim. Requires --qcs and A < B.\n"
+      "   Defaults: psnr and xpsnr [30,50]; ssim and msssim [0.8,1.0];\n"
+      "   vmaf [70,100] for every SDR and HDR model; pu21-psnr [30,50];\n"
+      "   pu21-ssim and pu21-msssim [0.8,1.0].\n"
       "   Each frame is one sample. Timestamps are not read, so this matches\n"
       "   viewing time only when every frame has the same duration. Frame order\n"
       "   does not change QCS.\n"
       "   A score at or below the lower limit contributes 0%. A score at or\n"
       "   above the upper limit contributes 100%. +inf contributes 100%.\n"
       "   -inf contributes 0%. NaN is omitted. If no valid sample remains,\n"
-      "   the value is unavailable.\n"
-      "   vmaf and the PU21 metrics are not QCS inputs. Their scores are still\n"
-      "   printed. Identical PSNR is +inf internally and is printed 999.99.\n"
-      "   Identical XPSNR is printed inf. Those frames still count in QCS.\n"
+      "   the value is unavailable. The frame score is not clipped or\n"
+      "   rescaled before that contribution. A VMAF score above 100, which\n"
+      "   some models allow up to their own clip of 110, contributes 100%\n"
+      "   when the upper bound is 100.\n"
+      "   Identical PSNR is +inf internally and is printed 999.99.\n"
+      "   Identical XPSNR is printed inf. Identical PU21-PSNR is printed 999.99.\n"
+      "   Those frames still count in QCS.\n"
       "\n"
       "6. Frame rate and frame limits\n"
       "   --fps N or N/D      Required for xpsnr. Positive integer or rational.\n"
@@ -254,7 +261,11 @@ void usage(const char* argv0) {
       "       -t encoded.hevc -s 3840x2160 -f 420p:10\n"
       "   pixvqa --metrics psnr --qcs --qcs-range psnr=40:55 \\\n"
       "       -r reference.yuv -s 176x176 -f 420p:10 \\\n"
-      "       -t reconstructed.yuv -s 176x176 -f 420p:10\n",
+      "       -t reconstructed.yuv -s 176x176 -f 420p:10\n"
+      "   pixvqa --metrics vmaf --qcs --qcs-range vmaf=60:90 \\\n"
+      "       --model model/vmaf_v1.0.16_3d0h.json \\\n"
+      "       -r reference.yuv -s 320x240 -f 420p:10 \\\n"
+      "       -t reconstructed.yuv -s 320x240 -f 420p:10\n",
       stdout);
 }
 
@@ -441,10 +452,17 @@ bool assign_qcs_range(Options& opt, const std::string& spec) {
     slot_lo = &opt.qcs_msssim_lo;
     slot_hi = &opt.qcs_msssim_hi;
   } else if (metric == "vmaf") {
-    std::fprintf(stderr,
-                 "pixvqa: --qcs-range vmaf is not supported. "
-                 "QCS accepts psnr, xpsnr, ssim, and msssim\n");
-    return false;
+    slot_lo = &opt.qcs_vmaf_lo;
+    slot_hi = &opt.qcs_vmaf_hi;
+  } else if (metric == "pu21-psnr") {
+    slot_lo = &opt.qcs_pu21_psnr_lo;
+    slot_hi = &opt.qcs_pu21_psnr_hi;
+  } else if (metric == "pu21-ssim") {
+    slot_lo = &opt.qcs_pu21_ssim_lo;
+    slot_hi = &opt.qcs_pu21_ssim_hi;
+  } else if (metric == "pu21-msssim") {
+    slot_lo = &opt.qcs_pu21_msssim_lo;
+    slot_hi = &opt.qcs_pu21_msssim_hi;
   } else {
     std::fprintf(stderr, "pixvqa: unknown --qcs-range metric %s\n", metric.c_str());
     return false;
@@ -1660,16 +1678,6 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "pixvqa: --qcs-range requires --qcs\n");
     return 2;
   }
-  if (opt.enable_qcs) {
-    const bool qcs_metric = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim ||
-                            opt.enable_xpsnr;
-    if (!qcs_metric) {
-      std::fprintf(stderr,
-                   "pixvqa: --qcs requires psnr, xpsnr, ssim, or msssim in --metrics. "
-                   "vmaf is not a QCS metric. The PU21 metrics are not QCS metrics\n");
-      return 2;
-    }
-  }
   if (!opt.enable_psnr && !opt.enable_ssim && !opt.enable_msssim && !opt.enable_xpsnr &&
       !opt.enable_vmaf && !pu21_selected(opt)) {
     std::fprintf(stderr,
@@ -1872,6 +1880,10 @@ int main(int argc, char** argv) {
     QcsAccum qcs_ssim{opt.qcs_ssim_lo, opt.qcs_ssim_hi, 0, 0};
     QcsAccum qcs_msssim{opt.qcs_msssim_lo, opt.qcs_msssim_hi, 0, 0};
     QcsAccum qcs_xpsnr{opt.qcs_xpsnr_lo, opt.qcs_xpsnr_hi, 0, 0};
+    QcsAccum qcs_vmaf{opt.qcs_vmaf_lo, opt.qcs_vmaf_hi, 0, 0};
+    QcsAccum qcs_pu21_psnr{opt.qcs_pu21_psnr_lo, opt.qcs_pu21_psnr_hi, 0, 0};
+    QcsAccum qcs_pu21_ssim{opt.qcs_pu21_ssim_lo, opt.qcs_pu21_ssim_hi, 0, 0};
+    QcsAccum qcs_pu21_msssim{opt.qcs_pu21_msssim_lo, opt.qcs_pu21_msssim_hi, 0, 0};
     const char* qcs_trace = pix_getenv("QCS_TRACE");
     const bool trace_qcs = qcs_trace && qcs_trace[0] == '1';
     print_execution_summary(opt);
@@ -2064,6 +2076,18 @@ int main(int argc, char** argv) {
           qcs_xpsnr.add(xframe.avg);
           if (trace_qcs) std::fprintf(stderr, "qcs_sample xpsnr %.17g\n", xframe.avg);
         }
+        if (opt.enable_pu21_psnr) {
+          qcs_pu21_psnr.add(pu21.psnr);
+          if (trace_qcs) std::fprintf(stderr, "qcs_sample pu21-psnr %.17g\n", pu21.psnr);
+        }
+        if (opt.enable_pu21_ssim) {
+          qcs_pu21_ssim.add(pu21.ssim);
+          if (trace_qcs) std::fprintf(stderr, "qcs_sample pu21-ssim %.17g\n", pu21.ssim);
+        }
+        if (opt.enable_pu21_msssim) {
+          qcs_pu21_msssim.add(pu21.msssim);
+          if (trace_qcs) std::fprintf(stderr, "qcs_sample pu21-msssim %.17g\n", pu21.msssim);
+        }
       }
       if (opt.verbosity >= 1) {
 #ifdef PIXVQA_HAS_VMAF
@@ -2100,6 +2124,14 @@ int main(int argc, char** argv) {
 #ifdef PIXVQA_HAS_VMAF
     if (opt.enable_vmaf) {
       vmaf.finish();
+      if (opt.enable_qcs) {
+        const auto& vframes = vmaf.frames();
+        for (int i = 0; i < nframes; ++i) {
+          const double score = vframes[static_cast<size_t>(i)].score;
+          qcs_vmaf.add(score);
+          if (trace_qcs) std::fprintf(stderr, "qcs_sample vmaf %.17g\n", score);
+        }
+      }
       if (opt.verbosity >= 1) {
         const auto& vframes = vmaf.frames();
         for (int i = 0; i < nframes; ++i) {
@@ -2185,6 +2217,10 @@ int main(int argc, char** argv) {
       if (opt.enable_ssim) print_qcs("SSIM-QCS", qcs_ssim);
       if (opt.enable_msssim) print_qcs("MS-SSIM-QCS", qcs_msssim);
       if (opt.enable_xpsnr) print_qcs("XPSNR-QCS", qcs_xpsnr);
+      if (opt.enable_vmaf) print_qcs("VMAF-QCS", qcs_vmaf);
+      if (opt.enable_pu21_psnr) print_qcs("PU21-PSNR-QCS", qcs_pu21_psnr);
+      if (opt.enable_pu21_ssim) print_qcs("PU21-SSIM-QCS", qcs_pu21_ssim);
+      if (opt.enable_pu21_msssim) print_qcs("PU21-MS-SSIM-QCS", qcs_pu21_msssim);
     }
     std::printf("\nTotal frames:%d  fps:%.2f\n\n", nframes, nframes / std::max(sec, 1e-9));
     if (prof) {

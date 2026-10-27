@@ -33,7 +33,28 @@ Quality Consistency Score (QCS) is a metric-agnostic descriptor of temporal qual
 
 QCS characterizes the distribution of frame-level quality scores over time, not their temporal ordering. Different temporal arrangements of the same quality scores therefore produce the same QCS.
 
-Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. QCS supports the base metrics `psnr`, `xpsnr`, `ssim`, and `msssim` (selected with `--metrics`; `--qcs` enables their QCS reporting). It does not accept `vmaf` or the PU21 metrics. Defaults are `[30,50]` for PSNR and XPSNR, and `[0.8,1.0]` for SSIM and MS-SSIM. `--qcs-range psnr=40:55` sets one range. The name is the base metric, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99` and identical XPSNR is printed `inf`. Both still count in QCS.
+Each frame is one sample. That matches viewing time when every frame has the same duration. QCS does not read timestamps. A score at or below the lower limit contributes 0%. A score at or above the upper limit contributes 100%, and so does +inf. -inf contributes 0%. NaN is omitted. `--qcs` prints one QCS value for every metric named in `--metrics`, on CPU or GPU. The frame score is the value that metric already produced. QCS does not clip or rescale it first. HDR VMAF, and the SDR models whose clip is 110, can score above 100. With the default upper bound of 100 those scores contribute 100%. Raising the upper bound, for example `--qcs-range vmaf=70:120`, keeps the difference.
+
+Default ranges:
+
+| Metric | Default | Why this band |
+|---|---|---|
+| `psnr`, `xpsnr` | `[30, 50]` | Decibel scores. Unchanged. |
+| `ssim`, `msssim` | `[0.8, 1.0]` | Similarity scores. Unchanged. |
+| `vmaf` | `[70, 100]` | The QCS paper's VMAF interval. One default for every SDR and HDR model. |
+| `pu21-psnr` | `[30, 50]` | PSNR on PU21 codes with peak 256, about 100 cd/m². That is an 8-bit-style decibel scale, not the VMAF scale. |
+| `pu21-ssim`, `pu21-msssim` | `[0.8, 1.0]` | SSIM and MS-SSIM on PU21 luminance with the same peak. The score is still a similarity in about `[0, 1]`. |
+
+`--qcs-range psnr=40:55` sets one range. The name is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
+
+```bash
+pixvqa --metrics psnr,ssim,vmaf,pu21-psnr --qcs \
+  --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json \
+  --qcs-range vmaf=60:90 --qcs-range pu21-psnr=30:50 \
+  --hdr-transfer pq --hdr-primaries bt2020 --hdr-matrix bt2020nc --hdr-range limited \
+  -r reference10.yuv -s 1920x1080 -f 420p:10 \
+  -t distorted10.yuv -s 1920x1080 -f 420p:10
+```
 
 ```bash
 pixvqa --metrics psnr --qcs --qcs-range psnr=30:50 \
@@ -64,7 +85,7 @@ pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
 VMAF has no default model. Picture size does not choose a model. An SDR model is refused when the effective transfer is PQ or HLG.
 
 ```bash
-pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
+pixvqa --metrics vmaf --qcs --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
@@ -89,7 +110,7 @@ pixvqa --metrics psnr --input raw \
 PQ, then HLG. PU21 uses the transfer. A stored-sample metric such as `psnr` does not.
 
 ```bash
-pixvqa --metrics pu21-psnr,pu21-ssim --hdr-transfer pq \
+pixvqa --metrics pu21-psnr,pu21-ssim --qcs --hdr-transfer pq \
   -r reference10.yuv -s 1920x1080 -f 420p:10 \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
@@ -184,8 +205,8 @@ For independent clean-install testing of both methods, see [Installation Validat
 | `--model` | VMAF model JSON. No default |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
-| `--qcs` | Enable QCS for selected supported base metrics (`psnr`, `xpsnr`, `ssim`, `msssim`) |
-| `--qcs-range` | `metric=lower:upper`, with lower < upper |
+| `--qcs` | Enable QCS for every selected metric |
+| `--qcs-range` | `metric=lower:upper`, with lower < upper. Defaults are listed under QCS |
 
 ## Formats and limitations
 

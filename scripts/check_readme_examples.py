@@ -81,9 +81,10 @@ def main() -> int:
         write_yuv(td / "distorted10.yuv", 1920, 1080, 10, 2, 40)
         model = ROOT / "model"
         if model.is_dir():
-            (td / "model").mkdir()
-            for path in model.glob("*.json"):
-                (td / "model" / path.name).write_bytes(path.read_bytes())
+            for path in model.rglob("*.json"):
+                dest = td / "model" / path.relative_to(model)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(path.read_bytes())
         if ff:
             encode(ff, td / "reference.yuv", td / "reference.mp4", "yuv420p", "1920x1080", 2,
                    ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "18"])
