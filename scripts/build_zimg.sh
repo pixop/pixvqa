@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Build pinned zimg release-3.0.6 (commit f819b14) into deps/zimg-3.0.6.
 # HDR VMAF picture conversion links this library. CUDA is not involved.
-# GNU make, gcc, g++, nasm, pkg-config, git, and perl must be on PATH.
-# If autoconf/automake/libtool/m4 are absent, this script downloads the
-# Ubuntu 24.04 packages named below into deps/src (gitignored) and uses them.
+# GNU make, gcc, g++, nasm, pkg-config, git, perl, autoconf, automake,
+# libtoolize, and m4 must be on PATH. On Ubuntu, install those from the
+# distribution (the guided installer does this). Ubuntu 24.04 binary
+# packages are not extracted on Ubuntu 22.04. They are used only when this
+# script is already running on Ubuntu 24.04 and the tools are absent; those
+# package SHA-256 values stay pinned.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,11 +33,35 @@ if ! command -v make >/dev/null 2>&1; then
   exit 1
 fi
 
+autotools_ready() {
+  command -v autoconf >/dev/null 2>&1 && command -v automake >/dev/null 2>&1 &&
+    command -v libtoolize >/dev/null 2>&1 && command -v m4 >/dev/null 2>&1
+}
+
+ubuntu_version_id() {
+  [[ -r /etc/os-release ]] || return 0
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  [[ "${ID:-}" == ubuntu ]] || return 0
+  printf '%s\n' "${VERSION_ID:-}"
+}
+
 ensure_autotools() {
-  if command -v autoconf >/dev/null 2>&1 && command -v automake >/dev/null 2>&1 &&
-     command -v libtoolize >/dev/null 2>&1 && command -v m4 >/dev/null 2>&1; then
+  if autotools_ready; then
+    echo "build_zimg: using autotools from PATH"
     return 0
   fi
+  local version
+  version="$(ubuntu_version_id)"
+  if [[ "$version" != "24.04" ]]; then
+    echo "build_zimg: autoconf, automake, libtoolize, and m4 must come from this system." >&2
+    echo "build_zimg: on Ubuntu install them with: sudo apt-get install -y perl autoconf automake libtool m4" >&2
+    if [[ "$version" == "22.04" ]]; then
+      echo "build_zimg: refusing Ubuntu 24.04 binary autotools on Ubuntu 22.04" >&2
+    fi
+    exit 1
+  fi
+  echo "build_zimg: Ubuntu 24.04 has no autotools on PATH; using the pinned Ubuntu 24.04 packages"
   mkdir -p "$DEBS" "$HOST"
   local base="http://archive.ubuntu.com/ubuntu/pool/main"
   declare -A url=(

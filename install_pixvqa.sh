@@ -100,9 +100,12 @@ if [[ -r /etc/os-release ]]; then
 fi
 require sudo
 sudo apt-get update
-sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar
-for tool in g++ python3 git meson ninja nasm pkg-config make curl tar; do require "$tool"; done
-[[ -x /usr/bin/g++ ]] || die 'Expected /usr/bin/g++ for GCC_ENV=/usr.'
+# perl is required by autoconf. autoconf, automake, libtool, and m4 are the
+# distribution packages for the zimg bootstrap. Do not fetch another Ubuntu
+# release's binary packages.
+sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar perl autoconf automake libtool m4
+for tool in g++ python3 git meson ninja nasm pkg-config make curl tar perl autoconf automake libtoolize m4; do require "$tool"; done
+[[ -x /usr/bin/g++ ]] || die 'Expected /usr/bin/g++ for GCC_ENV=/usr and for the final NVDEC link.'
 mkdir -p "$DEPS_SRC"
 
 clone_pinned() {

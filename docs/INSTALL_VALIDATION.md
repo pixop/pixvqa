@@ -15,7 +15,7 @@ An alternative clean-room CPU-only test can use Ubuntu containers/VMs (no GPU); 
 ## Before either run
 
 1. Review the snapshot for approved publication. Ensure `tests/fixtures/vvc/bbb_360p.vvc` is **not** included because redistribution permission is unverified. Also exclude root-level duplicate `libvmaf_flags.sh`, installation logs and generated files.
-2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/libvmaf_flags.sh` and `scripts/install.sh`.
+2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/build_zimg.sh`, `scripts/libvmaf_flags.sh` and `scripts/install.sh`.
 3. Verify `git status --short` in the snapshot and record file checksums/commit ID. A clean installation tests the exact same snapshot under AUTO and MANUAL.
 
 ## AUTO instance
@@ -29,9 +29,11 @@ bash install_pixvqa.sh 2>&1 | tee auto_install.log
 
 For the full NVIDIA path answer `y` to dav1d and `y` to NVIDIA. The installer is interactive; CLI flags like `--with-dav1d` are **not** supported. Assert that the installed launcher works from a **new shell**:
 
+The installer default `PREFIX` is the checkout directory unless `PREFIX` is set before the script. After a default run the launcher is `./bin/pixvqa-with-libs` in that checkout. The apt set includes `perl`, `autoconf`, `automake`, `libtool`, and `m4` from the same Ubuntu release. The final NVDEC link requires `/usr/bin/g++`.
+
 ```bash
-"$HOME/pixvqa/bin/pixvqa-with-libs" --version
-ldd "$HOME/pixvqa/bin/pixvqa" | grep 'not found' && exit 1 || true
+./bin/pixvqa-with-libs --version
+ldd ./bin/pixvqa | grep 'not found' && exit 1 || true
 python3 scripts/run_qa.py --profile smoke
 ```
 

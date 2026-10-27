@@ -104,24 +104,30 @@ pixvqa_zimg_lib_flag() {
   done
 }
 
+pixvqa_refuse_libvmaf() {
+  echo "libvmaf_flags: $1" >&2
+  PIXVQA_HAS_VMAF=0
+  PIXVQA_VMAF_CFLAGS=""
+  PIXVQA_VMAF_LIBS=""
+}
+
 pixvqa_add_libvmaf_stamp() {
   local prefix="$1"
   local stamp="$prefix/pixvqa-libvmaf-stamp.txt"
-  [[ -f "$stamp" ]] || return 0
+  if [[ ! -f "$stamp" ]]; then
+    pixvqa_refuse_libvmaf "$prefix has no pixvqa-libvmaf-stamp.txt; refusing an unverified prefix"
+    return 0
+  fi
   local commit zimg
   commit="$(awk -F= '$1=="libvmaf_commit"{print $2}' "$stamp")"
   zimg="$(awk -F= '$1=="zimg_version"{print $2}' "$stamp")"
-  if [[ -n "$commit" && "$commit" != "74f930d17de8c58e7c2ce55e2b897b0030ebd8ef" ]]; then
-    echo "libvmaf_flags: stamp commit $commit is not the HDR pin; refusing" >&2
-    PIXVQA_HAS_VMAF=0
-    PIXVQA_VMAF_CFLAGS=""
-    PIXVQA_VMAF_LIBS=""
+  if [[ "$commit" != "74f930d17de8c58e7c2ce55e2b897b0030ebd8ef" ]]; then
+    pixvqa_refuse_libvmaf "stamp commit '${commit:-missing}' is not the HDR pin; refusing"
     return 0
   fi
-  if [[ -n "$commit" ]]; then
-    PIXVQA_VMAF_CFLAGS+=" -DPIXVQA_LIBVMAF_COMMIT=${commit}"
+  if [[ "$zimg" != "3.0.6" ]]; then
+    pixvqa_refuse_libvmaf "stamp zimg version '${zimg:-missing}' is not 3.0.6; refusing"
+    return 0
   fi
-  if [[ -n "$zimg" ]]; then
-    PIXVQA_VMAF_CFLAGS+=" -DPIXVQA_ZIMG_VERSION=${zimg}"
-  fi
+  PIXVQA_VMAF_CFLAGS+=" -DPIXVQA_LIBVMAF_COMMIT=${commit} -DPIXVQA_ZIMG_VERSION=${zimg}"
 }

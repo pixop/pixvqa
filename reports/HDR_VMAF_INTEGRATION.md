@@ -1,8 +1,8 @@
 # Public HDR VMAF and CPU fallback — integration
 
-Recommendation: **GO** to merge `feature/hdr-vmaf-public-integration` into public `main`.
+Recommendation: **superseded**. Do not publish `feature/hdr-vmaf-public-integration` as the release branch. The current release candidate is `feature/hdr-vmaf-remote-reconcile`. See [HDR_VMAF_RELEASE_QUALIFICATION.md](HDR_VMAF_RELEASE_QUALIFICATION.md).
 
-This branch was not pushed and was not merged into `main`.
+The sections below record the earlier HDR-plus-fallback integration. They were not rewritten.
 
 ## 1. Feature commits
 
@@ -89,7 +89,7 @@ The 320×240 device-fallback fixture still prints VMAF mean `0.000000` for both 
 
 `scripts/install.sh` copies the eight SDR JSON files and both HDR directories. A temp install contained 16 JSON files.
 
-`scripts/build_zimg.sh`, `scripts/build_libvmaf.sh`, and `scripts/build_libvmaf_3.2.1.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They no longer look for `$HOME/gcc-env`. `gcc`, `g++`, and GNU `make` must be on `PATH`. Ubuntu `build-essential` supplies `make`. If the autotools are missing, `build_zimg.sh` still downloads the pinned Ubuntu 24.04 debs and checks the SHA-256 values in the script. The libvmaf commit and the zimg 3.0.6 commit are unchanged.
+`scripts/build_zimg.sh`, `scripts/build_libvmaf.sh`, and `scripts/build_libvmaf_3.2.1.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They no longer look for `$HOME/gcc-env`. `gcc`, `g++`, and GNU `make` must be on `PATH`. Ubuntu `build-essential` supplies `make`. If the autotools are missing, `build_zimg.sh` still downloads the pinned Ubuntu 24.04 debs and checks the SHA-256 values in the script. The libvmaf commit and the zimg 3.0.6 commit are unchanged. That automatic deb fallback was later restricted so Ubuntu 22.04 cannot extract Ubuntu 24.04 binaries; the restriction is recorded in the release-qualification report.
 
 The CPU build on this machine used `GCC_ENV=/home/sergio/gcc-env` (conda-forge g++ 16.2.0). That path is not a default in the scripts.
 
@@ -107,7 +107,7 @@ The CPU build on this machine used `GCC_ENV=/home/sergio/gcc-env` (conda-forge g
 
 ## 8. Recommendation
 
-**GO** for public `main`.
+**Superseded.** Do not merge `feature/hdr-vmaf-public-integration` into GitHub `main` on this report alone. Remote `main` moved after this integration. The release candidate and its qualification result are in [HDR_VMAF_RELEASE_QUALIFICATION.md](HDR_VMAF_RELEASE_QUALIFICATION.md).
 
 The integrated tree keeps HDR colorimetry, the eight HDR models, the SDR models and their clips, libvmaf `74f930d`, zimg 3.0.6, CUDA metric behavior, and GPU decoding. VMAF's reported backend is CPU. The warning does not describe a CUDA HDR score.
 

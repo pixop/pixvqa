@@ -28,7 +28,7 @@ fi
 
 **Directory layout:** All project-specific dependencies and generated files use the detected checkout root: `deps/manual/` contains dav1d, FFmpeg, CUDA codec headers and GCC; `deps/libvmaf-74f930d/` contains the pinned libvmaf; `deps/zimg-3.0.6/` contains zimg 3.0.6; `build/` contains intermediate binaries; `bin/pixvqa` is the installed executable. These are relative to `$PIXVQA_SRC`, not fixed home-directory paths. `scripts/build_libvmaf_3.2.1.sh` can still build the previous tag into `deps/libvmaf-3.2.1`, and that prefix is not linked.
 
-`scripts/build_libvmaf.sh`, `scripts/build_libvmaf_3.2.1.sh`, and `scripts/build_zimg.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They do not search a user-specific compiler directory. `gcc`, `g++`, and GNU `make` must be on `PATH` for the zimg build. Ubuntu's `build-essential` package supplies `make`. If autoconf, automake, libtool, or m4 are missing, `scripts/build_zimg.sh` downloads the Ubuntu 24.04 packages named in that script and checks their SHA-256 values. The libvmaf and zimg commits stay pinned.
+`scripts/build_libvmaf.sh`, `scripts/build_libvmaf_3.2.1.sh`, and `scripts/build_zimg.sh` prepend `$GCC_ENV/bin` only when `GCC_ENV` is set. They do not search a user-specific compiler directory. `gcc`, `g++`, GNU `make`, `perl`, `autoconf`, `automake`, `libtoolize`, and `m4` must be on `PATH` for the zimg build. Ubuntu's `build-essential` package supplies `make` and `g++`. Install `perl`, `autoconf`, `automake`, `libtool`, and `m4` from the same Ubuntu release. `scripts/build_zimg.sh` does not extract Ubuntu 24.04 binary packages on Ubuntu 22.04. On Ubuntu 24.04 only, if those tools are absent, it may download the SHA-256-pinned Ubuntu 24.04 packages named in the script. The libvmaf and zimg commits stay pinned. `scripts/libvmaf_flags.sh` links a prefix only when `pixvqa-libvmaf-stamp.txt` records commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef` and zimg 3.0.6. The final NVDEC link uses `/usr/bin/g++`.
 
 If you reopen the terminal, navigate back to **your** checkout and repeat Section 0. Subsequent blocks rediscover dependency paths. The manual process does not delete or reuse the automatic install's private dependency directories.
 
@@ -40,10 +40,11 @@ If you reopen the terminal, navigate back to **your** checkout and repeat Sectio
 (
     set -Eeuo pipefail
     sudo apt-get update
-    sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar
-    for cmd in git g++ python3 meson ninja nasm pkg-config make; do
+    sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar perl autoconf automake libtool m4
+    for cmd in git g++ python3 meson ninja nasm pkg-config make perl autoconf automake libtoolize m4; do
         command -v "$cmd" >/dev/null || { echo "STOP: Missing $cmd" >&2; exit 1; }
     done
+    test -x /usr/bin/g++ || { echo 'STOP: /usr/bin/g++ is required for the final NVDEC link' >&2; exit 1; }
     echo 'PASS: Ubuntu build prerequisites'
 )
 ```
