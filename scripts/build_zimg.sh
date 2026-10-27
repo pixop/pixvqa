@@ -150,7 +150,9 @@ if [[ ! -d "$SRC/.git" ]]; then
   git init -q -b main "$SRC"
   git -C "$SRC" remote add origin https://github.com/sekrit-twc/zimg.git
 fi
-git -C "$SRC" fetch --depth 1 origin "$PIN_COMMIT"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/git_retry.sh"
+pixvqa_git_fetch "$SRC" fetch --depth 1 origin "$PIN_COMMIT"
 git -C "$SRC" checkout --detach --force FETCH_HEAD
 ACTUAL="$(git -C "$SRC" rev-parse HEAD)"
 echo "zimg source HEAD=$ACTUAL"

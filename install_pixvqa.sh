@@ -25,8 +25,9 @@ ask() {
 
 # Discard PixVQA-specific settings inherited from earlier builds. This script
 # runs in its own Bash process, so the caller's shell is not changed.
-# Keep PREFIX (user-selected installation location), CUDA_HOME (toolkit), and
-# PIXVQA_DEPS_ROOT (optional isolated third-party directory).
+# Keep CUDA_HOME (toolkit) and PIXVQA_DEPS_ROOT (optional isolated third-party
+# directory). PREFIX is resolved after the checkout is known: another PixVQA
+# checkout is never reused, and any other PREFIX remains a custom location.
 # Also retain general toolchain/library search paths used by other software.
 unset PIXVQA_SRC PIXVQA_BIN LIBVMAF_PREFIX FFMPEG_PREFIX
 unset DAV1D_PREFIX DAV1D_LIB GCC13 GCC_ENV CUDART_LIBDIR
@@ -40,8 +41,12 @@ for file in build.sh build_decode.sh build_cuda.sh scripts/build_libvmaf.sh scri
     [[ -f "$PIXVQA_SRC/$file" ]] || die "Expected source file missing: $PIXVQA_SRC/$file"
 done
 [[ "$PIXVQA_SRC" != "$HOME" ]] || die 'Refusing to treat the home directory as the PixVQA repository.'
-# Install into this checkout by default; callers may override PREFIX.
-export PREFIX="${PREFIX:-$PIXVQA_SRC}"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/install_prefix.sh"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/git_retry.sh"
+# Default to this checkout. A PREFIX inherited from another checkout is ignored.
+export PREFIX="$(pixvqa_select_prefix "$PIXVQA_SRC")"
 # shellcheck disable=SC1091
 source "$PIXVQA_SRC/scripts/deps_layout.sh"
 pixvqa_apply_deps_layout "$PIXVQA_SRC" || die 'Could not resolve the third-party dependency layout.'
@@ -53,6 +58,7 @@ fi
 
 printf 'Installer revision: 2026-10-23-r6-glibc-vmaf\n'
 printf 'PixVQA checkout: %s\n' "$PIXVQA_SRC"
+printf 'Install prefix: %s\n' "$PREFIX"
 if (( PIXVQA_DEPS_ISOLATED )); then
     printf 'Isolated third-party root: %s\n' "$PIXVQA_DEPS_ROOT"
 else
@@ -131,8 +137,12 @@ mkdir -p "$DEPS_SRC"
 
 clone_pinned() {
     local url="$1" ref="$2" dest="$3" expected="$4"
+    if [[ -e "$dest" ]] && { [[ ! -d "$dest/.git" ]] || ! git -C "$dest" rev-parse --verify HEAD >/dev/null 2>&1; }; then
+        printf 'Removing incomplete checkout %s\n' "$dest" >&2
+        rm -rf -- "$dest"
+    fi
     if [[ ! -e "$dest" ]]; then
-        git clone --depth 1 --branch "$ref" "$url" "$dest"
+        pixvqa_git_clone "$ref" "$url" "$dest" || die "Could not clone $url"
     fi
     [[ -d "$dest/.git" ]] || die "Existing $dest is not a Git checkout. Inspect it manually."
     local got
@@ -380,8 +390,8 @@ PREFIX="$PREFIX" PIXVQA_BIN="$PIXVQA_BIN" bash scripts/install.sh
 [[ -x "$PREFIX/bin/pixvqa" ]] || die 'Installed executable missing.'
 bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$PIXVQA_EXPECT_BUILD" "$PIXVQA_EXPECT_DECODE"
 
-info 'Running CPU smoke QA'
-python3 scripts/run_qa.py --profile smoke
+info 'Running smoke QA on the installed executable'
+pixvqa_run_installed_smoke "$PIXVQA_SRC" "$PREFIX"
 PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"

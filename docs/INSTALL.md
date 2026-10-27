@@ -395,7 +395,7 @@ python3 scripts/run_qa.py --profile full
 
 - **A block prints `STOP` or no final `PASS`:** Do not continue. Fix that exact stage; the surrounding subshell means your Ubuntu window stays open.
 - **FFmpeg `config.h` or `libavcodec.so` missing:** Section 3B did not succeed. Inspect `deps/manual/src/ffmpeg/ffbuild/config.log` or `config.log` where present; do not run `make install` before configure and compilation succeed.
-- **Git clone fails (HTTP/2/RPC):** Retry the clone after inspecting its destination. The FFmpeg block uses HTTP/1.1 and has an official mirror fallback; it will not delete a partial checkout automatically.
+- **Git clone fails (HTTP/2/RPC):** The guided installer retries dependency clones and falls back to HTTP/1.1. The FFmpeg clone also tries the official GitHub mirror. The manual FFmpeg block uses HTTP/1.1 and that mirror; it will not delete a partial checkout automatically. Inspect an incomplete destination before deleting it.
 - **libdav1d not found:** The blocks find `dav1d.pc` and put its directory on `PKG_CONFIG_PATH`; library dirs may be `lib/x86_64-linux-gnu` rather than `lib`.
 - **`libvmaf: disabled`:** Verify `deps/libvmaf-74f930d` and `scripts/libvmaf_flags.sh`. The helper refuses a prefix without `vmaf_picture_convert` or `-lzimg`, including a leftover `deps/libvmaf-3.2.1`. A system-wide libvmaf is not a substitute.
 - **CUDA `-lcudart` unresolved:** The GPU block searches `$CUDA_HOME/targets/x86_64-linux/lib`, `$CUDA_HOME/lib64` and `$CUDA_HOME/lib`, exporting both `LIBRARY_PATH` and `LD_LIBRARY_PATH`.

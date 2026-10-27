@@ -31,12 +31,12 @@ PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh 2>&1 | tee auto_install.log
 
 For the full NVIDIA path answer `y` to dav1d and `y` to NVIDIA. The installer is interactive; CLI flags like `--with-dav1d` are **not** supported. Assert that the installed launcher works from a **new shell**:
 
-The installer default `PREFIX` is the checkout directory unless `PREFIX` is set before the script. The installed program is `./bin/pixvqa`. It resolves private libraries from its RPATH. The apt set includes `perl`, `autoconf`, `automake`, `libtool`, and `m4` from the same Ubuntu release. The final NVDEC link requires `/usr/bin/g++`. Set `PIXVQA_KEEP_BUILD=1` before the installer to retain `build/`.
+The installer installs into the checkout that contains `install_pixvqa.sh`. A `PREFIX` inherited from another PixVQA checkout is ignored. A `PREFIX` that is not a PixVQA checkout is honored. The default installed program is `./bin/pixvqa`. Its smoke QA runs that executable with `LD_LIBRARY_PATH` unset, so private libraries must resolve through RPATH. The apt set includes `perl`, `autoconf`, `automake`, `libtool`, and `m4` from the same Ubuntu release. The final NVDEC link requires `/usr/bin/g++`. Set `PIXVQA_KEEP_BUILD=1` before the installer to retain `build/`.
 
 ```bash
 env -u LD_LIBRARY_PATH ./bin/pixvqa --version
 env -u LD_LIBRARY_PATH ldd ./bin/pixvqa | grep 'not found' && exit 1 || true
-python3 scripts/run_qa.py --profile smoke
+env -u LD_LIBRARY_PATH PIXVQA_QA_CPU="$PWD/bin/pixvqa" python3 scripts/run_qa.py --profile smoke
 ```
 
 Check the actual `ldd` output if the command is inconclusive. The full build must print `decode: software nvdec` and `libvmaf: enabled` during compilation. To validate VMAF numerically, run a VMAF case with an installed model, not simply `--help`.

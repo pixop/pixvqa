@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import sys
 import tempfile
@@ -111,10 +112,15 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with tempfile.TemporaryDirectory(prefix=f"pixvqa_qa_{args.profile}_") as tmp:
+        cpu_override = os.environ.get("PIXVQA_QA_CPU", "").strip()
+        cpu_binary = Path(cpu_override) if cpu_override else ROOT / "build" / "cpu" / "pixvqa"
+        if cpu_override and not cpu_binary.is_file():
+            print(f"PIXVQA_QA_CPU={cpu_binary} is not a file", file=sys.stderr)
+            return 2
         world = World(
             root=ROOT,
             tmp=Path(tmp),
-            cpu=ROOT / "build" / "cpu" / "pixvqa",
+            cpu=cpu_binary,
             swdec=ROOT / "build" / "swdec" / "pixvqa",
             full=ROOT / "build" / "full" / "pixvqa",
             ffmpeg=find_ffmpeg(),

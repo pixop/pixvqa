@@ -162,6 +162,8 @@ From the root of the cloned repository, run:
 bash install_pixvqa.sh
 ```
 
+The installer writes `bin/pixvqa` in that checkout. A `PREFIX` pointing at another PixVQA checkout is ignored. Set `PREFIX` to any other directory to choose a custom location.
+
 **Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
 
 ```bash

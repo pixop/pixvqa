@@ -68,4 +68,5 @@ after_build="$( [[ -e "$marker" ]] && stat -c '%d:%i:%Y' "$marker" || echo absen
 [[ "$before" == "$after" ]] || fail 'home dav1d prefix changed'
 [[ "$before_build" == "$after_build" ]] || fail 'checkout build/cpu/pixvqa changed'
 echo "OK   checkout build and home dav1d were not modified"
+bash scripts/test_install_prefix.sh
 echo "All install-layout checks passed"
