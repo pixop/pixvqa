@@ -188,66 +188,71 @@ def check_vmaf_and_pu21() -> None:
         sdr_default = run(
             ["--metrics", "vmaf", "--qcs", "--model", str(sdr), "--threads", "4"],
             ref, dist, "320x240", "420p:10", env=env, timeout=300)
-        samples = qcs_from_trace(sdr_default, "VMAF-QCS", "vmaf", 70, 100, "sdr_vmaf_default")
-        if qcs_map(sdr_default.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("70", "100"):
-            fail(f"sdr default range {qcs_map(sdr_default.stdout).get('VMAF-QCS')}")
-        printed = [float(v) for v in VMAF_LINE.findall(sdr_default.stdout)]
-        if samples:
-            scores_match_trace(printed, samples, "sdr_vmaf")
-        sdr_custom = run(
-            ["--metrics", "vmaf", "--qcs", "--qcs-range", "vmaf=60:90", "--model", str(sdr),
-             "--threads", "4"],
-            ref, dist, "320x240", "420p:10", env=env, timeout=300)
-        custom_samples = qcs_from_trace(sdr_custom, "VMAF-QCS", "vmaf", 60, 90, "sdr_vmaf_custom")
-        if qcs_map(sdr_custom.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("60", "90"):
-            fail(f"sdr custom range {qcs_map(sdr_custom.stdout).get('VMAF-QCS')}")
-        if samples and custom_samples and samples != custom_samples:
-            fail("custom VMAF range changed the frame scores")
-        plain = run(["--metrics", "vmaf", "--model", str(sdr), "--threads", "4"],
-                    ref, dist, "320x240", "420p:10", timeout=300)
-        def strip(text: str) -> str:
-            return "\n".join(ln for ln in text.splitlines()
-                             if "QCS" not in ln and not ln.startswith("Total frames:"))
-        if plain.returncode == 0 and sdr_default.returncode == 0 and strip(plain.stdout) != strip(sdr_default.stdout):
-            fail("enabling QCS changed VMAF text")
-        elif plain.returncode == 0:
-            print("OK   vmaf_text_unchanged")
-        # HDR model clips at 110. Identical frames should reach that ceiling.
-        # A range whose upper bound is 120 must keep a score above 100, so
-        # clipping the metric to 100 before QCS would produce a different value.
-        write_420p10(dist, 320, 240, [0, 0, 0, 0])
-        hdr_args = ["--metrics", "vmaf", "--qcs", "--model", str(hdr), "--threads", "4", *HDR]
-        hdr_default = run(hdr_args, ref, dist, "320x240", "420p:10", env=env, timeout=300)
-        hdr_samples = qcs_from_trace(hdr_default, "VMAF-QCS", "vmaf", 70, 100, "hdr_vmaf_default")
-        hdr_printed = [float(v) for v in VMAF_LINE.findall(hdr_default.stdout)]
-        if hdr_samples:
-            scores_match_trace(hdr_printed, hdr_samples, "hdr_vmaf")
-        if not hdr_printed or max(hdr_printed) <= 100.0:
-            fail(f"hdr vmaf did not report a score above 100: {hdr_printed}")
+        if sdr_default.returncode != 0 and "no libvmaf" in sdr_default.stderr:
+            print("SKIP vmaf qcs: this build has no libvmaf")
+            vmaf_built = False
         else:
-            print(f"OK   hdr_vmaf_above_100 max={max(hdr_printed):.6f}")
-        if qcs_map(hdr_default.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("70", "100"):
-            fail("hdr default range is not [70,100]")
-        hdr_wide = run(
-            ["--metrics", "vmaf", "--qcs", "--qcs-range", "vmaf=70:120", "--model", str(hdr),
-             "--threads", "4", *HDR],
-            ref, dist, "320x240", "420p:10", env=env, timeout=300)
-        wide_samples = qcs_from_trace(hdr_wide, "VMAF-QCS", "vmaf", 70, 120, "hdr_vmaf_above_kept")
-        if wide_samples and max(wide_samples) > 100.0:
-            clipped = [min(s, 100.0) for s in wide_samples]
-            if exact(clipped, 70, 120) == exact(wide_samples, 70, 120):
-                fail("score above 100 did not change QCS on [70,120]")
+            vmaf_built = True
+            samples = qcs_from_trace(sdr_default, "VMAF-QCS", "vmaf", 70, 100, "sdr_vmaf_default")
+            if qcs_map(sdr_default.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("70", "100"):
+                fail(f"sdr default range {qcs_map(sdr_default.stdout).get('VMAF-QCS')}")
+            printed = [float(v) for v in VMAF_LINE.findall(sdr_default.stdout)]
+            if samples:
+                scores_match_trace(printed, samples, "sdr_vmaf")
+            sdr_custom = run(
+                ["--metrics", "vmaf", "--qcs", "--qcs-range", "vmaf=60:90", "--model", str(sdr),
+                 "--threads", "4"],
+                ref, dist, "320x240", "420p:10", env=env, timeout=300)
+            custom_samples = qcs_from_trace(sdr_custom, "VMAF-QCS", "vmaf", 60, 90, "sdr_vmaf_custom")
+            if qcs_map(sdr_custom.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("60", "90"):
+                fail(f"sdr custom range {qcs_map(sdr_custom.stdout).get('VMAF-QCS')}")
+            if samples and custom_samples and samples != custom_samples:
+                fail("custom VMAF range changed the frame scores")
+            plain = run(["--metrics", "vmaf", "--model", str(sdr), "--threads", "4"],
+                        ref, dist, "320x240", "420p:10", timeout=300)
+            def strip(text: str) -> str:
+                return "\n".join(ln for ln in text.splitlines()
+                                 if "QCS" not in ln and not ln.startswith("Total frames:"))
+            if plain.returncode == 0 and sdr_default.returncode == 0 and strip(plain.stdout) != strip(sdr_default.stdout):
+                fail("enabling QCS changed VMAF text")
+            elif plain.returncode == 0:
+                print("OK   vmaf_text_unchanged")
+            # HDR model clips at 110. Identical frames should reach that ceiling.
+            # A range whose upper bound is 120 must keep a score above 100, so
+            # clipping the metric to 100 before QCS would produce a different value.
+            write_420p10(dist, 320, 240, [0, 0, 0, 0])
+            hdr_args = ["--metrics", "vmaf", "--qcs", "--model", str(hdr), "--threads", "4", *HDR]
+            hdr_default = run(hdr_args, ref, dist, "320x240", "420p:10", env=env, timeout=300)
+            hdr_samples = qcs_from_trace(hdr_default, "VMAF-QCS", "vmaf", 70, 100, "hdr_vmaf_default")
+            hdr_printed = [float(v) for v in VMAF_LINE.findall(hdr_default.stdout)]
+            if hdr_samples:
+                scores_match_trace(hdr_printed, hdr_samples, "hdr_vmaf")
+            if not hdr_printed or max(hdr_printed) <= 100.0:
+                fail(f"hdr vmaf did not report a score above 100: {hdr_printed}")
             else:
-                print("OK   hdr_score_not_clipped_before_qcs")
-        if CUDA.exists() and hdr_default.returncode == 0:
-            gpu = run(hdr_args + ["--metric-device", "gpu"], ref, dist, "320x240", "420p:10",
-                      bin_path=CUDA, env=env, timeout=300)
-            if gpu.returncode != 0 or "using CPU libvmaf" not in gpu.stderr:
-                fail(f"gpu vmaf qcs rc={gpu.returncode} {gpu.stderr[-300:]}")
-            elif qcs_map(gpu.stdout).get("VMAF-QCS") != qcs_map(hdr_default.stdout).get("VMAF-QCS"):
-                fail(f"gpu vmaf qcs {qcs_map(gpu.stdout)} cpu {qcs_map(hdr_default.stdout)}")
-            else:
-                print("OK   cuda_vmaf_qcs_matches_cpu")
+                print(f"OK   hdr_vmaf_above_100 max={max(hdr_printed):.6f}")
+            if qcs_map(hdr_default.stdout).get("VMAF-QCS", (None, "", ""))[1:] != ("70", "100"):
+                fail("hdr default range is not [70,100]")
+            hdr_wide = run(
+                ["--metrics", "vmaf", "--qcs", "--qcs-range", "vmaf=70:120", "--model", str(hdr),
+                 "--threads", "4", *HDR],
+                ref, dist, "320x240", "420p:10", env=env, timeout=300)
+            wide_samples = qcs_from_trace(hdr_wide, "VMAF-QCS", "vmaf", 70, 120, "hdr_vmaf_above_kept")
+            if wide_samples and max(wide_samples) > 100.0:
+                clipped = [min(s, 100.0) for s in wide_samples]
+                if exact(clipped, 70, 120) == exact(wide_samples, 70, 120):
+                    fail("score above 100 did not change QCS on [70,120]")
+                else:
+                    print("OK   hdr_score_not_clipped_before_qcs")
+            if CUDA.exists() and hdr_default.returncode == 0:
+                gpu = run(hdr_args + ["--metric-device", "gpu"], ref, dist, "320x240", "420p:10",
+                          bin_path=CUDA, env=env, timeout=300)
+                if gpu.returncode != 0 or "using CPU libvmaf" not in gpu.stderr:
+                    fail(f"gpu vmaf qcs rc={gpu.returncode} {gpu.stderr[-300:]}")
+                elif qcs_map(gpu.stdout).get("VMAF-QCS") != qcs_map(hdr_default.stdout).get("VMAF-QCS"):
+                    fail(f"gpu vmaf qcs {qcs_map(gpu.stdout)} cpu {qcs_map(hdr_default.stdout)}")
+                else:
+                    print("OK   cuda_vmaf_qcs_matches_cpu")
         # PU21 on a small frame. QCS uses the printed per-frame scores.
         write_420p10(ref, 32, 32, [0, 0, 0, 0])
         write_420p10(dist, 32, 32, [0, 8, 30, 2])
@@ -304,16 +309,23 @@ def check_vmaf_and_pu21() -> None:
         # Simultaneous metrics. Each QCS uses that metric's own default range.
         write_420p10(ref, 320, 240, [0, 0, 0, 0])
         write_420p10(dist, 320, 240, [0, 6, 24, 2])
-        mixed = run(
-            ["--metrics", "psnr,ssim,vmaf,pu21-psnr", "--qcs", "--model", str(hdr),
-             "--threads", "4", *HDR],
-            ref, dist, "320x240", "420p:10", env=env, timeout=300)
+        if vmaf_built:
+            mixed = run(
+                ["--metrics", "psnr,ssim,vmaf,pu21-psnr", "--qcs", "--model", str(hdr),
+                 "--threads", "4", *HDR],
+                ref, dist, "320x240", "420p:10", env=env, timeout=300)
+            qcs_from_trace(mixed, "VMAF-QCS", "vmaf", 70, 100, "mixed_vmaf")
+            expected = {"PSNR-QCS", "SSIM-QCS", "VMAF-QCS", "PU21-PSNR-QCS"}
+        else:
+            mixed = run(
+                ["--metrics", "psnr,ssim,pu21-psnr", "--qcs", *HDR],
+                ref, dist, "320x240", "420p:10", env=env, timeout=180)
+            expected = {"PSNR-QCS", "SSIM-QCS", "PU21-PSNR-QCS"}
         qcs_from_trace(mixed, "PSNR-QCS", "psnr", 30, 50, "mixed_psnr")
         qcs_from_trace(mixed, "SSIM-QCS", "ssim", 0.8, 1.0, "mixed_ssim")
-        qcs_from_trace(mixed, "VMAF-QCS", "vmaf", 70, 100, "mixed_vmaf")
         qcs_from_trace(mixed, "PU21-PSNR-QCS", "pu21-psnr", 30, 50, "mixed_pu21_psnr")
         mixed_map = qcs_map(mixed.stdout)
-        if set(mixed_map) != {"PSNR-QCS", "SSIM-QCS", "VMAF-QCS", "PU21-PSNR-QCS"}:
+        if set(mixed_map) != expected:
             fail(f"mixed qcs names {sorted(mixed_map)}")
         else:
             print("OK   mixed_metric_names")
