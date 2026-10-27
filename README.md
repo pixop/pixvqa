@@ -179,7 +179,10 @@ After installation, verify:
 
 ```bash
 ./bin/pixvqa --version
+python3 scripts/run_qa.py --profile smoke
 ```
+
+Smoke QA uses `bin/pixvqa` when that file is present, including after the installer removes `build/`. Set `PIXVQA_QA_CPU` or pass `--cpu` to score a different executable.
 
 PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
 

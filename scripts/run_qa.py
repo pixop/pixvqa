@@ -91,10 +91,40 @@ def coverage(results: list) -> dict:
     return executed
 
 
+def select_qa_executable(root: Path, override: str = "") -> Path:
+    """Choose the executable a QA profile scores.
+
+    Priority: explicit override, then the installed bin/pixvqa, then the
+    development build/cpu/pixvqa. An installed tree has no build/ directory.
+    """
+    chosen = override.strip()
+    if chosen:
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(f"QA executable override is not a file: {path}")
+        return path
+    installed = root / "bin" / "pixvqa"
+    if installed.is_file():
+        return installed
+    developed = root / "build" / "cpu" / "pixvqa"
+    if developed.is_file():
+        return developed
+    raise FileNotFoundError(
+        "No PixVQA executable found. Expected bin/pixvqa after installation "
+        "or build/cpu/pixvqa during development. Pass --cpu or set PIXVQA_QA_CPU."
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="PixVQA QA profiles")
     parser.add_argument("--profile", required=True, choices=("smoke", "full", "hardware"))
     parser.add_argument("--output-dir", type=Path, default=ROOT / "reports" / "qa")
+    parser.add_argument(
+        "--cpu",
+        type=Path,
+        help="Executable to test. Overrides PIXVQA_QA_CPU. "
+        "Default is bin/pixvqa, then build/cpu/pixvqa.",
+    )
     args = parser.parse_args()
 
     inventory = build_inventory(ROOT)
@@ -112,11 +142,13 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with tempfile.TemporaryDirectory(prefix=f"pixvqa_qa_{args.profile}_") as tmp:
-        cpu_override = os.environ.get("PIXVQA_QA_CPU", "").strip()
-        cpu_binary = Path(cpu_override) if cpu_override else ROOT / "build" / "cpu" / "pixvqa"
-        if cpu_override and not cpu_binary.is_file():
-            print(f"PIXVQA_QA_CPU={cpu_binary} is not a file", file=sys.stderr)
+        override = str(args.cpu) if args.cpu else os.environ.get("PIXVQA_QA_CPU", "")
+        try:
+            cpu_binary = select_qa_executable(ROOT, override)
+        except FileNotFoundError as exc:
+            print(exc, file=sys.stderr)
             return 2
+        print(f"QA executable: {cpu_binary}", flush=True)
         world = World(
             root=ROOT,
             tmp=Path(tmp),

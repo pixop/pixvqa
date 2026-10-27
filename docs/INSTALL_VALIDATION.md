@@ -36,7 +36,7 @@ The installer installs into the checkout that contains `install_pixvqa.sh`. A `P
 ```bash
 env -u LD_LIBRARY_PATH ./bin/pixvqa --version
 env -u LD_LIBRARY_PATH ldd ./bin/pixvqa | grep 'not found' && exit 1 || true
-env -u LD_LIBRARY_PATH PIXVQA_QA_CPU="$PWD/bin/pixvqa" python3 scripts/run_qa.py --profile smoke
+env -u LD_LIBRARY_PATH python3 scripts/run_qa.py --profile smoke
 ```
 
 Check the actual `ldd` output if the command is inconclusive. The full build must print `decode: software nvdec` and `libvmaf: enabled` during compilation. To validate VMAF numerically, run a VMAF case with an installed model, not simply `--help`.
