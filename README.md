@@ -233,10 +233,20 @@ Compressed video support depends on the installed FFmpeg build. Other codecs may
 
 ### CPU and GPU support
 
-- **CPU:** All quality metrics are supported.
-- **GPU:** GPU acceleration is available for PSNR, XPSNR, SSIM, and MS-SSIM on both 8-bit and 10-bit input.
-- **VMAF:** Always runs on CPU, including when GPU execution is requested.
-- **NVDEC:** Supports HEVC and AV1 decoding. Other codecs use software decoding.
+| Metric | CPU 8-bit | CPU 10-bit | CUDA 8-bit | CUDA 10-bit |
+|---|:---:|:---:|:---:|:---:|
+| PSNR | ✅ | ✅ | ✅ | ✅ |
+| XPSNR | ✅ | ✅ | ✅ | ✅ |
+| SSIM | ✅ | ✅ | ✅ | ✅ |
+| MS-SSIM | ✅ | ✅ | ✅ | ✅ |
+| VMAF | ✅ | ✅ | — | — |
+| PU21-PSNR | ✅ | ✅ | — | — |
+| PU21-SSIM | ✅ | ✅ | — | — |
+| PU21-MS-SSIM | ✅ | ✅ | — | — |
+
+HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested.
+
+NVDEC decodes HEVC and AV1. Other codecs use software decoding.
 
 **Limitations:**
 - HDR transfer characteristics (PQ/HLG) must be correctly specified; they are not inferred from bit depth or filename.
