@@ -230,6 +230,14 @@ def cases() -> list:
             proc, cmd = _run(world, "cpu", args)
             last = cmd
             got = _reject(proc, needle, cmd)
+            # Hosted CI builds without libvmaf. That refusal is compiled in
+            # ahead of the missing --model check, which only exists with libvmaf.
+            if (
+                got.status != "PASS"
+                and needle == "--model"
+                and "no libvmaf" in (proc.stderr + proc.stdout)
+            ):
+                got = _reject(proc, "no libvmaf", cmd)
             if got.status != "PASS":
                 failed.append(f"{needle}: {got.detail}")
         if failed:
