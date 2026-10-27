@@ -58,7 +58,7 @@ CONSTRAINTS = [
         "id": "vmaf-hdr",
         "file": "src/main.cpp",
         "needle": "vmaf rejects HDR transfer",
-        "rule": "VMAF is refused when the effective transfer is PQ or HLG. An explicit SDR transfer scores stored samples.",
+        "rule": "An SDR VMAF model is refused when the effective transfer is PQ or HLG. An explicit SDR transfer scores stored samples. An HDR model uses a separate explicit-colorimetry check.",
     },
     {
         "id": "xpsnr-fps",

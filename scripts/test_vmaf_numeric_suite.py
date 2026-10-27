@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIXVQA = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
-VMAF_CLI = Path(os.environ.get("VMAF_CLI", ROOT / "deps" / "libvmaf-3.2.1" / "bin" / "vmaf"))
+VMAF_CLI = Path(os.environ.get("VMAF_CLI", ROOT / "deps" / "libvmaf-74f930d" / "bin" / "vmaf"))
 ORACLE = Path(os.environ.get("VMAF_REF_ORACLE", ROOT / "build" / "cpu" / "vmaf_ref_oracle"))
 MODEL_DIR = ROOT / "model"
 

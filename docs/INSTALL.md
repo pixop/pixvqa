@@ -76,18 +76,22 @@ NVDEC needs the NVIDIA Video Codec SDK headers (`ffnvcodec`) on the `pkg-config`
 
 The validated library was built with those three flags. A configure that omits them has not been given its own test. A CPU decode of AV1 and VVC does not require the CUDA toolkit. `--enable-nvdec` does not grant redistribution of the NVIDIA driver.
 
-## 4. libvmaf 3.2.1
+## 4. libvmaf commit 74f930d and zimg 3.0.6
 
-From the PixVQA checkout:
+From the PixVQA checkout. GNU `make` must be on `PATH`. `scripts/build_libvmaf.sh` builds zimg first.
 
 ```bash
 export GCC_ENV=/path/to/gcc
 bash scripts/build_libvmaf.sh
 ```
 
-The script clones Netflix `vmaf` tag `v3.2.1`, refuses to continue unless HEAD is `f85a853692a8c730d0270cd733c8bb30b5b93b7c`, builds a static CPU library, and installs it under `deps/libvmaf-3.2.1` unless `LIBVMAF_PREFIX` is already set. At that commit the Meson project version string is 3.2.0. The eight model files already in [model/](../model/README.md) are what `--model` loads. libvmaf is linked statically.
+The script checks out Netflix `vmaf` commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. This is not a tagged release. The last tag used by the previous recipe is v3.2.1, commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`, still built by `scripts/build_libvmaf_3.2.1.sh`. Meson still reports project version 3.2.0. `vmaf --version` prints `74f930d`.
 
-Without that prefix the PixVQA binary still builds, and selecting `vmaf` is an error.
+zimg is tag `release-3.0.6`, commit `f819b14e8f39d1282400b0d9543e8ef73c1b2bbd`, static, prefix `deps/zimg-3.0.6`. libvmaf is static, prefix `deps/libvmaf-74f930d`, with `-Denable_zimg=true` and CUDA off. The install stops unless `pkg-config --libs --static` contains `-lzimg` and `picture.h` declares `vmaf_picture_convert`. `scripts/libvmaf_flags.sh` refuses a prefix that fails those checks, so a leftover `deps/libvmaf-3.2.1` is not linked.
+
+The model files in [model/](../model/README.md) are what `--model` loads. libvmaf is linked statically.
+
+Without the 74f930d prefix the PixVQA binary still builds, and selecting `vmaf` is an error.
 
 ## 5. CPU builds
 
@@ -95,7 +99,7 @@ Raw YUV only. No FFmpeg, libdav1d, or CUDA. The executable does not open compres
 
 ```bash
 export GCC_ENV=/path/to/gcc
-export LIBVMAF_PREFIX="$PWD/deps/libvmaf-3.2.1"
+export LIBVMAF_PREFIX="$PWD/deps/libvmaf-74f930d"
 bash build.sh
 ```
 
@@ -107,7 +111,7 @@ Software decoding, including AV1 and VVC. Leave `GCC13` and `CUDA_HOME` unset. I
 export FFMPEG_PREFIX="$HOME/ffmpeg-n8.1.3"
 export DAV1D_LIB="$HOME/dav1d-1.5.1/lib64"
 export GCC_ENV=/path/to/gcc
-export LIBVMAF_PREFIX="$PWD/deps/libvmaf-3.2.1"
+export LIBVMAF_PREFIX="$PWD/deps/libvmaf-74f930d"
 bash build_decode.sh
 ```
 
@@ -132,7 +136,7 @@ bash build_cuda.sh
 export FFMPEG_PREFIX="$HOME/ffmpeg-n8.1.3"
 export DAV1D_LIB="$HOME/dav1d-1.5.1/lib64"
 export GCC_ENV=/path/to/gcc
-export LIBVMAF_PREFIX="$PWD/deps/libvmaf-3.2.1"
+export LIBVMAF_PREFIX="$PWD/deps/libvmaf-74f930d"
 export PIXVQA_LIBCUDA_DIR=/path/to/libcuda
 bash build_decode.sh
 ```
@@ -148,7 +152,7 @@ PREFIX="$HOME/pixvqa" PIXVQA_BIN=build/swdec/pixvqa bash scripts/install.sh
 "$PREFIX/bin/pixvqa" --version
 ```
 
-The script copies the executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. Models are in `$PREFIX/share/pixvqa/model`. Pass one file to `--model`.
+The script copies the executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. Pass one file to `--model`.
 
 Use `PIXVQA_BIN=build/full/pixvqa` for the GPU binary, or `build/cpu/pixvqa` for raw YUV only.
 
@@ -177,13 +181,15 @@ python3 scripts/run_qa.py --profile smoke
 |---|---|
 | libdav1d | 1.5.1, shared |
 | FFmpeg | tag `n8.1.3`, commit `1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7` |
-| libvmaf | tag `v3.2.1`, commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`, static, CUDA off |
+| libvmaf | commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef` (not a release tag; previous tag v3.2.1), static, zimg 3.0.6, CUDA off |
 | CUDA toolkit, when used | 12.8, with GCC 13.4 as the nvcc host compiler |
-| VMAF models | the eight JSON files in `model/` |
+| VMAF models | eight SDR v1.0.16 JSON files and eight HDR v1.1.8 JSON files in `model/` |
 
 ## Verification status
 
-The CPU workflow in sections 4, 5, 7, and 8 was executed on a copy of this checkout. `scripts/build_libvmaf.sh` cloned tag `v3.2.1` and accepted commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`. `bash build.sh` produced `build/cpu/pixvqa` (`pixvqa version 0.3.0-dev`, `decode: none`). `scripts/install.sh` installed that binary. `python3 scripts/run_qa.py --profile smoke` reported `PASS 16  FAIL 0  SKIP 0`. The raw-YUV build in section 5 was the one executed. A later pass ran `build_decode.sh` and `build_cuda.sh` against the existing FFmpeg n8.1.3, dav1d 1.5.1, GCC 13, and CUDA 12.8 prefixes. That produced `build/swdec/pixvqa` (`decode: software`) and `build/full/pixvqa` (`decode: software nvdec`). Those prefixes were not rebuilt from an empty machine.
+On `main` before this branch, the CPU workflow in sections 4, 5, 7, and 8 was executed against libvmaf tag v3.2.1, commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`. That recipe is still `scripts/build_libvmaf_3.2.1.sh`. `bash build.sh` produced `build/cpu/pixvqa` (`pixvqa version 0.3.0-dev`, `decode: none`). `scripts/install.sh` installed that binary. `python3 scripts/run_qa.py --profile smoke` reported `PASS 16  FAIL 0  SKIP 0`. A later pass on that base ran `build_decode.sh` and `build_cuda.sh` against the existing FFmpeg n8.1.3, dav1d 1.5.1, GCC 13, and CUDA 12.8 prefixes. That produced `build/swdec/pixvqa` (`decode: software`) and `build/full/pixvqa` (`decode: software nvdec`). Those decode and CUDA prefixes were not rebuilt on this branch.
+
+This branch builds libvmaf from commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef` with zimg 3.0.6. That checkout is not a release tag. Meson still reports 3.2.0, and `vmaf --version` prints `74f930d`. The results of the CPU rebuild, model checksums, HDR parity, and SDR regression are in [reports/HDR_VMAF_PUBLIC.md](../reports/HDR_VMAF_PUBLIC.md).
 
 These steps match the libraries used for the earlier AV1, VVC, and NVDEC checks, and were not repeated from an empty machine for this document:
 

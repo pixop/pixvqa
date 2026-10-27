@@ -70,7 +70,7 @@ def find_vmaf_cli(root: Path) -> Optional[Path]:
     env = os.environ.get("VMAF_CLI")
     candidates = [
         Path(env) if env else None,
-        root / "deps" / "libvmaf-3.2.1" / "bin" / "vmaf",
+        root / "deps" / "libvmaf-74f930d" / "bin" / "vmaf",
     ]
     for path in candidates:
         if path and path.is_file():

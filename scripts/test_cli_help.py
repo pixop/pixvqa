@@ -160,9 +160,10 @@ def main() -> int:
         model_src = ROOT / "model"
         model_dst = td / "model"
         if model_src.is_dir():
-            model_dst.mkdir(exist_ok=True)
-            for p in model_src.glob("*.json"):
-                (model_dst / p.name).write_bytes(p.read_bytes())
+            for p in model_src.rglob("*.json"):
+                dest = model_dst / p.relative_to(model_src)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(p.read_bytes())
         if ffmpeg_bin and Path(ffmpeg_bin).is_file():
             for src, dst, pix, codec, extra in (
                 ("reference.yuv", "reference.mp4", "yuv420p", "libx264", ["-preset", "veryfast", "-qp", "18"]),

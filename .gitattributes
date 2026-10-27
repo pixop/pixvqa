@@ -1,1 +1,4 @@
 *.sh text eol=lf
+model/*.json text eol=lf
+model/hdr_vmaf_v1.1.8/*.json text eol=lf
+model/hdr_vmaf_v1.1.8_hfr/*.json text eol=lf
