@@ -36,7 +36,7 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 | XPSNR | ✅ | ⚠️ | ⚠️ |
 | SSIM | ✅ | ⚠️ | ⚠️ |
 | MS-SSIM | ✅ | ⚠️ | ⚠️ |
-| VMAF (SDR models) | ✅ | ❌ | ❌ |
+| VMAF (SDR v1.0.16 models) | ✅ | ❌ | ❌ |
 | VMAF (HDR v1.1.8 models) | ❌ | ✅ | ❌ |
 | PU21-PSNR | ❌ | ✅ | ✅ |
 | PU21-SSIM | ❌ | ✅ | ✅ |
@@ -61,6 +61,54 @@ QCS is a metric-agnostic **temporal quality reliability descriptor** derived fro
 **Publication:** S. Sanz-Rodríguez and J. Frydensbjerg, "[Quality Consistency Score (QCS): A Survival-Based Reliability Descriptor for Video Quality Assessment](https://ieeexplore.ieee.org/document/11629873/)," *IEEE International Conference on Image Processing (ICIP)*, 2026.
 
 For further details, see the [QCS documentation](docs/QCS.md) or the [QCS reference implementation](https://github.com/pixop/Quality-Consistency-Score).
+
+## Installation
+
+PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
+
+From the root of the cloned repository, run:
+
+```bash
+bash install_pixvqa.sh
+```
+
+The installer writes `bin/pixvqa` in that checkout.
+
+**Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
+
+```bash
+PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
+```
+
+The installer downloads the required dependencies, builds PixVQA, and asks whether to enable:
+
+1. **Software decoding (dav1d/FFmpeg):** Recommended for compressed video support.
+2. **NVIDIA GPU acceleration (CUDA/NVDEC):** Optional. Requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
+
+After installation, verify:
+
+```bash
+./bin/pixvqa --version
+python3 scripts/run_qa.py --profile smoke
+```
+
+Smoke QA uses `bin/pixvqa` when that file is present, including after the installer removes `build/`. Set `PIXVQA_QA_CPU` or pass `--cpu` to score a different executable.
+
+[Continuous integration](docs/CI.md) runs this short CPU check, and a clean install on Ubuntu 22.04 and 24.04, on every pull request. The full CPU suite and the GPU suite are manual.
+
+PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
+
+System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
+
+### Troubleshooting and Manual Installation
+
+If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
+
+The guide provides step-by-step instructions for installing dependencies and compiling PixVQA manually. Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
+
+For clean-install testing and known validation limitations, see [Installation Validation](docs/INSTALL_VALIDATION.md).
+
+**Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
 
 ## Quick Start
 
@@ -141,54 +189,6 @@ pixvqa --metrics psnr --decode gpu \
   -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
   -t reference10.hevc.mp4
 ```
-
-## Installation
-
-PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
-
-From the root of the cloned repository, run:
-
-```bash
-bash install_pixvqa.sh
-```
-
-The installer writes `bin/pixvqa` in that checkout. A `PREFIX` pointing at another PixVQA checkout is ignored. Set `PREFIX` to any other directory to choose a custom location.
-
-**Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
-
-```bash
-PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
-```
-
-The installer downloads the required dependencies, builds PixVQA, and asks whether to enable:
-
-1. **Software decoding (dav1d/FFmpeg):** Recommended for compressed video support.
-2. **NVIDIA GPU acceleration (CUDA/NVDEC):** Optional. Requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
-
-After installation, verify:
-
-```bash
-./bin/pixvqa --version
-python3 scripts/run_qa.py --profile smoke
-```
-
-Smoke QA uses `bin/pixvqa` when that file is present, including after the installer removes `build/`. Set `PIXVQA_QA_CPU` or pass `--cpu` to score a different executable.
-
-[Continuous integration](docs/CI.md) runs this short CPU check, and a clean install on Ubuntu 22.04 and 24.04, on every pull request. The full CPU suite and the GPU suite are manual.
-
-PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
-
-System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
-
-### Troubleshooting and Manual Installation
-
-If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
-
-The guide provides step-by-step instructions for installing dependencies and compiling PixVQA manually. Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
-
-For clean-install testing and known validation limitations, see [Installation Validation](docs/INSTALL_VALIDATION.md).
-
-**Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
 
 ## Command-line Options
 
@@ -273,4 +273,4 @@ For detailed backend behavior, supported options, and restrictions, use `pixvqa 
 
 PixVQA is licensed under the [MIT License](LICENSE) (SPDX `MIT`). Copyright (c) 2026 Pixop ApS. [docs/LICENSING.md](docs/LICENSING.md) explains third-party and model licenses. Dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The logo at `docs/brand/pixop-vqa-logo.png` is included with the repository. The MIT license does not grant unrestricted trademark or logo use. See [docs/brand/README.md](docs/brand/README.md).
+The logo at `docs/brand/pixop-vqa-logo-crop.png` is included with the repository. The MIT license does not grant unrestricted trademark or logo use. See [docs/brand/README.md](docs/brand/README.md).
