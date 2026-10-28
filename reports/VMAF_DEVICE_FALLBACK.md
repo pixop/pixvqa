@@ -6,7 +6,7 @@ Status: **implemented, uncommitted**, on `feature/vmaf-device-fallback`. CPU-bui
 
 | Item | Value |
 |---|---|
-| Worktree | `D:\projects\pixvqa-public-vmaf-fallback` |
+| Worktree | VMAF fallback worktree |
 | Branch | `feature/vmaf-device-fallback` |
 | Base | `main` at `10574f6181021a34c3b698460c408ace9e547dd2` |
 | Binary | `build/cpu/pixvqa`, libvmaf 3.2.1 (`f85a853`), prefix taken from the internal checkout's existing `deps/libvmaf-3.2.1` for this build only |
@@ -89,4 +89,4 @@ Model JSON bytes were restored to LF in the worktree. `git diff` on those files 
 
 ## HDR note
 
-Do not copy this onto `D:\projects\pixop-vqa-hdr-vmaf`. That tree has no `--metric-device`. The internal dependency and the CUDA VMAF inventory are in `D:\projects\pixop-vqa-vmaf-fallback\reports\VMAF_DEVICE_FALLBACK.md`.
+Do not copy this onto the internal HDR tree. That tree has no `--metric-device`. The internal CUDA VMAF inventory stays in that tree's own report and is not part of this repository.

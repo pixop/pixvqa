@@ -54,7 +54,7 @@ python3 scripts/run_qa.py --profile hardware
 
 PixVQA is MIT. `docs/LICENSING.md` and `THIRD_PARTY_NOTICES.md` keep libvmaf, zimg, the VMAF models, FFmpeg, dav1d, and PU21 on their own terms. Model JSON files are vendored Netflix bytes under BSD-2-Clause-Patent, as stated in `model/README.md`. No credentials, `.env` files, or sample videos are tracked. `*.mp4` is gitignored.
 
-`scripts/qualify_gpu_release.py` no longer defaults to a home-directory ffmpeg path. Older files under `reports/` still name the machine paths used for qualification. Remove those paths before changing repository visibility. This review does not change visibility.
+Tracked reports and scripts do not name a home directory. Gitignored measurement JSON under `reports/` can still contain a local absolute path and is not source. This review does not change repository visibility.
 
 ## CI
 

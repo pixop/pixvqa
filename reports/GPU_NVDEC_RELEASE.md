@@ -16,11 +16,11 @@ Recommendation: **GO** for GPU functionality in the initial public release. No C
 |---|---|
 | GPU | NVIDIA GeForce RTX 5080, compute capability 12.0, 16303 MiB |
 | Driver | 610.88 |
-| CUDA | Toolkit 12.8, V12.8.93, `nvcc` at `/home/sergio/cuda-toolkit/bin/nvcc` |
+| CUDA | Toolkit 12.8, V12.8.93 |
 | Host compiler | GCC 13.4.0 for CUDA; GCC 16.2.0 for the CPU objects |
 | Final link | GCC 13.4. `/usr/bin/g++` is not installed in this WSL distro, so the documented `/usr/bin/g++` link was not used |
-| FFmpeg libraries | `/home/sergio/ffmpeg-n8.1.3-lgpl`, `CONFIG_NVDEC`, `CONFIG_CUVID`, and `CONFIG_FFNVCODEC` enabled |
-| FFmpeg CLI | `/home/sergio/bin/ffmpeg` n8.1.3, statically linked, including libdav1d and `av1_cuvid` |
+| FFmpeg libraries | n8.1.3 LGPL prefix, `CONFIG_NVDEC`, `CONFIG_CUVID`, and `CONFIG_FFNVCODEC` enabled |
+| FFmpeg CLI | n8.1.3, statically linked, including libdav1d and `av1_cuvid` |
 | Architectures | `sm_89` and `sm_120` |
 
 The shared `libavcodec` used by PixVQA does not export libdav1d. Software AV1 therefore fails in this local binary. The static CLI still decodes AV1, and that decode was the AV1 oracle. GitHub Actions, which links a dav1d-enabled FFmpeg, already passed software AV1.
@@ -54,16 +54,13 @@ No tolerance was widened. Observed PSNR, SSIM, MS-SSIM, XPSNR, and PU21 differen
 ## Commands
 
 ```bash
-GCC_ENV=/home/sergio/gcc-env GCC13=/home/sergio/gcc13-nvcc \
-  CUDA_HOME=/home/sergio/cuda-toolkit FFMPEG_PREFIX=/home/sergio/ffmpeg-n8.1.3-lgpl \
-  PIXVQA_LIBCUDA_DIR=/usr/lib/wsl/lib \
-  PIXVQA_FULL_LINK_CXX=/home/sergio/gcc13-nvcc/bin/g++ \
-  DAV1D_LIB=/home/sergio/dav1d-1.5.1/lib64 \
-  bash build.sh && bash build_cuda.sh && bash build_decode.sh
+# Local prefixes: conda-forge GCC 16.2.0, GCC 13.4 for the CUDA link,
+# CUDA toolkit 12.8, FFmpeg n8.1.3, dav1d 1.5.1, and the WSL libcuda directory.
+bash build.sh && bash build_cuda.sh && bash build_decode.sh
 PREFIX="$PWD" PIXVQA_BIN="$PWD/build/full/pixvqa" bash scripts/install.sh
 env -u LD_LIBRARY_PATH ./bin/pixvqa --version
 
-FFMPEG=/home/sergio/bin/ffmpeg python3 scripts/qualify_gpu_release.py
+python3 scripts/qualify_gpu_release.py
 python3 scripts/run_qa.py --profile hardware
 python3 scripts/test_pu21_cuda.py
 python3 scripts/test_detect_format.py
@@ -71,9 +68,9 @@ python3 scripts/test_p3_gpu_decode.py
 python3 scripts/test_vmaf_device_fallback.py
 python3 scripts/test_cuda_numeric.py
 python3 scripts/test_xpsnr_cuda_wsse.py
-# numpy is not installed for /usr/bin/python3; these two used Miniconda:
-/home/sergio/miniconda3/bin/python3 scripts/test_cuda_psnr_ssim_8bit.py
-FFMPEG=/home/sergio/bin/ffmpeg /home/sergio/miniconda3/bin/python3 scripts/test_qcs.py
+# numpy is not installed for /usr/bin/python3; these two used a NumPy-enabled Python:
+python3 scripts/test_cuda_psnr_ssim_8bit.py
+python3 scripts/test_qcs.py
 ```
 
 ## Counts
@@ -90,9 +87,9 @@ FFMPEG=/home/sergio/bin/ffmpeg /home/sergio/miniconda3/bin/python3 scripts/test_
 | `test_vmaf_device_fallback.py` | all | 0 | 0 |
 | `test_cuda_numeric.py` | all | 0 | 0 |
 | `test_xpsnr_cuda_wsse.py` | all | 0 | 0 |
-| `test_av1_vvc.py` with `PIXVQA_RUN_GPU=1` | 0 | script failed | VVC fixture absent |
+| `test_av1_vvc.py` with `PIXVQA_RUN_GPU=1` | NVDEC rows passed | script failed | VVC fixture absent |
 
-The hardware failure and the AV1/VVC script failure are the same local FFmpeg gap: PixVQA reports `AV1 software decoding requires libdav1d or libaom-av1`. They are not CUDA score mismatches. The repeated-run check was three sequential CUDA runs plus two concurrent jobs. It is not a stress test. No CUDA runtime or GPU memory error appeared.
+The hardware profile is **not** a pass: 2 passed and 1 failed. `gpu-metrics` and `gpu-repeat` passed. `hardware-av1-hevc-vvc` failed. The software FFmpeg linked into `build/swdec/pixvqa` has no libdav1d or libaom-av1, so AV1 software decode reports `AV1 software decoding requires libdav1d or libaom-av1`. `tests/fixtures/vvc/bbb_360p.vvc` is absent, so the VVC row fails instead of being skipped. Inside that same failed script, the NVDEC checks passed for 8-bit AV1, 10-bit AV1, and 10-bit HEVC. The failure is not suppressed, and it is not a CUDA score mismatch. The repeated-run check was three sequential CUDA runs plus two concurrent jobs. It is not a stress test. No CUDA runtime or GPU memory error appeared.
 
 Kimono files `ref_hevc.mp4`, `dist_hevc.mp4`, `ref_av1.mp4`, `dist_av1.mp4`, `ref_vvc.mp4`, and `dist_vvc.mp4` were present locally at 960×540. Scoring used the first 4 frames. The files were not committed.
 

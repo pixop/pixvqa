@@ -10,11 +10,11 @@ The qualification fixes are `c48061009ab33b2c1840d65468ddd02ddbd770c8` on `featu
 
 | Item | Value |
 |---|---|
-| Worktree | `D:\projects\pixvqa-public-remote-reconcile` |
+| Worktree | feature worktree for `feature/hdr-vmaf-remote-reconcile` |
 | Branch | `feature/hdr-vmaf-remote-reconcile` |
 | Reviewed HEAD | `ce21c7b14fdac00e5f0158b4aa1860b709598175` |
 | Parents | `9eeb674` (remote main) and `4e030bf` (HDR integration) |
-| Local `main` | `4e030bf` at `D:\projects\pixvqa-public`, unchanged |
+| Local `main` | `4e030bf`, unchanged |
 | Other worktrees | unchanged |
 
 The reviewed commit was still HEAD, and the worktree was clean, before the qualification edits. No branch switch, rebase, or history rewrite was done.
@@ -31,20 +31,17 @@ No machine-specific absolute path was added to the scripts or install documents.
 
 ## 3. Rebuild
 
-Host: WSL Ubuntu 24.04. CPU compiler: conda-forge g++ 16.2.0 (`GCC_ENV=/home/sergio/gcc-env`). CUDA: nvcc 12.8, V12.8.93, `CUDA_HOME=/home/sergio/cuda-toolkit`, gencode `sm_89` and `sm_120`. FFmpeg: n8.1.3 at `/home/sergio/ffmpeg-n8.1.3-lgpl`. GPU: NVIDIA GeForce RTX 5080. Python for the suites: Miniconda Python with NumPy.
+Host: WSL Ubuntu 24.04. CPU compiler: conda-forge g++ 16.2.0. CUDA: nvcc 12.8, V12.8.93, gencode `sm_89` and `sm_120`. FFmpeg: n8.1.3. GPU: NVIDIA GeForce RTX 5080. Python for the suites: a NumPy-enabled interpreter.
 
 The previous executables were deleted first. Commands, from the worktree:
 
 ```bash
-export GCC_ENV=/home/sergio/gcc-env
-export CUDA_HOME=/home/sergio/cuda-toolkit
-export FFMPEG_PREFIX=/home/sergio/ffmpeg-n8.1.3-lgpl
-export DAV1D_LIB=/home/sergio/dav1d-1.5.1/lib64
-export PIXVQA_LIBCUDA_DIR=/usr/lib/wsl/lib
-export CUDART_LIBDIR=/home/sergio/cuda-toolkit/targets/x86_64-linux/lib
+# Prefixes pointed at conda-forge GCC 16.2.0, the CUDA 12.8 toolkit,
+# FFmpeg n8.1.3, dav1d 1.5.1, and the WSL libcuda directory.
 bash build.sh
 bash build_cuda.sh
-PIXVQA_FULL_LINK_CXX=/home/sergio/gcc13-nvcc/bin/x86_64-conda-linux-gnu-g++ bash build_decode.sh
+# PIXVQA_FULL_LINK_CXX was conda-forge g++ 13.4.0, not /usr/bin/g++.
+bash build_decode.sh
 ```
 
 `/usr/bin/g++` is absent here, so the full link used the existing `PIXVQA_FULL_LINK_CXX` override: conda-forge g++ 13.4.0. That override is evidence for this machine only. The committed default remains `/usr/bin/g++`. A system-GCC final link was **not** validated.

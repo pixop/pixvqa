@@ -1,6 +1,6 @@
 # Public HDR VMAF v1.1.8 — implementation report
 
-Worktree: `D:\projects\pixvqa-public-hdr-vmaf`
+Worktree: HDR model worktree
 Branch: `feature/hdr-vmaf-v1-models`
 Base: public `main` at `10574f6` (`Merge pull request #2 from pixop/docs/readme-badges`)
 Status: implemented and validated. Not committed, not pushed, not merged.
@@ -9,7 +9,7 @@ Recommendation: **CONDITIONAL GO** for merging this branch into public `main` by
 
 ## 1. What landed
 
-The validated CPU HDR VMAF path from the internal worktree `D:\projects\pixop-vqa-hdr-vmaf` was adapted onto public PixVQA. The public CLI stays `--metric-device cpu|gpu|auto`. There is no `--vmaf-backend`.
+The validated CPU HDR VMAF path from the internal HDR worktree was adapted onto public PixVQA. The public CLI stays `--metric-device cpu|gpu|auto`. There is no `--vmaf-backend`.
 
 HDR models require explicit complete colorimetry on both the reference and the distorted input. Explicit means a stream tag or a CLI override (`HdrSource::Stream` or `HdrSource::Override`) on all four fields. Fields filled by `hdr_resolve` are not accepted. Ten-bit input alone does not imply PQ. No tone mapping is applied.
 
@@ -74,9 +74,9 @@ SDR `model/vmaf_v1.0.16*.json` content is unchanged. The Windows checkout had CR
 
 Untouched on purpose:
 
-- `D:\projects\pixvqa-public` (`main`, clean, `10574f6`)
-- `D:\projects\pixvqa-public-vmaf-fallback` (`feature/vmaf-device-fallback`, its existing uncommitted work is still there)
-- `D:\projects\pixop-vqa-hdr-vmaf` (read only)
+- public `main` (`10574f6`, clean)
+- `feature/vmaf-device-fallback` (its existing uncommitted work was left in place)
+- the internal HDR worktree (read only)
 - CUDA metric kernels
 
 ## 3. Dependency build
@@ -104,7 +104,7 @@ Observed link line for `build/cpu/pixvqa`:
 
 `nm` on `build/cpu/pixvqa` shows `vmaf_picture_convert`, `vmaf_picture_convert_context_init`, and `vmaf_picture_convert_context_close` as defined symbols. The same binary contains the commit string `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef` and `3.0.6`. Static library and the installed headers come from that one prefix. `pkg-config --modversion libvmaf` is `3.2.0`. `pkg-config --libs --static libvmaf` includes `-lzimg`.
 
-Host tools on this machine: conda-forge gcc/g++ 16.2.0 from `/home/sergio/gcc-env/bin`. GNU make is required on `PATH` by `scripts/build_zimg.sh`. The default WSL `PATH` did not have it; the library build used `/home/sergio/ffmpeg-build-tools/bin/make`. Autotools were not installed. `build_zimg.sh` downloaded the Ubuntu 24.04 autoconf, automake, libtool, m4, and autotools-dev debs into gitignored `deps/src/host-debs` and checked the SHA-256 values stored in the script.
+Host tools on this machine: conda-forge gcc/g++ 16.2.0. GNU make is required on `PATH` by `scripts/build_zimg.sh`. The default WSL `PATH` did not have it; the library build used a separate make binary. Autotools were not installed. `build_zimg.sh` downloaded the Ubuntu 24.04 autoconf, automake, libtool, m4, and autotools-dev debs into gitignored `deps/src/host-debs` and checked the SHA-256 values stored in the script.
 
 CPU binary: `build/cpu/pixvqa`, `pixvqa version 0.3.0-dev`, `decode: none`.
 
@@ -127,7 +127,7 @@ Identical-frame `3d0h_2160` mean was `107.440841`. Identical-frame `hfr_3d0h_216
 
 Real HEVC, one source, 60 frames (source frames 1800–1859):
 
-- Master: `BasketballGame_3840x2160_5994_420_10b_pq_bt2020l_29m25s_3600fr.yuv` (filename declares PQ, BT.2020, limited, 59.94 fps)
+- Master: 3840×2160, 10-bit 4:2:0, PQ, BT.2020, limited, 59.94 fps. The file is not in this repository.
 - Encode: libx265, preset fast, CRF 28, `colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited`, rate `60000/1001`, then decoded to raw `yuv420p10le`
 - `hfr_3d0h_2160` mean `94.852236`, worst feature abs `4.998e-7`, clip 110
 - `3d0h_2160` mean `91.299559`, worst feature abs `4.998e-7`, clip 110
@@ -225,7 +225,7 @@ VMAF-EXT: commit=74f930d17de8c58e7c2ce55e2b897b0030ebd8ef zimg=3.0.6 backend=cpu
 
 CPU: Intel Core Ultra 7 265K, 20 processors visible to WSL. The benchmark passed `--threads 8`. Two repeats. `PIXVQA_PROFILE=1` times input reading and libvmaf separately. Wall time is process time around that run and includes model load.
 
-The 4K model is `hdr_vmaf_v1.1.8_hfr_3d0h_2160`. Its conversion target is limited BT.2020 PQ to 16-bit 4:2:0 ICtCp at display height 2160. The 1080 model is `hdr_vmaf_v1.1.8_hfr_3d0h`, display height 1080. Both sides used `limited:bt2020:pq:bt2020nc`. Inputs were the raw YUV pair from section 4, on `/mnt/d` (a Windows filesystem through WSL).
+The 4K model is `hdr_vmaf_v1.1.8_hfr_3d0h_2160`. Its conversion target is limited BT.2020 PQ to 16-bit 4:2:0 ICtCp at display height 2160. The 1080 model is `hdr_vmaf_v1.1.8_hfr_3d0h`, display height 1080. Both sides used `limited:bt2020:pq:bt2020nc`. Inputs were the raw YUV pair from section 4, read through a WSL mount of a Windows filesystem.
 
 | Run | Frames | Wall | End-to-end fps | Input read | libvmaf compute | Compute fps |
 |---|---:|---:|---:|---:|---:|---:|
@@ -240,7 +240,7 @@ The internal benchmark (120 frames, about 13.4–13.8 fps for PixVQA and 18.3–
 
 ## 9. Compatibility with `feature/vmaf-device-fallback`
 
-The fallback branch is `D:\projects\pixvqa-public-vmaf-fallback`, still at `10574f6`, with its own uncommitted edits. This HDR work did not read-write that tree except to inspect `src/main.cpp`.
+The fallback branch was still at `10574f6`, with its own uncommitted edits. This HDR work did not read-write that tree except to inspect `src/main.cpp`.
 
 Intended fallback behavior, already implemented there and not reimplemented here:
 

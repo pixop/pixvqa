@@ -253,9 +253,10 @@ def main() -> int:
 
 def real_hevc(td: Path) -> dict:
     out = {"cases": [], "fails": [], "perf": []}
-    master = Path("/mnt/f/videos/2160p/BasketballGame_3840x2160_5994_420_10b_pq_bt2020l_29m25s_3600fr.yuv")
-    if not master.is_file() or not Path(FFMPEG).is_file():
-        print("SKIP real HEVC (master or ffmpeg unavailable)")
+    master_env = os.environ.get("PIXVQA_HDR_MASTER", "").strip()
+    master = Path(master_env) if master_env else None
+    if master is None or not master.is_file() or not Path(FFMPEG).is_file():
+        print("SKIP real HEVC (set PIXVQA_HDR_MASTER to a local 4K master, or ffmpeg is unavailable)")
         out["skipped"] = True
         return out
     frame = 3840 * 2160 * 3 // 2 * 2
