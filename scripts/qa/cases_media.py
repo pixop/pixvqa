@@ -212,6 +212,7 @@ def _codec_cases() -> list:
             if not world.ffmpeg or world.binary("swdec") is None:
                 return Result("FAIL", "ffmpeg or swdec is absent", label)
             w = h = 64
+            count = frames
             synthetic_vvc = False
             fmt_chroma = "420" if pix.startswith("yuvj") else chroma
             fixture = os.environ.get("PIXVQA_VVC_FIXTURE", "").strip() if label == "vvc" else ""
@@ -229,19 +230,19 @@ def _codec_cases() -> list:
                 frame = frame_bytes(w, h, chroma, bits)
                 if oracle.stat().st_size == 0 or oracle.stat().st_size % frame:
                     return Result("FAIL", "synthetic VVC reference is not a whole number of frames", label)
-                frames = oracle.stat().st_size // frame
+                count = oracle.stat().st_size // frame
                 synthetic_vvc = True
             else:
                 src = world.tmp / f"{label}.src.yuv"
                 enc = world.tmp / f"{label}.{ext}"
                 oracle = world.tmp / f"{label}.oracle.yuv"
                 second = world.tmp / f"{label}.second.yuv"
-                write_yuv(src, w, h, fmt_chroma, bits, frames)
+                write_yuv(src, w, h, fmt_chroma, bits, count)
                 enc_cmd = ["-f", "rawvideo", "-pix_fmt", pix if not pix.startswith("yuvj") else "yuv420p",
-                           "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
+                           "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(count), *codec_args, str(enc)]
                 if pix.startswith("yuvj"):
                     enc_cmd = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{w}x{h}", "-r", "24",
-                               "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
+                               "-i", str(src), "-frames:v", str(count), *codec_args, str(enc)]
                 encoded = _ff(world, enc_cmd, timeout=180)
                 if encoded.returncode != 0 or not enc.is_file():
                     if label == "vvc":
@@ -262,7 +263,7 @@ def _codec_cases() -> list:
                     return Result("FAIL", (one.stderr + two.stderr)[-300:], label)
                 if oracle.read_bytes() != second.read_bytes():
                     return Result("FAIL", "two independent decodes disagree", label)
-                expected = frame_bytes(w, h, fmt_chroma, bits) * frames
+                expected = frame_bytes(w, h, fmt_chroma, bits) * count
                 if oracle.stat().st_size != expected:
                     return Result("FAIL", f"oracle bytes {oracle.stat().st_size} != {expected}", label)
             fmt = f"{fmt_chroma}p:{bits}"
@@ -274,7 +275,7 @@ def _codec_cases() -> list:
             text = proc.stdout + proc.stderr
             if proc.returncode != 0 or "999.99" not in proc.stdout:
                 return Result("FAIL", text[-500:], cmd)
-            if f"Total frames:{frames}" not in proc.stdout or "decoder threads: 8" not in proc.stdout:
+            if f"Total frames:{count}" not in proc.stdout or "decoder threads: 8" not in proc.stdout:
                 return Result("FAIL", f"frame count or decoder threads\n{proc.stdout[-400:]}", cmd)
             if f"decoder={decoder}" not in proc.stderr or "backend=software" not in proc.stderr:
                 return Result("FAIL", proc.stderr[-400:], cmd)
@@ -287,7 +288,7 @@ def _codec_cases() -> list:
                 app = run_cmd([world.vvdec, "-b", str(elem), "-o", str(yuv)], timeout=60)
                 if extracted.returncode != 0 or app.returncode != 0 or yuv.read_bytes() != oracle.read_bytes():
                     return Result("FAIL", "VVdeC bytes differ from the FFmpeg vvc oracle", cmd)
-            return Result("PASS", f"exact oracle bytes and PSNR 999.99, {frames} frames, {decoder}", cmd)
+            return Result("PASS", f"exact oracle bytes and PSNR 999.99, {count} frames, {decoder}", cmd)
         return run
 
     out = []
