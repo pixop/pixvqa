@@ -94,7 +94,7 @@ python3 scripts/run_qa.py --profile smoke
 
 Smoke QA uses `bin/pixvqa` when that file is present, including after the installer removes `build/`. Set `PIXVQA_QA_CPU` or pass `--cpu` to score a different executable.
 
-[Continuous integration](docs/CI.md) runs this short CPU check, and a clean install on Ubuntu 22.04 and 24.04, on every pull request. The full CPU suite and the GPU suite are manual.
+[Continuous integration](docs/CI.md) runs this short CPU check on every pull request. A clean install on Ubuntu 22.04 and 24.04 runs when installation files change, or when requested. The full CPU suite and the GPU suite are manual.
 
 PixVQA installs a single executable at `bin/pixvqa`, containing the features selected during installation.
 

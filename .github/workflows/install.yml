@@ -3,6 +3,7 @@ name: Clean installation
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
@@ -13,8 +14,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Decide installation
+    # A label other than install does not need a runner. workflow_dispatch and
+    # ordinary pull-request updates still evaluate the changed paths.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.action != 'labeled' ||
+      github.event.label.name == 'install'
+    runs-on: ubuntu-24.04
+    outputs:
+      install: ${{ steps.gate.outputs.install }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Installation files or an explicit request
+        id: gate
+        run: |
+          set -euo pipefail
+          pattern='^(install_pixvqa\.sh|build\.sh|build_decode\.sh|build_cuda\.sh|scripts/build_.*\.sh|scripts/install.*\.sh|scripts/deps_layout\.sh|scripts/finish_install\.sh|scripts/git_retry\.sh|scripts/libvmaf_flags\.sh|scripts/verify_installed_pixvqa\.sh|scripts/ci/verify_install\.sh|\.github/workflows/install\.yml)$'
+          install=false
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            install=true
+            echo "workflow_dispatch requests a clean installation"
+          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'install') }}" == "true" ]]; then
+            install=true
+            echo "pull request label install requests a clean installation"
+          else
+            base="${{ github.event.pull_request.base.sha }}"
+            git diff --name-only "$base" HEAD > changed.txt
+            echo "Changed files:"
+            cat changed.txt
+            while IFS= read -r path; do
+              if [[ "$path" =~ $pattern ]]; then
+                install=true
+                echo "installation file: $path"
+              fi
+            done < changed.txt
+          fi
+          echo "install=$install" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Clean installation"
+            echo ""
+            if [[ "$install" == true ]]; then
+              echo "Ubuntu 22.04 and 24.04 will build from the checkout with no restored dependency cache."
+            else
+              echo "Skipped. This pull request does not change the installer, build scripts, dependency pins, or install workflow."
+              echo "Add the \`install\` label, or run the workflow manually, to build both Ubuntu versions."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   install:
     name: Install on ${{ matrix.os }}
+    needs: detect
+    if: needs.detect.outputs.install == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -43,6 +99,7 @@ jobs:
             echo "## Clean installation — ${{ matrix.os }}"
             echo ""
             echo "The guided installer selected CPU and software decoding, including dav1d."
+            echo "Dependencies were compiled in this job. No dependency cache was restored."
             echo "PixVQA was not compiled by a separate manual build."
             echo ""
             if [[ -f reports/qa/install-version.txt ]]; then
