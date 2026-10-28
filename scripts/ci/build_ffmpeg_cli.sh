@@ -3,6 +3,7 @@
 # It is a decode oracle only. Encoding stays on the distribution ffmpeg.
 # The ffmpeg program needs libavfilter, libswscale, and libswresample, which
 # the installer leaves disabled, so this rebuild stays in the source tree.
+# The rawvideo muxer stays enabled so the oracle can write comparison YUV.
 # Nothing is installed over the libraries PixVQA already links.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -33,7 +34,7 @@ rpath="$src/libavcodec:$src/libavformat:$src/libavutil:$src/libswscale:$src/libs
         --disable-doc \
         --enable-ffmpeg --disable-ffplay --disable-ffprobe \
         --disable-avdevice \
-        --disable-encoders --disable-muxers \
+        --disable-encoders --disable-muxers --enable-muxer=rawvideo \
         --disable-autodetect \
         --enable-libdav1d --enable-protocol=file \
         --extra-cflags="-I$DAV1D_PREFIX/include" \
