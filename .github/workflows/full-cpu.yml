@@ -59,11 +59,16 @@ jobs:
         continue-on-error: true
         run: bash scripts/ci/prepare_vvc_fixture.sh
 
+      - name: FFmpeg decode oracle matching the linked libraries
+        id: ffmpeg
+        run: bash scripts/ci/build_ffmpeg_cli.sh
+
       - name: Full CPU QA
         env:
           PIXVQA_VVC_FIXTURE: ${{ steps.vvc.outputs.fixture }}
           PIXVQA_VVC_REFERENCE: ${{ steps.vvc.outputs.reference }}
           PIXVQA_VVC_SIZE: ${{ steps.vvc.outputs.size }}
+          PIXVQA_FFMPEG_ORACLE: ${{ steps.ffmpeg.outputs.ffmpeg }}
         run: |
           if [[ "${{ steps.vvc.outcome }}" != "success" ]]; then
             echo "VVC fixture generation failed. The VVC case will fail instead of being skipped."

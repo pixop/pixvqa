@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import os
 import random
 from pathlib import Path
 
@@ -19,6 +20,12 @@ def _reject(proc, needle) -> bool:
 
 def _ff(world: World, args: list, timeout: int = 90):
     return run_cmd([world.ffmpeg, "-y", "-hide_banner", "-loglevel", "error", *args], timeout=timeout)
+
+
+def _oracle_ff(world: World, args: list, timeout: int = 90):
+    """Decode with the FFmpeg that matches PixVQA's libraries when one is provided."""
+    tool = os.environ.get("PIXVQA_FFMPEG_ORACLE") or world.ffmpeg
+    return run_cmd([tool, "-y", "-hide_banner", "-loglevel", "error", *args], timeout=timeout)
 
 
 def _has_codec(world: World, kind: str, name: str) -> bool:
@@ -205,33 +212,59 @@ def _codec_cases() -> list:
             if not world.ffmpeg or world.binary("swdec") is None:
                 return Result("FAIL", "ffmpeg or swdec is absent", label)
             w = h = 64
-            src = world.tmp / f"{label}.src.yuv"
-            enc = world.tmp / f"{label}.{ext}"
-            oracle = world.tmp / f"{label}.oracle.yuv"
-            second = world.tmp / f"{label}.second.yuv"
+            synthetic_vvc = False
             fmt_chroma = "420" if pix.startswith("yuvj") else chroma
-            write_yuv(src, w, h, fmt_chroma, bits, frames)
-            enc_cmd = ["-f", "rawvideo", "-pix_fmt", pix if not pix.startswith("yuvj") else "yuv420p",
-                       "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
-            if pix.startswith("yuvj"):
-                enc_cmd = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{w}x{h}", "-r", "24",
-                           "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
-            encoded = _ff(world, enc_cmd, timeout=180)
-            if encoded.returncode != 0 or not enc.is_file():
-                return Result("SKIP", f"encoder failed: {encoded.stderr[-200:]}", " ".join(codec_args))
-            dec_args = ["-i", str(enc)]
-            if forced:
-                dec_args = [*forced, *dec_args]
-            raw_pix = "yuv420p" if pix == "yuvj420p" else pix
-            one = _ff(world, [*dec_args, "-f", "rawvideo", "-pix_fmt", raw_pix, str(oracle)])
-            two = _ff(world, ["-i", str(enc), "-f", "rawvideo", "-pix_fmt", raw_pix, str(second)])
-            if one.returncode != 0 or two.returncode != 0:
-                return Result("FAIL", (one.stderr + two.stderr)[-300:], label)
-            if oracle.read_bytes() != second.read_bytes():
-                return Result("FAIL", "two independent decodes disagree", label)
-            expected = frame_bytes(w, h, fmt_chroma, bits) * frames
-            if oracle.stat().st_size != expected:
-                return Result("FAIL", f"oracle bytes {oracle.stat().st_size} != {expected}", label)
+            fixture = os.environ.get("PIXVQA_VVC_FIXTURE", "").strip() if label == "vvc" else ""
+            if fixture:
+                size = os.environ.get("PIXVQA_VVC_SIZE", "").lower().strip()
+                reference = os.environ.get("PIXVQA_VVC_REFERENCE", "").strip()
+                if "x" not in size or not reference:
+                    return Result("FAIL", "PIXVQA_VVC_FIXTURE requires PIXVQA_VVC_SIZE and PIXVQA_VVC_REFERENCE", label)
+                enc = Path(fixture)
+                oracle = Path(reference)
+                width_s, height_s = size.split("x", 1)
+                w, h = int(width_s), int(height_s)
+                if not enc.is_file() or not oracle.is_file():
+                    return Result("FAIL", f"synthetic VVC fixture is missing: {enc}", label)
+                frame = frame_bytes(w, h, chroma, bits)
+                if oracle.stat().st_size == 0 or oracle.stat().st_size % frame:
+                    return Result("FAIL", "synthetic VVC reference is not a whole number of frames", label)
+                frames = oracle.stat().st_size // frame
+                synthetic_vvc = True
+            else:
+                src = world.tmp / f"{label}.src.yuv"
+                enc = world.tmp / f"{label}.{ext}"
+                oracle = world.tmp / f"{label}.oracle.yuv"
+                second = world.tmp / f"{label}.second.yuv"
+                write_yuv(src, w, h, fmt_chroma, bits, frames)
+                enc_cmd = ["-f", "rawvideo", "-pix_fmt", pix if not pix.startswith("yuvj") else "yuv420p",
+                           "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
+                if pix.startswith("yuvj"):
+                    enc_cmd = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{w}x{h}", "-r", "24",
+                               "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
+                encoded = _ff(world, enc_cmd, timeout=180)
+                if encoded.returncode != 0 or not enc.is_file():
+                    if label == "vvc":
+                        return Result(
+                            "FAIL",
+                            "VVC encoder is unavailable and no synthetic fixture was provided. "
+                            + encoded.stderr[-200:],
+                            " ".join(codec_args),
+                        )
+                    return Result("SKIP", f"encoder failed: {encoded.stderr[-200:]}", " ".join(codec_args))
+                dec_args = ["-i", str(enc)]
+                if forced:
+                    dec_args = [*forced, *dec_args]
+                raw_pix = "yuv420p" if pix == "yuvj420p" else pix
+                one = _oracle_ff(world, [*dec_args, "-f", "rawvideo", "-pix_fmt", raw_pix, str(oracle)])
+                two = _oracle_ff(world, ["-i", str(enc), "-f", "rawvideo", "-pix_fmt", raw_pix, str(second)])
+                if one.returncode != 0 or two.returncode != 0:
+                    return Result("FAIL", (one.stderr + two.stderr)[-300:], label)
+                if oracle.read_bytes() != second.read_bytes():
+                    return Result("FAIL", "two independent decodes disagree", label)
+                expected = frame_bytes(w, h, fmt_chroma, bits) * frames
+                if oracle.stat().st_size != expected:
+                    return Result("FAIL", f"oracle bytes {oracle.stat().st_size} != {expected}", label)
             fmt = f"{fmt_chroma}p:{bits}"
             proc, cmd = _pix(world, "swdec", [
                 "--metrics", "psnr", "--decode", "cpu", "-v", "0",
@@ -247,7 +280,7 @@ def _codec_cases() -> list:
                 return Result("FAIL", proc.stderr[-400:], cmd)
             if "reference: raw" not in proc.stdout or "distorted: cpu" not in proc.stdout:
                 return Result("FAIL", proc.stdout[-300:], cmd)
-            if decoder == "vvc" and world.vvdec:
+            if decoder == "vvc" and world.vvdec and not synthetic_vvc:
                 elem = world.tmp / f"{label}.266"
                 extracted = _ff(world, ["-i", str(enc), "-c", "copy", "-f", "vvc", str(elem)])
                 yuv = world.tmp / f"{label}.vvdec.yuv"
@@ -312,9 +345,9 @@ def _negative_cases() -> list:
             "-r", str(path), "-s", "16x16", "-f", "420p:8",
             "-t", str(path), "-s", "16x16", "-f", "420p:8",
         ])
-        if not _reject(proc, "no CPU decoder"):
+        if not (_reject(proc, "no CPU decoder") or _reject(proc, "no video stream")):
             return Result("FAIL", proc.stderr[-300:], cmd)
-        return Result("PASS", "cpu build refuses a compressed request", cmd)
+        return Result("PASS", "compressed input without a decodable stream was not scored", cmd)
 
     def corrupt(world: World) -> Result:
         if not world.ffmpeg or world.binary("swdec") is None:

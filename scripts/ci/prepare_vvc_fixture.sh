@@ -17,6 +17,7 @@ exec > >(tee -a "$log") 2>&1
 
 build_tool() {
     local name="$1" tag="$2" url="$3"
+    shift 3
     if [[ -x "$prefix/bin/$name" ]]; then
         printf '%s already installed at %s\n' "$name" "$prefix/bin/$name"
         return 0
@@ -24,12 +25,16 @@ build_tool() {
     pixvqa_git_clone "$tag" "$url" "$src/$name"
     cmake -S "$src/$name" -B "$src/$name/build" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$prefix"
+        -DCMAKE_INSTALL_PREFIX="$prefix" \
+        "$@"
     cmake --build "$src/$name/build" -j"$(nproc)"
     cmake --install "$src/$name/build"
     if [[ ! -x "$prefix/bin/$name" ]]; then
-        found="$(find "$src/$name/build" -type f -name "$name" -perm -111 | head -n 1)"
-        [[ -n "$found" ]] || return 1
+        found="$(find "$src/$name" -type f -name "$name" -perm -111 | head -n 1)"
+        if [[ -z "$found" ]]; then
+            printf 'FAIL %s was built but not installed\n' "$name" >&2
+            return 1
+        fi
         mkdir -p "$prefix/bin"
         cp "$found" "$prefix/bin/$name"
         chmod 755 "$prefix/bin/$name"
@@ -37,7 +42,7 @@ build_tool() {
 }
 
 build_tool vvencapp v1.14.0 https://github.com/fraunhoferhhi/vvenc.git
-build_tool vvdecapp v3.2.1 https://github.com/fraunhoferhhi/vvdec.git
+build_tool vvdecapp v3.2.1 https://github.com/fraunhoferhhi/vvdec.git -DVVDEC_INSTALL_VVDECAPP=ON
 [[ -x "$prefix/bin/vvencapp" && -x "$prefix/bin/vvdecapp" ]]
 
 width=176

@@ -33,7 +33,7 @@ bash install_pixvqa.sh
 
 **Full CPU QA** (`.github/workflows/full-cpu.yml`) is `workflow_dispatch` only. It installs the same CPU and software-decoding configuration on Ubuntu 24.04, then runs `python3 scripts/run_qa.py --profile full`.
 
-That profile covers PSNR, XPSNR, SSIM, MS-SSIM, SDR and HDR VMAF, PU21-PSNR, PU21-SSIM, PU21-MS-SSIM, QCS, 8-bit and 10-bit, SDR, PQ, and HLG, raw YUV, software HEVC, AV1, and VVC, and invalid-input cases. The installer builds FFmpeg with libdav1d. Apt FFmpeg supplies the independent HEVC and AV1 encodes. Ubuntu's FFmpeg does not decode VVC.
+That profile covers PSNR, XPSNR, SSIM, MS-SSIM, SDR and HDR VMAF, PU21-PSNR, PU21-SSIM, PU21-MS-SSIM, QCS, 8-bit and 10-bit, SDR, PQ, and HLG, raw YUV, software HEVC, AV1, and VVC, and invalid-input cases. The installer builds FFmpeg with libdav1d. Apt FFmpeg supplies the encoders. A second `ffmpeg` program is then built from that same n8.1.3 tree and used only as the decode oracle, so the comparison is against the libraries PixVQA links. Ubuntu's FFmpeg does not decode VVC.
 
 After this workflow file is on the default branch, start it from the branch under test:
 
