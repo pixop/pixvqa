@@ -365,7 +365,7 @@ PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 
 `scripts/finish_install.sh` removes `build/`. Set `PIXVQA_KEEP_BUILD=1` to retain those intermediates. It does not remove `deps/` or `PIXVQA_MANUAL_ROOT`.
 
-The smoke profile verifies the CPU build (16 cases in the previously validated environment). After a full NVIDIA build, optionally run:
+The smoke profile verifies the CPU build (17 cases). After a full NVIDIA build, optionally run:
 
 ```bash
 PIXVQA_CHECK_GPU=1 python3 scripts/run_qa.py --profile hardware

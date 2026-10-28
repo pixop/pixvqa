@@ -44,7 +44,7 @@ jobs:
       - name: QCS regression suite
         run: python3 scripts/test_qcs.py
 
-      - name: QA smoke profile (16 cases)
+      - name: QA smoke profile (17 cases)
         run: python3 scripts/run_qa.py --profile smoke
 
       - name: Job summary
@@ -59,7 +59,7 @@ jobs:
             echo "| \`build/cpu/selftest\` | see step above |"
             echo "| \`scripts/test_io_regressions.py\` | see step above |"
             echo "| \`scripts/test_qcs.py\` (needs NumPy; \`python3-numpy\` on Ubuntu) | see step above |"
-            echo "| \`scripts/run_qa.py --profile smoke\` (16 cases) | see step above |"
+            echo "| \`scripts/run_qa.py --profile smoke\` (17 cases) | see step above |"
             echo ""
             echo "## Separate workflows"
             echo ""

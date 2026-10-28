@@ -101,11 +101,21 @@ XPSNR uses `--fps` for raw YUV. When a compressed input has one constant frame r
 
 The raw commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
 
-Compressed video. Resolution and pixel format are detected:
+Compressed inputs. Resolution, pixel format, and a constant frame rate are read from the file. These names are the caller's files:
 ```bash
-pixvqa --metrics psnr,xpsnr,ssim,msssim --decode cpu \
-  -r reference.mp4 \
-  -t distorted.mp4
+pixvqa --metrics psnr,xpsnr,ssim,msssim \
+  -r ref_hevc.mp4 \
+  -t dist_hevc.mp4
+```
+```bash
+pixvqa --metrics psnr,xpsnr,ssim,msssim \
+  -r ref_av1.mp4 \
+  -t dist_av1.mp4
+```
+```bash
+pixvqa --metrics psnr,xpsnr,ssim,msssim \
+  -r ref_vvc.mp4 \
+  -t dist_vvc.mp4
 ```
 
 Raw reference and compressed distorted video:
@@ -263,7 +273,7 @@ Compressed video support depends on the installed FFmpeg build. Other codecs may
 
 HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested.
 
-NVDEC decodes HEVC and AV1. Other codecs use software decoding.
+NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC.
 
 **Limitations:**
 - HDR transfer characteristics (PQ/HLG) come from the stream or from `--hdr-transfer`. They are not inferred from bit depth, BT.2020 primaries, or the filename.

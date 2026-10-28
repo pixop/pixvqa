@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALLED = Path(os.environ.get("PIXVQA_BIN", ROOT / "bin" / "pixvqa"))
 CPU = Path(os.environ.get("PIXVQA_CPU", ROOT / "build" / "cpu" / "pixvqa"))
 SW = Path(os.environ.get("PIXVQA_SWDEC", ROOT / "build" / "swdec" / "pixvqa"))
-FFMPEG = os.environ.get("FFMPEG", "/home/sergio/bin/ffmpeg")
+FFMPEG = os.environ.get("FFMPEG") or shutil.which("ffmpeg") or ""
 MODEL = ROOT / "model" / "vmaf_v1.0.16_3d0h.json"
 HDR_MODEL = ROOT / "model" / "hdr_vmaf_v1.1.8" / "hdr_vmaf_v1.1.8_3d0h.json"
 NUM = re.compile(r"[-+]?(?:\d+\.\d+|\d+)")
@@ -117,6 +118,9 @@ def require_reject(label: str, proc: subprocess.CompletedProcess[str], needle: s
 
 
 def main() -> int:
+    if not FFMPEG:
+        print("set FFMPEG or put ffmpeg on PATH", file=sys.stderr)
+        return 2
     if not INSTALLED.is_file() or not CPU.is_file() or not SW.is_file():
         print("missing binary", INSTALLED, CPU, SW, file=sys.stderr)
         return 2
