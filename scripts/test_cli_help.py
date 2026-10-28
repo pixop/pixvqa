@@ -176,6 +176,7 @@ def main() -> int:
         write_yuv(td / "caller10.yuv", 320, 240, 10, 2, 0)
         write_yuv(td / "caller10b.yuv", 320, 240, 10, 2, 40)
         if ffmpeg_bin and Path(ffmpeg_bin).is_file():
+            (td / "samples").mkdir()
             for src, dst, pix, size, codec, extra in (
                 ("reference.yuv", "reference.mp4", "yuv420p", "1920x1080", "libx264",
                  ["-preset", "veryfast", "-qp", "18"]),
@@ -183,15 +184,15 @@ def main() -> int:
                  ["-preset", "veryfast", "-qp", "28"]),
                 ("reference10.yuv", "reference10.hevc.mp4", "yuv420p10le", "1920x1080", "libx265",
                  ["-x265-params", "lossless=1", "-tag:v", "hvc1"]),
-                ("caller10.yuv", "ref_hevc.mp4", "yuv420p10le", "320x240", "libx265",
+                ("caller10.yuv", "samples/ref_hevc.mp4", "yuv420p10le", "320x240", "libx265",
                  ["-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"]),
-                ("caller10b.yuv", "dist_hevc.mp4", "yuv420p10le", "320x240", "libx265",
+                ("caller10b.yuv", "samples/dist_hevc.mp4", "yuv420p10le", "320x240", "libx265",
                  ["-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"]),
-                ("caller10.yuv", "ref_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
-                ("caller10b.yuv", "dist_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
-                ("caller10.yuv", "ref_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
+                ("caller10.yuv", "samples/ref_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
+                ("caller10b.yuv", "samples/dist_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
+                ("caller10.yuv", "samples/ref_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
                  ["-preset", "faster", "-qp", "32"]),
-                ("caller10b.yuv", "dist_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
+                ("caller10b.yuv", "samples/dist_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
                  ["-preset", "faster", "-qp", "32"]),
             ):
                 subprocess.run(
