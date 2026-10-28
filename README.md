@@ -101,21 +101,21 @@ XPSNR uses `--fps` for raw YUV. When a compressed input has one constant frame r
 
 The raw commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
 
-Compressed inputs. Resolution, pixel format, and a constant frame rate are read from the file. These names are the caller's files:
+Compressed inputs. Resolution, pixel format, and a constant frame rate are read from the file. `samples/` holds short Big Buck Bunny excerpts:
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r ref_hevc.mp4 \
-  -t dist_hevc.mp4
+  -r samples/ref_hevc.mp4 \
+  -t samples/dist_hevc.mp4
 ```
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r ref_av1.mp4 \
-  -t dist_av1.mp4
+  -r samples/ref_av1.mp4 \
+  -t samples/dist_av1.mp4
 ```
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r ref_vvc.mp4 \
-  -t dist_vvc.mp4
+  -r samples/ref_vvc.mp4 \
+  -t samples/dist_vvc.mp4
 ```
 
 Raw reference and compressed distorted video:

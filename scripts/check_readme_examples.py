@@ -97,17 +97,19 @@ def main() -> int:
                    ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "28"])
             encode(ff, td / "reference10.yuv", td / "reference10.hevc.mp4", "yuv420p10le", "1920x1080", 2,
                    ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1", "-tag:v", "hvc1"])
-            encode(ff, td / "caller10.yuv", td / "ref_hevc.mp4", "yuv420p10le", "320x240", 2,
+            sample_dir = td / "samples"
+            sample_dir.mkdir()
+            encode(ff, td / "caller10.yuv", sample_dir / "ref_hevc.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"])
-            encode(ff, td / "caller10b.yuv", td / "dist_hevc.mp4", "yuv420p10le", "320x240", 2,
+            encode(ff, td / "caller10b.yuv", sample_dir / "dist_hevc.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"])
-            encode(ff, td / "caller10.yuv", td / "ref_av1.mp4", "yuv420p10le", "320x240", 2,
+            encode(ff, td / "caller10.yuv", sample_dir / "ref_av1.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libsvtav1", "-pix_fmt", "yuv420p10le", "-preset", "10"])
-            encode(ff, td / "caller10b.yuv", td / "dist_av1.mp4", "yuv420p10le", "320x240", 2,
+            encode(ff, td / "caller10b.yuv", sample_dir / "dist_av1.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libsvtav1", "-pix_fmt", "yuv420p10le", "-preset", "10"])
-            encode(ff, td / "caller10.yuv", td / "ref_vvc.mp4", "yuv420p10le", "320x240", 2,
+            encode(ff, td / "caller10.yuv", sample_dir / "ref_vvc.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libvvenc", "-pix_fmt", "yuv420p10le", "-preset", "faster", "-qp", "32"])
-            encode(ff, td / "caller10b.yuv", td / "dist_vvc.mp4", "yuv420p10le", "320x240", 2,
+            encode(ff, td / "caller10b.yuv", sample_dir / "dist_vvc.mp4", "yuv420p10le", "320x240", 2,
                    ["-c:v", "libvvenc", "-pix_fmt", "yuv420p10le", "-preset", "faster", "-qp", "32"])
         env = os.environ.copy()
         env["PATH"] = str(binary.parent) + os.pathsep + env.get("PATH", "")

@@ -54,9 +54,10 @@ reports/*.txt
 /bin/
 /share/
 
-# Media is not part of this source tree.
+# Media is not part of this source tree, except the demonstration clips.
 *.yuv
 *.mp4
+!samples/*.mp4
 *.hevc
 *.265
 *.ivf
