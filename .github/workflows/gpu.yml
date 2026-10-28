@@ -1,0 +1,85 @@
+name: GPU QA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    name: CUDA and NVDEC
+    runs-on: [self-hosted, linux, nvidia]
+    timeout-minutes: 240
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      PIXVQA_DEPS_ROOT: ${{ github.workspace }}/deps
+      PIXVQA_ENABLE_DAV1D: "1"
+      PIXVQA_ENABLE_NVIDIA: "1"
+      PIXVQA_KEEP_BUILD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require an NVIDIA GPU and CUDA 12.8
+        run: |
+          if ! command -v nvidia-smi >/dev/null; then
+            echo "FAIL. nvidia-smi is missing."
+            echo "This workflow runs only on a self-hosted runner labeled self-hosted, linux, and nvidia."
+            echo "A GitHub-hosted CPU runner is not a pass, and a missing runner is not a pass."
+            exit 1
+          fi
+          nvidia-smi
+          if ! command -v nvcc >/dev/null && [[ ! -x /usr/local/cuda-12.8/bin/nvcc ]]; then
+            echo "FAIL. CUDA 12.8 nvcc is not installed. This workflow does not install the toolkit."
+            exit 1
+          fi
+
+      - name: CLI encoders
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Guided installer (CUDA metrics, NVDEC, dav1d)
+        run: bash install_pixvqa.sh
+
+      - name: Installed build must be CUDA with NVDEC
+        run: |
+          mkdir -p reports/qa
+          env -u LD_LIBRARY_PATH ./bin/pixvqa --version | tee reports/qa/install-version.txt
+          env -u LD_LIBRARY_PATH ldd ./bin/pixvqa | tee reports/qa/install-ldd.txt
+          grep -q 'not found' reports/qa/install-ldd.txt && { echo "FAIL shared library not found"; exit 1; }
+          grep -qx 'build: cuda' reports/qa/install-version.txt
+          grep -qx 'decode: software nvdec' reports/qa/install-version.txt
+          case "$(readlink -f ./bin/pixvqa)" in
+            "$(readlink -f "$GITHUB_WORKSPACE")"/*) ;;
+            *) echo "FAIL installed executable is outside the checkout"; exit 1 ;;
+          esac
+
+      - name: Hardware profile
+        run: env -u LD_LIBRARY_PATH python3 scripts/run_qa.py --profile hardware
+
+      - name: CUDA PSNR, XPSNR, SSIM, and MS-SSIM
+        env:
+          PIXVQA_BIN: ${{ github.workspace }}/bin/pixvqa
+          PIXVQA_CUDA_BIN: ${{ github.workspace }}/bin/pixvqa
+        run: env -u LD_LIBRARY_PATH python3 scripts/test_cuda_psnr_ssim_8bit.py
+
+      - name: CUDA PU21
+        env:
+          PIXVQA_BIN: ${{ github.workspace }}/bin/pixvqa
+          PIXVQA_CUDA_BIN: ${{ github.workspace }}/bin/pixvqa
+          PIXVQA_SWDEC_BIN: ${{ github.workspace }}/bin/pixvqa
+          PIXVQA_FULL_BIN: ${{ github.workspace }}/bin/pixvqa
+        run: env -u LD_LIBRARY_PATH python3 scripts/test_pu21_cuda.py
+
+      - name: Upload GPU report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-gpu
+          path: |
+            reports/qa/hardware.*
+            reports/qa/install-version.txt
+            reports/qa/install-ldd.txt
+          if-no-files-found: warn

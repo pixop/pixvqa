@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-CPU = ROOT / "build" / "cpu" / "pixvqa"
-CUDA = ROOT / "build" / "cuda" / "pixvqa"
+CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
+CUDA = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "cuda" / "pixvqa"))
 W, H, N = 64, 48, 3
 
 
@@ -103,7 +103,7 @@ def compare(label, fmt, bits, distort, qcs):
 
 def main():
     if not CPU.is_file() or not CUDA.is_file():
-        fail("build/cpu/pixvqa and build/cuda/pixvqa are required")
+        fail(f"CPU and CUDA executables are required: {CPU} and {CUDA}")
     for bits in (8, 10):
         for fmt in ("420", "422", "444"):
             for distort, kind in ((False, "identical"), (True, "distorted")):

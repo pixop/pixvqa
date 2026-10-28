@@ -45,6 +45,8 @@ done
 source "$PIXVQA_SRC/scripts/install_prefix.sh"
 # shellcheck disable=SC1091
 source "$PIXVQA_SRC/scripts/git_retry.sh"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/install_choices.sh"
 # Default to this checkout. A PREFIX inherited from another checkout is ignored.
 export PREFIX="$(pixvqa_select_prefix "$PIXVQA_SRC")"
 # shellcheck disable=SC1091
@@ -67,8 +69,28 @@ fi
 printf 'dav1d prefix: %s\n' "$DAV1D_PREFIX"
 printf 'FFmpeg prefix: %s\n' "$FFMPEG_PREFIX"
 printf 'NOTE: apt packages, the NVIDIA driver, and the CUDA toolkit are not moved by PIXVQA_DEPS_ROOT.\n'
-if ask 'Install dav1d 1.5.1 for software AV1 decoding? [Y/n] ' yes; then WITH_DAV1D=1; else WITH_DAV1D=0; fi
-if ask 'Build NVIDIA GPU support (CUDA metrics + NVDEC)? [y/N] ' no; then WITH_NVIDIA=1; else WITH_NVIDIA=0; fi
+# PIXVQA_ENABLE_DAV1D and PIXVQA_ENABLE_NVIDIA accept 1/0 (or yes/no).
+# When either variable is unset, the installer still asks on a terminal.
+dav1d_choice="$(pixvqa_choice PIXVQA_ENABLE_DAV1D)"
+case "$dav1d_choice" in
+    yes) WITH_DAV1D=1 ;;
+    no) WITH_DAV1D=0 ;;
+    unset)
+        if ask 'Install dav1d 1.5.1 for software AV1 decoding? [Y/n] ' yes; then WITH_DAV1D=1; else WITH_DAV1D=0; fi
+        ;;
+    *) die 'PIXVQA_ENABLE_DAV1D must be 1/yes or 0/no.' ;;
+esac
+nvidia_choice="$(pixvqa_choice PIXVQA_ENABLE_NVIDIA)"
+case "$nvidia_choice" in
+    yes) WITH_NVIDIA=1 ;;
+    no) WITH_NVIDIA=0 ;;
+    unset)
+        if ask 'Build NVIDIA GPU support (CUDA metrics + NVDEC)? [y/N] ' no; then WITH_NVIDIA=1; else WITH_NVIDIA=0; fi
+        ;;
+    *) die 'PIXVQA_ENABLE_NVIDIA must be 1/yes or 0/no.' ;;
+esac
+printf 'dav1d: %s\n' "$( (( WITH_DAV1D )) && printf yes || printf no )"
+printf 'NVIDIA: %s\n' "$( (( WITH_NVIDIA )) && printf yes || printf no )"
 
 # build_decode.sh expects a concrete dav1d library path in the documented setup.
 # Rather than claim untested no-dav1d decoder support, choose the raw-YUV CPU build.

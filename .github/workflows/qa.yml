@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cpu-hosted:
     name: CPU build and hosted tests
@@ -57,12 +61,13 @@ jobs:
             echo "| \`scripts/test_qcs.py\` (needs NumPy; \`python3-numpy\` on Ubuntu) | see step above |"
             echo "| \`scripts/run_qa.py --profile smoke\` (16 cases) | see step above |"
             echo ""
-            echo "## Not run on GitHub-hosted runners"
+            echo "## Separate workflows"
             echo ""
-            echo "- **Full QA** (~233 cases): needs pinned FFmpeg, libdav1d, libvmaf build, external VMAF CLI, decode binaries, and optional GPU."
-            echo "- **Hardware / NVDEC / CUDA metrics**: needs a self-hosted runner with NVIDIA labels; enable only via manual workflow dispatch."
+            echo "- **Clean installation** on Ubuntu 22.04 and 24.04 runs on this pull request. See \`docs/CI.md\`."
+            echo "- **Full CPU QA** is manual: \`gh workflow run \"Full CPU QA\" --ref <branch>\`."
+            echo "- **GPU QA** is manual and needs a self-hosted runner labeled \`self-hosted\`, \`linux\`, and \`nvidia\`. A missing GPU is not a pass."
             echo ""
-            echo "Local full profile: \`python3 scripts/run_qa.py --profile full\` after \`docs/INSTALL.md\`."
+            echo "This job does not build dav1d, FFmpeg, libvmaf, or CUDA."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload smoke report
@@ -71,56 +76,6 @@ jobs:
         with:
           name: qa-smoke-hosted
           path: reports/qa/smoke.*
-
-  hosted-integration-skip:
-    name: Full QA — NOT RUN on hosted CI
-    runs-on: ubuntu-24.04
-    needs: cpu-hosted
-    steps:
-      - name: Document full-profile limitation
-        run: |
-          mkdir -p reports/qa
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          reason = (
-              "NOT RUN on GitHub-hosted CI. The full profile needs validated FFmpeg, "
-              "libdav1d, libvmaf prefixes, VMAF CLI, software-decode/full binaries, and "
-              "optional GPU. On a prepared machine run: "
-              "python3 scripts/run_qa.py --profile full"
-          )
-          Path("reports/qa/full-hosted-skip.json").write_text(
-              json.dumps(
-                  {
-                      "profile": "full",
-                      "verdict": "NOT_RUN",
-                      "hosted_ci": True,
-                      "reason": reason,
-                  },
-                  indent=2,
-              )
-              + "\n",
-              encoding="utf-8",
-          )
-          print(reason)
-          PY
-
-      - name: Summary — full QA not executed
-        run: |
-          {
-            echo "## Full QA — NOT RUN"
-            echo ""
-            echo "This job **does not** execute the 233-case full profile. It records why hosted CI skips integration testing."
-            echo ""
-            echo "Run locally after building dependencies per \`docs/INSTALL.md\`:"
-            echo "\`python3 scripts/run_qa.py --profile full\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload skip record
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-full-not-run-on-hosted
-          path: reports/qa/full-hosted-skip.json
 
   hardware-self-hosted:
     name: Hardware / GPU (manual, self-hosted only)

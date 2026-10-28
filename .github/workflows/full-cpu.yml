@@ -1,0 +1,104 @@
+name: Full CPU QA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-cpu-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full:
+    name: Full CPU suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      PIXVQA_DEPS_ROOT: ${{ github.workspace }}/deps
+      PIXVQA_ENABLE_DAV1D: "1"
+      PIXVQA_ENABLE_NVIDIA: "0"
+      PIXVQA_KEEP_BUILD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: CLI encoders and VVC build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg cmake
+
+      - name: Guided installer (CPU, software decoding, dav1d)
+        run: bash install_pixvqa.sh
+
+      - name: Verify installed executable and smoke QA
+        run: bash scripts/ci/verify_install.sh
+
+      - name: Encoder and decoder availability
+        run: |
+          {
+            echo "## FFmpeg CLI available to the functional tests"
+            echo '```'
+            ffmpeg -hide_banner -encoders | grep -E 'libx264|libx265|libaom|libsvtav1' || true
+            ffmpeg -hide_banner -decoders | grep -E 'hevc|av1|libdav1d|vvc' || true
+            echo '```'
+            echo ""
+            echo "Apt FFmpeg is the independent AV1/HEVC oracle. It is not expected to decode VVC."
+            echo "VVC uses a synthetic stream and VVdeC when that generation succeeds."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Synthetic VVC fixture
+        id: vvc
+        continue-on-error: true
+        run: bash scripts/ci/prepare_vvc_fixture.sh
+
+      - name: Full CPU QA
+        env:
+          PIXVQA_VVC_FIXTURE: ${{ steps.vvc.outputs.fixture }}
+          PIXVQA_VVC_REFERENCE: ${{ steps.vvc.outputs.reference }}
+          PIXVQA_VVC_SIZE: ${{ steps.vvc.outputs.size }}
+        run: |
+          if [[ "${{ steps.vvc.outcome }}" != "success" ]]; then
+            echo "VVC fixture generation failed. The VVC case will fail instead of being skipped."
+            unset PIXVQA_VVC_FIXTURE PIXVQA_VVC_REFERENCE PIXVQA_VVC_SIZE
+          fi
+          env -u LD_LIBRARY_PATH python3 scripts/run_qa.py --profile full
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Full CPU QA"
+            echo ""
+            if [[ -f reports/qa/full.txt ]]; then
+              echo '```'
+              head -n 40 reports/qa/full.txt
+              echo '```'
+            else
+              echo "The full report was not written. This job did not pass."
+            fi
+            echo ""
+            if [[ -f reports/qa/codec-status.txt ]]; then
+              echo "Codec script: \`$(cat reports/qa/codec-status.txt)\`"
+            fi
+            if [[ "${{ steps.vvc.outcome }}" != "success" ]]; then
+              echo ""
+              echo "Synthetic VVC generation did not succeed. VVC is a failure, not a skip."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full CPU report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-full-cpu
+          path: |
+            reports/qa/full.*
+            reports/qa/codec-status.txt
+            reports/qa/install-version.txt
+            reports/qa/install-ldd.txt
+            reports/qa/vvc-fixture/prepare.log
+            reports/qa/vvc-fixture/fixture.env
+          if-no-files-found: warn

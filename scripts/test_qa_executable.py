@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from run_qa import select_qa_executable  # noqa: E402
+from run_qa import companion_binaries, select_qa_executable  # noqa: E402
 
 
 def fail(message: str) -> None:
@@ -52,6 +52,29 @@ def main() -> int:
         except FileNotFoundError:
             pass
         print("OK   executable selection")
+
+    def version_script(build: str, decode: str) -> str:
+        return f"#!/bin/sh\nprintf 'pixvqa version test\\nbuild: {build}\\ndecode: {decode}\\n'\n"
+
+    with tempfile.TemporaryDirectory(prefix="pixvqa_qa_companion_") as tmp:
+        root = Path(tmp)
+        primary = root / "bin" / "pixvqa"
+        write_exec(primary, version_script("cpu", "software"))
+        swdec, full = companion_binaries(root, primary)
+        if swdec != primary:
+            fail(f"software install did not supply the decoder binary: {swdec}")
+        if full == primary or full.is_file():
+            fail("CPU software install was treated as the CUDA binary")
+        write_exec(primary, version_script("cuda", "software nvdec"))
+        swdec, full = companion_binaries(root, primary)
+        if swdec != primary or full != primary:
+            fail("CUDA/NVDEC install did not supply both decoder roles")
+        developed = root / "build" / "swdec" / "pixvqa"
+        write_exec(developed, "#!/bin/sh\nexit 0\n")
+        swdec, _full = companion_binaries(root, primary)
+        if swdec != developed:
+            fail("development software binary did not win over the install")
+        print("OK   companion binaries")
 
     source = ROOT / "build" / "cpu" / "pixvqa"
     if not source.is_file():

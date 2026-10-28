@@ -15,7 +15,7 @@ An alternative clean-room CPU-only test can use Ubuntu containers/VMs (no GPU); 
 ## Before either run
 
 1. Review the snapshot for approved publication. Ensure `tests/fixtures/vvc/bbb_360p.vvc` is **not** included because redistribution permission is unverified. Also exclude root-level duplicate `libvmaf_flags.sh`, installation logs and generated files.
-2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/build_zimg.sh`, `scripts/deps_layout.sh`, `scripts/libvmaf_flags.sh`, `scripts/install.sh`, `scripts/verify_installed_pixvqa.sh`, `scripts/finish_install.sh`, `scripts/test_deps_layout.sh` and `scripts/test_install_layout.sh`. Run `bash scripts/test_deps_layout.sh` and `bash scripts/test_install_layout.sh` before either installation. The first checks legacy and isolated dependency paths. The second installs each available build into a temporary prefix and checks a clean-shell `./bin/pixvqa`. Neither installs packages or touches `$HOME/dav1d-1.5.1`.
+2. Confirm `bash -n` succeeds for `install_pixvqa.sh`, `build.sh`, `build_cuda.sh`, `build_decode.sh`, `scripts/build_libvmaf.sh`, `scripts/build_zimg.sh`, `scripts/deps_layout.sh`, `scripts/libvmaf_flags.sh`, `scripts/install.sh`, `scripts/verify_installed_pixvqa.sh`, `scripts/finish_install.sh`, `scripts/install_choices.sh`, `scripts/ci/verify_install.sh`, `scripts/ci/prepare_vvc_fixture.sh`, `scripts/test_deps_layout.sh` and `scripts/test_install_layout.sh`. Run `bash scripts/test_deps_layout.sh` and `bash scripts/test_install_layout.sh` before either installation. The first checks legacy and isolated dependency paths. The second installs each available build into a temporary prefix and checks a clean-shell `./bin/pixvqa`. Neither installs packages or touches `$HOME/dav1d-1.5.1`.
 3. Verify `git status --short` in the snapshot and record file checksums/commit ID. A clean installation tests the exact same snapshot under AUTO and MANUAL.
 
 ## AUTO instance
@@ -29,7 +29,7 @@ set -o pipefail
 PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh 2>&1 | tee auto_install.log
 ```
 
-For the full NVIDIA path answer `y` to dav1d and `y` to NVIDIA. The installer is interactive; CLI flags like `--with-dav1d` are **not** supported. Assert that the installed launcher works from a **new shell**:
+For the full NVIDIA path answer `y` to dav1d and `y` to NVIDIA, or export `PIXVQA_ENABLE_DAV1D=1` and `PIXVQA_ENABLE_NVIDIA=1` before starting the installer. `0` selects no. Unset variables still prompt. There is no `--with-dav1d` flag. Assert that the installed executable works from a **new shell**:
 
 The installer installs into the checkout that contains `install_pixvqa.sh`. A `PREFIX` inherited from another PixVQA checkout is ignored. A `PREFIX` that is not a PixVQA checkout is honored. The default installed program is `./bin/pixvqa`. Its smoke QA runs that executable with `LD_LIBRARY_PATH` unset, so private libraries must resolve through RPATH. The apt set includes `perl`, `autoconf`, `automake`, `libtool`, and `m4` from the same Ubuntu release. The final NVDEC link requires `/usr/bin/g++`. Set `PIXVQA_KEEP_BUILD=1` before the installer to retain `build/`.
 

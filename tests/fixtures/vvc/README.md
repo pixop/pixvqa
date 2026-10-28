@@ -35,3 +35,9 @@ agreement, **not** an independent known-good pixel oracle or all VVC conformance
 For a truly self-contained open-source QA, replace the fixture with a small
 redistributable, properly licensed stream and pin its checksum and known-good
 reference YUV hash.
+
+A missing `bbb_360p.vvc` is a **failure**, not a skip. CI does not download it.
+`scripts/ci/prepare_vvc_fixture.sh` can build VVenC and VVdeC and write a small
+synthetic stream under `reports/qa/vvc-fixture/`. Pass that stream with
+`PIXVQA_VVC_FIXTURE`, `PIXVQA_VVC_SIZE`, and `PIXVQA_VVC_REFERENCE`. The
+synthetic path does not replace the SHA-256 check on the default fixture.
