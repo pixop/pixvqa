@@ -3,7 +3,7 @@
 # It is a decode oracle only. Encoding stays on the distribution ffmpeg.
 # The ffmpeg program needs libavfilter, libswscale, and libswresample, which
 # the installer leaves disabled, so this rebuild stays in the source tree.
-# The rawvideo muxer stays enabled so the oracle can write comparison YUV.
+# The rawvideo encoder and muxer stay enabled so the oracle can write comparison YUV.
 # Nothing is installed over the libraries PixVQA already links.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -34,13 +34,22 @@ rpath="$src/libavcodec:$src/libavformat:$src/libavutil:$src/libswscale:$src/libs
         --disable-doc \
         --enable-ffmpeg --disable-ffplay --disable-ffprobe \
         --disable-avdevice \
-        --disable-encoders --disable-muxers --enable-muxer=rawvideo \
+        --disable-encoders --enable-encoder=rawvideo \
+        --disable-muxers --enable-muxer=rawvideo \
         --disable-autodetect \
         --enable-libdav1d --enable-protocol=file \
         --extra-cflags="-I$DAV1D_PREFIX/include" \
         --extra-ldflags="-L$DAV1D_LIB -Wl,-rpath,$rpath"
     grep -q '^CONFIG_FFMPEG=yes$' ffbuild/config.mak || {
         printf 'FAIL configure did not enable the ffmpeg program\n' >&2
+        exit 1
+    }
+    grep -q '^#define CONFIG_RAWVIDEO_ENCODER 1$' config_components.h || {
+        printf 'FAIL configure did not enable the rawvideo encoder\n' >&2
+        exit 1
+    }
+    grep -q '^#define CONFIG_RAWVIDEO_MUXER 1$' config_components.h || {
+        printf 'FAIL configure did not enable the rawvideo muxer\n' >&2
         exit 1
     }
     make -j"$(nproc)" ffmpeg
