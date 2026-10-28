@@ -105,6 +105,9 @@ def write_yuv(path: Path, width: int, height: int, bits: int, frames: int, bias:
 def executable_for(block: str) -> Path:
     if "--decode gpu" in block:
         return FULL
+    # Software AV1 needs libdav1d. The NVDEC binary still detects the picture.
+    if "av1" in block and FULL.is_file():
+        return FULL
     if "--decode" in block or "--input compressed" in block or ".mp4" in block:
         return SW
     return CPU
@@ -120,11 +123,17 @@ def with_executable(block: str, binary: Path) -> str:
 
 
 def examples() -> list[str]:
+    """Bare `pixvqa` examples. Installer snippets use ./bin/pixvqa and are not run here."""
     blocks = re.findall(r"```bash\n(.*?)```", README, flags=re.S)
-    return [
-        b.strip() for b in blocks
-        if "pixvqa " in b and "bash " not in b and not b.strip().startswith("export")
-    ]
+    chosen = []
+    for raw in blocks:
+        text = raw.strip()
+        if "bash " in text or text.startswith("export"):
+            continue
+        if not re.match(r"pixvqa\b", text):
+            continue
+        chosen.append(text)
+    return chosen
 
 
 def main() -> int:
@@ -160,19 +169,34 @@ def main() -> int:
         model_src = ROOT / "model"
         model_dst = td / "model"
         if model_src.is_dir():
-            model_dst.mkdir(exist_ok=True)
-            for p in model_src.glob("*.json"):
-                (model_dst / p.name).write_bytes(p.read_bytes())
+            for p in model_src.rglob("*.json"):
+                dest = model_dst / p.relative_to(model_src)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(p.read_bytes())
+        write_yuv(td / "caller10.yuv", 320, 240, 10, 2, 0)
+        write_yuv(td / "caller10b.yuv", 320, 240, 10, 2, 40)
         if ffmpeg_bin and Path(ffmpeg_bin).is_file():
-            for src, dst, pix, codec, extra in (
-                ("reference.yuv", "reference.mp4", "yuv420p", "libx264", ["-preset", "veryfast", "-qp", "18"]),
-                ("distorted.yuv", "distorted.mp4", "yuv420p", "libx264", ["-preset", "veryfast", "-qp", "28"]),
-                ("reference10.yuv", "reference10.hevc.mp4", "yuv420p10le", "libx265",
+            for src, dst, pix, size, codec, extra in (
+                ("reference.yuv", "reference.mp4", "yuv420p", "1920x1080", "libx264",
+                 ["-preset", "veryfast", "-qp", "18"]),
+                ("distorted.yuv", "distorted.mp4", "yuv420p", "1920x1080", "libx264",
+                 ["-preset", "veryfast", "-qp", "28"]),
+                ("reference10.yuv", "reference10.hevc.mp4", "yuv420p10le", "1920x1080", "libx265",
                  ["-x265-params", "lossless=1", "-tag:v", "hvc1"]),
+                ("caller10.yuv", "ref_hevc.mp4", "yuv420p10le", "320x240", "libx265",
+                 ["-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"]),
+                ("caller10b.yuv", "dist_hevc.mp4", "yuv420p10le", "320x240", "libx265",
+                 ["-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"]),
+                ("caller10.yuv", "ref_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
+                ("caller10b.yuv", "dist_av1.mp4", "yuv420p10le", "320x240", "libsvtav1", ["-preset", "10"]),
+                ("caller10.yuv", "ref_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
+                 ["-preset", "faster", "-qp", "32"]),
+                ("caller10b.yuv", "dist_vvc.mp4", "yuv420p10le", "320x240", "libvvenc",
+                 ["-preset", "faster", "-qp", "32"]),
             ):
                 subprocess.run(
                     [ffmpeg_bin, "-y", "-hide_banner", "-loglevel", "error",
-                     "-f", "rawvideo", "-pix_fmt", pix, "-s", "1920x1080", "-r", "24",
+                     "-f", "rawvideo", "-pix_fmt", pix, "-s", size, "-r", "24",
                      "-i", str(td / src), "-frames:v", "2", "-c:v", codec, "-pix_fmt", pix, *extra,
                      str(td / dst)],
                     check=True,

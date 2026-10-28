@@ -111,7 +111,8 @@ enum class CudaPrecision { Fp32, Fp64, Mixed };
 // MS-SSIM already run on CUDA. Cuda is opt-in and does not use CudaPrecision.
 enum class XpsnrBackend { Cpu, Cuda };
 
-// VMAF device selection. Phase 1 supports Cpu only. Cuda is rejected explicitly.
+// VMAF execution. Cpu is the only implemented backend. A GPU metric-device
+// request keeps this value and warns; it is never reported as CUDA.
 enum class VmafBackend { Cpu, Cuda };
 
 // raw: both inputs are planar YUV. software/nvdec decode -t only.
@@ -120,6 +121,11 @@ enum class DecodeMode { Raw, Software, Nvdec };
 // Public device request. Auto is resolved after the format is known.
 enum class DeviceChoice { Auto, Cpu, Gpu };
 enum class InputKind { Auto, Raw, Compressed };
+
+// Constant: nominal and average rates match, and present packet durations
+// do not change. Variable: those rates disagree, or durations change.
+// Missing: the container does not carry a usable rate.
+enum class FrameRateKind { Missing, Constant, Variable };
 
 // Split HDR overrides. "auto" is represented by leaving the corresponding set flag false.
 struct HdrCli {
@@ -155,7 +161,7 @@ struct Options {
   bool enable_pu21_psnr = false;
   bool enable_pu21_ssim = false;
   bool enable_pu21_msssim = false;
-  bool pu21_cpu_notice = false;
+  bool pu21_gpu = false;
   // Required when enable_vmaf. Filesystem path to a VMAF model JSON.
   // Set by --model or the backward-compatible alias --vmaf-model.
   std::string vmaf_model_path;
@@ -169,6 +175,14 @@ struct Options {
   double qcs_xpsnr_lo = 30.0, qcs_xpsnr_hi = 50.0;
   double qcs_ssim_lo = 0.8, qcs_ssim_hi = 1.0;
   double qcs_msssim_lo = 0.8, qcs_msssim_hi = 1.0;
+  // One range for every VMAF model. HDR scores above 100 stay unclipped.
+  double qcs_vmaf_lo = 70.0, qcs_vmaf_hi = 100.0;
+  // PU21-PSNR uses peak 256, the PU code of about 100 cd/m2, so its dB
+  // band matches PSNR rather than VMAF. PU21-SSIM and PU21-MS-SSIM are
+  // similarities on that same peak, so they use the SSIM band.
+  double qcs_pu21_psnr_lo = 30.0, qcs_pu21_psnr_hi = 50.0;
+  double qcs_pu21_ssim_lo = 0.8, qcs_pu21_ssim_hi = 1.0;
+  double qcs_pu21_msssim_lo = 0.8, qcs_pu21_msssim_hi = 1.0;
   XpsnrBackend xpsnr_backend = XpsnrBackend::Cpu;
   bool fps_set = false;
   int fps_num = 0;
@@ -195,8 +209,9 @@ struct Options {
   CudaPrecision cuda_prec = CudaPrecision::Fp64;
   int strip_height = 0;  // 0 = library default; the public CLI does not set this
   double peak = 1023.0;  // 10-bit
-  // Color overrides. They do not enter PSNR, SSIM, MS-SSIM, XPSNR, or VMAF.
-  // When set, they replace stream metadata for the HDR interpretation.
+  // Color overrides. They do not enter PSNR, SSIM, MS-SSIM, or XPSNR.
+  // HDR VMAF uses an explicit complete description of each input. SDR VMAF
+  // leaves picture color unset. When set, these replace stream metadata.
   std::string color_space = "bt709l";
   std::string transfer = "sdr";
   bool color_space_set = false;

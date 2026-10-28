@@ -48,7 +48,28 @@ struct VmafMeta {
   double score_clip_hi = 0.0;
   bool hfr_model = false;
   bool known_v1_model = false;
+  // Empty conversion means the model has no conversion_target. Scores stay on
+  // the model's own clip, including [0,110]. They are not rescaled to [0,100].
+  std::string libvmaf_commit;
+  std::string zimg_version;
+  std::string conversion = "none";
+  int display_short_side = 0;
+  bool motion_five_frame = false;
+  bool motion_moving_average = false;
+  std::string color_ref = "unset";
+  std::string color_dist = "unset";
 };
+
+// JSON inspection only. Does not load libvmaf and does not score.
+struct VmafModelFileInfo {
+  bool has_conversion = false;
+  std::string conversion = "none";
+  int display_short_side = 0;
+  bool motion_five_frame = false;
+  bool motion_moving_average = false;
+};
+
+VmafModelFileInfo vmaf_inspect_model_file(const std::string& path);
 
 // Look up SpEED/cambi minimum luma size for a model JSON identified by SHA-256.
 // Returns false when the digest is not one of the eight known v1.0.16 files.
@@ -60,9 +81,11 @@ std::string vmaf_file_sha256(const std::string& path);
 // Resolve to an absolute path (cwd-relative). Throws if the path is empty.
 std::string vmaf_resolve_model_path(const std::string& requested);
 
-// CPU adapter over the official libvmaf 3.2.1 C API.
+// CPU adapter over the pinned libvmaf C API (commit 74f930d, not a release tag).
 // Lifecycle: start → push (in order) → finish → frame()/summary() → destroy.
 // finish() flushes temporal extractors (motion3) before scores are collected.
+// color_ref and color_dist are RANGE:PRIMARIES:TRC:MATRIX, or empty when unset.
+// An HDR model (conversion_target) requires both. An SDR model leaves picture color unset.
 class VmafMeter {
  public:
   VmafMeter();
@@ -73,7 +96,8 @@ class VmafMeter {
 
   // Loads the model JSON at model_path via vmaf_model_load_from_path.
   // n_threads is passed to VmafConfiguration. Format bit_depth must be 8 or 10.
-  void start(const VideoFormat& fmt, const std::string& model_path, int n_threads = 1);
+  void start(const VideoFormat& fmt, const std::string& model_path, int n_threads,
+             const std::string& color_ref, const std::string& color_dist);
 
   // Copy host Frame planes into a VmafPicture pair and submit them.
   // 10-bit: preserve uint16 sample values. 8-bit: narrow to uint8 (no 10-bit promote).
@@ -91,7 +115,7 @@ class VmafMeter {
  private:
   void ensure_started() const;
   void destroy();
-  void fill_picture(const Frame& src, void* pic_out);
+  void fill_picture(const Frame& src, void* pic_out, const std::string& color_spec);
 
   VideoFormat fmt_{};
   VmafMeta meta_{};
@@ -110,6 +134,9 @@ class VmafMeter {
   std::string feat_speed_chroma_;
   std::string feat_adm3_;
   std::string feat_motion3_;
+  bool apply_color_ = false;
+  std::string color_ref_spec_;
+  std::string color_dist_spec_;
 
   void* vmaf_ = nullptr;
   void* model_ = nullptr;

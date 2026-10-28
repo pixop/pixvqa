@@ -1262,12 +1262,14 @@ void cuda_score_device_frame(const Frame* host_ref, const DevicePlanarFrame* dev
   if (!host_test && !device_test) {
     throw std::runtime_error("CUDA test frame is missing");
   }
-  const bool tenbit = do_psnr || do_ssim;
-  if (!tenbit && !do_msssim && !xpsnr) {
+  const bool sample_metrics = do_psnr || do_ssim;
+  if (!sample_metrics && !do_msssim && !xpsnr) {
     throw std::runtime_error("CUDA: no metric requested");
   }
-  if (tenbit && fmt.bit_depth != 10) {
-    throw std::runtime_error("CUDA backend supports 10-bit planar YUV only");
+  // Host frames store 8-bit codes in uint16. The SSE and SSIM kernels read
+  // those codes and use the caller-supplied peak, so 8-bit and 10-bit share them.
+  if (sample_metrics && fmt.bit_depth != 8 && fmt.bit_depth != 10) {
+    throw std::runtime_error("CUDA PSNR and SSIM support 8-bit and 10-bit only");
   }
   if (do_msssim && fmt.bit_depth != 8 && fmt.bit_depth != 10) {
     throw std::runtime_error("CUDA MS-SSIM supports 8-bit and 10-bit only");
@@ -2092,7 +2094,7 @@ void cuda_bench_pipe_open(const VideoFormat& fmt, int integer_rate, bool do_psnr
   pipe.do_xpsnr = do_xpsnr;
   pipe.fmt = fmt;
   pipe.rate = integer_rate;
-  pipe.peak = 1023.0;
+  pipe.peak = fmt.bit_depth == 8 ? 255.0 : 1023.0;
   pipe.submitted = 0;
   pipe.reaped = 0;
   pipe.results.clear();

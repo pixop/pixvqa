@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CPU-only Pixop VQA. No FFmpeg and no CUDA. Output: build/cpu/pixvqa
-# Links pinned libvmaf 3.2.1 from deps/libvmaf-3.2.1 when present (optional).
+# Links the pinned libvmaf commit 74f930d from deps/libvmaf-74f930d when present.
+# That commit is not a release tag. v3.2.1 remains buildable with scripts/build_libvmaf_3.2.1.sh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"

@@ -14,6 +14,7 @@ extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/rational.h>
 #ifdef PIXVQA_HAS_NVDEC
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_cuda.h>
@@ -285,6 +286,220 @@ bool probe_video_input(const std::string& path, std::string* codec_name) {
   }
   av_log_set_level(saved);
   return video;
+}
+
+namespace {
+
+bool rational_ok(AVRational q) { return q.num > 0 && q.den > 0; }
+
+void read_frame_rate(AVFormatContext* fmt, AVStream* stream, CompressedInfo& out) {
+  const AVRational avg = stream->avg_frame_rate;
+  const AVRational nominal = stream->r_frame_rate;
+  if (rational_ok(avg)) {
+    out.fps_num = avg.num;
+    out.fps_den = avg.den;
+  }
+  if (rational_ok(nominal)) {
+    out.nominal_num = nominal.num;
+    out.nominal_den = nominal.den;
+  }
+  if (!rational_ok(avg) || !rational_ok(nominal) || av_cmp_q(avg, nominal) != 0) {
+    out.rate = (rational_ok(avg) && rational_ok(nominal)) ? FrameRateKind::Variable
+                                                          : FrameRateKind::Missing;
+    return;
+  }
+
+  bool saw = false;
+  bool varied = false;
+  int64_t first = 0;
+  if (av_seek_frame(fmt, stream->index, 0, AVSEEK_FLAG_BACKWARD) >= 0) {
+    AVPacket* pkt = av_packet_alloc();
+    if (pkt) {
+      while (av_read_frame(fmt, pkt) >= 0) {
+        if (pkt->stream_index == stream->index && pkt->duration > 0) {
+          if (!saw) {
+            first = pkt->duration;
+            saw = true;
+          } else if (pkt->duration != first) {
+            varied = true;
+            av_packet_unref(pkt);
+            break;
+          }
+        }
+        av_packet_unref(pkt);
+      }
+      av_packet_free(&pkt);
+    }
+  }
+  const bool timed = stream->duration > 0 && stream->duration != AV_NOPTS_VALUE;
+  if (varied) out.rate = FrameRateKind::Variable;
+  else if (saw || timed) out.rate = FrameRateKind::Constant;
+  else out.rate = FrameRateKind::Missing;
+}
+
+bool probe_one_picture(const std::string& path, CompressedInfo& out, std::string& err) {
+  AVFormatContext* fmt = nullptr;
+  AVCodecContext* ctx = nullptr;
+  AVPacket* pkt = nullptr;
+  AVFrame* frame = nullptr;
+  auto cleanup = [&]() {
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
+    if (ctx) avcodec_free_context(&ctx);
+    if (fmt) avformat_close_input(&fmt);
+  };
+  if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) < 0 ||
+      avformat_find_stream_info(fmt, nullptr) < 0) {
+    cleanup();
+    err = "failed to reopen the compressed input to detect its picture format";
+    return false;
+  }
+  const int best = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+  if (best < 0) {
+    cleanup();
+    err = "compressed input has no video stream";
+    return false;
+  }
+  AVStream* stream = fmt->streams[best];
+  const AVCodec* codec = software_decoder(stream->codecpar->codec_id);
+  if (!codec) {
+    cleanup();
+    err = "could not detect the pixel format; this FFmpeg build has no software decoder for " +
+          out.codec;
+    return false;
+  }
+  ctx = avcodec_alloc_context3(codec);
+  if (!ctx || avcodec_parameters_to_context(ctx, stream->codecpar) < 0) {
+    cleanup();
+    err = "failed to prepare a decoder for picture-format detection";
+    return false;
+  }
+  ctx->thread_count = 1;
+  if (avcodec_open2(ctx, codec, nullptr) < 0) {
+    cleanup();
+    err = "failed to open a decoder for picture-format detection";
+    return false;
+  }
+  pkt = av_packet_alloc();
+  frame = av_frame_alloc();
+  if (!pkt || !frame) {
+    cleanup();
+    err = "failed to allocate a picture for format detection";
+    return false;
+  }
+  bool got = false;
+  bool input_eof = false;
+  bool draining = false;
+  while (!got) {
+    int ret = avcodec_receive_frame(ctx, frame);
+    if (ret == AVERROR(EAGAIN)) {
+      if (draining) break;
+      if (!input_eof) {
+        ret = av_read_frame(fmt, pkt);
+        if (ret == AVERROR_EOF) {
+          input_eof = true;
+        } else if (ret < 0) {
+          break;
+        } else if (pkt->stream_index != best) {
+          av_packet_unref(pkt);
+          continue;
+        } else {
+          const int sent = avcodec_send_packet(ctx, pkt);
+          av_packet_unref(pkt);
+          if (sent < 0) break;
+          continue;
+        }
+      }
+      draining = true;
+      if (avcodec_send_packet(ctx, nullptr) < 0) break;
+      continue;
+    }
+    if (ret < 0) break;
+    got = true;
+  }
+  if (!got) {
+    cleanup();
+    err = "could not decode a picture to detect its format";
+    return false;
+  }
+  SwLayout layout;
+  const auto pix = static_cast<AVPixelFormat>(frame->format);
+  if (!software_layout(pix, layout)) {
+    err = "pixel format is " + pix_name(pix) +
+          "; supported software layouts are planar 8-bit and 10-bit 4:2:0, 4:2:2, and 4:4:4";
+    cleanup();
+    return false;
+  }
+  out.format.bit_depth = layout.bit_depth;
+  out.format.chroma = layout.chroma;
+  out.layout_known = true;
+  if (frame->width > 0 && frame->height > 0) {
+    out.format.width = frame->width;
+    out.format.height = frame->height;
+    out.size_known = true;
+  }
+  cleanup();
+  return out.size_known && out.layout_known;
+}
+
+}  // namespace
+
+bool detect_compressed_info(const std::string& path, CompressedInfo& out, std::string& err) {
+  out = CompressedInfo{};
+  err.clear();
+  struct stat st;
+  if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+    err = "compressed metadata detection requires a regular file";
+    return false;
+  }
+  AVFormatContext* fmt = nullptr;
+  const int saved = av_log_get_level();
+  av_log_set_level(AV_LOG_ERROR);
+  if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) < 0) {
+    av_log_set_level(saved);
+    err = "failed to open the compressed input";
+    return false;
+  }
+  if (avformat_find_stream_info(fmt, nullptr) < 0) {
+    avformat_close_input(&fmt);
+    av_log_set_level(saved);
+    err = "failed to read compressed stream information";
+    return false;
+  }
+  const int best = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+  if (best < 0) {
+    avformat_close_input(&fmt);
+    av_log_set_level(saved);
+    err = "compressed input has no video stream";
+    return false;
+  }
+  AVStream* stream = fmt->streams[best];
+  const AVCodecParameters* par = stream->codecpar;
+  out.codec = avcodec_get_name(par->codec_id);
+  if (par->width > 0 && par->height > 0) {
+    out.format.width = par->width;
+    out.format.height = par->height;
+    out.size_known = true;
+  }
+  if (par->format != AV_PIX_FMT_NONE) {
+    SwLayout layout;
+    const auto pix = static_cast<AVPixelFormat>(par->format);
+    if (!software_layout(pix, layout)) {
+      err = "pixel format is " + pix_name(pix) +
+            "; supported software layouts are planar 8-bit and 10-bit 4:2:0, 4:2:2, and 4:4:4";
+      avformat_close_input(&fmt);
+      av_log_set_level(saved);
+      return false;
+    }
+    out.format.bit_depth = layout.bit_depth;
+    out.format.chroma = layout.chroma;
+    out.layout_known = true;
+  }
+  read_frame_rate(fmt, stream, out);
+  avformat_close_input(&fmt);
+  av_log_set_level(saved);
+  if (out.size_known && out.layout_known) return true;
+  return probe_one_picture(path, out, err);
 }
 
 struct CompressedTestReader::Impl {

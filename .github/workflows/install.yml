@@ -1,0 +1,66 @@
+name: Clean installation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: Install on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      PIXVQA_DEPS_ROOT: ${{ github.workspace }}/deps
+      PIXVQA_ENABLE_DAV1D: "1"
+      PIXVQA_ENABLE_NVIDIA: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guided installer (CPU, software decoding, dav1d)
+        run: bash install_pixvqa.sh
+
+      - name: Verify installed executable and smoke QA
+        run: bash scripts/ci/verify_install.sh
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Clean installation — ${{ matrix.os }}"
+            echo ""
+            echo "The guided installer selected CPU and software decoding, including dav1d."
+            echo "PixVQA was not compiled by a separate manual build."
+            echo ""
+            if [[ -f reports/qa/install-version.txt ]]; then
+              echo '```'
+              cat reports/qa/install-version.txt
+              echo '```'
+            else
+              echo "Version output was not produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-${{ matrix.os }}
+          path: |
+            reports/qa/install-version.txt
+            reports/qa/install-ldd.txt
+            reports/qa/smoke.*
+          if-no-files-found: warn

@@ -182,7 +182,7 @@ def main() -> int:
 
         bad_size = pix([*base, "--decode", "cpu", "-r", str(ref_h), "-s", "32x32", "-f", "420p:10",
                         "-t", str(dist_h), "-s", "32x32", "-f", "420p:10"])
-        if bad_size.returncode == 0 or "picture is" not in bad_size.stderr:
+        if bad_size.returncode == 0 or "-s asks for" not in bad_size.stderr:
             fail(f"size reject rc={bad_size.returncode} {bad_size.stderr}")
         else:
             print("OK   resolution mismatch")
@@ -211,7 +211,7 @@ def main() -> int:
             "-frames:v", "2", "-c:v", "mpeg4", str(mpeg),
         ])
         other = pix(["--metrics", "psnr", "--decode", "cpu", *sides(mpeg, mpeg)])
-        if other.returncode == 0 or "pixel format" not in other.stderr:
+        if other.returncode == 0 or "-f asks for" not in other.stderr:
             fail(f"8-bit mpeg4 declared as 10-bit rc={other.returncode} {other.stderr}")
         elif "Summary results" in other.stdout:
             fail("bit-depth mismatch produced a score")
@@ -219,7 +219,7 @@ def main() -> int:
             print("OK   8-bit stream is not treated as 10-bit")
 
         bits = pix(["--metrics", "psnr", "--decode", "cpu", *sides(ref_h, dist_h, "420p:8")])
-        if bits.returncode == 0 or "pixel format" not in bits.stderr:
+        if bits.returncode == 0 or "-f asks for" not in bits.stderr:
             fail(f"10-bit hevc as 8-bit rc={bits.returncode} {bits.stderr}")
         else:
             print("OK   10-bit stream is not treated as 8-bit")

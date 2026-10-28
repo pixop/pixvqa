@@ -25,26 +25,72 @@ ask() {
 
 # Discard PixVQA-specific settings inherited from earlier builds. This script
 # runs in its own Bash process, so the caller's shell is not changed.
-# Keep PREFIX (user-selected installation location) and CUDA_HOME (toolkit).
+# Keep CUDA_HOME (toolkit) and PIXVQA_DEPS_ROOT (optional isolated third-party
+# directory). PREFIX is resolved after the checkout is known: another PixVQA
+# checkout is never reused, and any other PREFIX remains a custom location.
 # Also retain general toolchain/library search paths used by other software.
 unset PIXVQA_SRC PIXVQA_BIN LIBVMAF_PREFIX FFMPEG_PREFIX
 unset DAV1D_PREFIX DAV1D_LIB GCC13 GCC_ENV CUDART_LIBDIR
 unset PIXVQA_LIBCUDA_DIR PIXVQA_FULL_LINK_CXX
+unset LIBVMAF_SRC LIBVMAF_BUILD ZIMG_PREFIX ZIMG_SRC
+unset ZIMG_AUTOTOOLS_PREFIX ZIMG_AUTOTOOLS_DEBS
 
 # The script lives at the root of the source checkout.
 export PIXVQA_SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-for file in build.sh build_decode.sh build_cuda.sh scripts/build_libvmaf.sh scripts/install.sh; do
+for file in build.sh build_decode.sh build_cuda.sh scripts/build_libvmaf.sh scripts/deps_layout.sh scripts/install.sh; do
     [[ -f "$PIXVQA_SRC/$file" ]] || die "Expected source file missing: $PIXVQA_SRC/$file"
 done
 [[ "$PIXVQA_SRC" != "$HOME" ]] || die 'Refusing to treat the home directory as the PixVQA repository.'
-# Install into this checkout by default; callers may override PREFIX.
-export PREFIX="${PREFIX:-$PIXVQA_SRC}"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/install_prefix.sh"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/git_retry.sh"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/install_choices.sh"
+# Default to this checkout. A PREFIX inherited from another checkout is ignored.
+export PREFIX="$(pixvqa_select_prefix "$PIXVQA_SRC")"
+# shellcheck disable=SC1091
+source "$PIXVQA_SRC/scripts/deps_layout.sh"
+pixvqa_apply_deps_layout "$PIXVQA_SRC" || die 'Could not resolve the third-party dependency layout.'
+export DAV1D_PREFIX FFMPEG_PREFIX GCC13 MAMBA_ROOT_PREFIX LIBVMAF_PREFIX
+if (( PIXVQA_DEPS_ISOLATED )); then
+    export LIBVMAF_SRC LIBVMAF_BUILD ZIMG_PREFIX ZIMG_SRC
+    export ZIMG_AUTOTOOLS_PREFIX ZIMG_AUTOTOOLS_DEBS
+fi
 
 printf 'Installer revision: 2026-10-23-r6-glibc-vmaf\n'
 printf 'PixVQA checkout: %s\n' "$PIXVQA_SRC"
-printf 'Third-party source workspace: %s\n' "$HOME/pixvqa-deps/src"
-if ask 'Install dav1d 1.5.1 for software AV1 decoding? [Y/n] ' yes; then WITH_DAV1D=1; else WITH_DAV1D=0; fi
-if ask 'Build NVIDIA GPU support (CUDA metrics + NVDEC)? [y/N] ' no; then WITH_NVIDIA=1; else WITH_NVIDIA=0; fi
+printf 'Install prefix: %s\n' "$PREFIX"
+if (( PIXVQA_DEPS_ISOLATED )); then
+    printf 'Isolated third-party root: %s\n' "$PIXVQA_DEPS_ROOT"
+else
+    printf 'Third-party source workspace: %s\n' "$DEPS_SRC"
+fi
+printf 'dav1d prefix: %s\n' "$DAV1D_PREFIX"
+printf 'FFmpeg prefix: %s\n' "$FFMPEG_PREFIX"
+printf 'NOTE: apt packages, the NVIDIA driver, and the CUDA toolkit are not moved by PIXVQA_DEPS_ROOT.\n'
+# PIXVQA_ENABLE_DAV1D and PIXVQA_ENABLE_NVIDIA accept 1/0 (or yes/no).
+# When either variable is unset, the installer still asks on a terminal.
+dav1d_choice="$(pixvqa_choice PIXVQA_ENABLE_DAV1D)"
+case "$dav1d_choice" in
+    yes) WITH_DAV1D=1 ;;
+    no) WITH_DAV1D=0 ;;
+    unset)
+        if ask 'Install dav1d 1.5.1 for software AV1 decoding? [Y/n] ' yes; then WITH_DAV1D=1; else WITH_DAV1D=0; fi
+        ;;
+    *) die 'PIXVQA_ENABLE_DAV1D must be 1/yes or 0/no.' ;;
+esac
+nvidia_choice="$(pixvqa_choice PIXVQA_ENABLE_NVIDIA)"
+case "$nvidia_choice" in
+    yes) WITH_NVIDIA=1 ;;
+    no) WITH_NVIDIA=0 ;;
+    unset)
+        if ask 'Build NVIDIA GPU support (CUDA metrics + NVDEC)? [y/N] ' no; then WITH_NVIDIA=1; else WITH_NVIDIA=0; fi
+        ;;
+    *) die 'PIXVQA_ENABLE_NVIDIA must be 1/yes or 0/no.' ;;
+esac
+printf 'dav1d: %s\n' "$( (( WITH_DAV1D )) && printf yes || printf no )"
+printf 'NVIDIA: %s\n' "$( (( WITH_NVIDIA )) && printf yes || printf no )"
 
 # build_decode.sh expects a concrete dav1d library path in the documented setup.
 # Rather than claim untested no-dav1d decoder support, choose the raw-YUV CPU build.
@@ -56,16 +102,20 @@ if (( !WITH_DAV1D )); then
 fi
 
 export GCC_ENV=/usr
-export DAV1D_PREFIX="$HOME/dav1d-1.5.1"
-export FFMPEG_PREFIX="$HOME/ffmpeg-n8.1.3"
-export LIBVMAF_PREFIX="$PIXVQA_SRC/deps/libvmaf-3.2.1"
-export GCC13="${GCC13:-$HOME/pixvqa-deps/gcc13}"
-export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$HOME/pixvqa-deps/micromamba-root}"
-DEPS_SRC="$HOME/pixvqa-deps/src"
+# Active HDR pin. scripts/build_libvmaf_3.2.1.sh remains the historical recipe.
+# DAV1D_PREFIX, FFMPEG_PREFIX, LIBVMAF_PREFIX, GCC13, and MAMBA_ROOT_PREFIX
+# come from scripts/deps_layout.sh.
 
 # Private, user-owned shared-library directories are not in the default
 # dynamic loader search path. Preserve the original path and add each prefix
 # exactly once, including for ldd, QA and installed-binary verification.
+require_pkgconfig_prefix() {
+    local module="$1" expected="$2" got
+    got="$(pkg-config --variable=prefix "$module" 2>/dev/null || true)"
+    [[ -n "$got" ]] || die "pkg-config has no prefix for $module"
+    [[ "$(cd -- "$got" && pwd -P)" == "$(cd -- "$expected" && pwd -P)" ]] ||
+        die "$module pkg-config prefix $got is not $expected"
+}
 add_runtime_libdir() {
     local dir="$1"
     [[ -d "$dir" ]] || return 0
@@ -99,15 +149,22 @@ if [[ -r /etc/os-release ]]; then
 fi
 require sudo
 sudo apt-get update
-sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar
-for tool in g++ python3 git meson ninja nasm pkg-config make curl tar; do require "$tool"; done
-[[ -x /usr/bin/g++ ]] || die 'Expected /usr/bin/g++ for GCC_ENV=/usr.'
+# perl is required by autoconf. autoconf, automake, libtool, and m4 are the
+# distribution packages for the zimg bootstrap. Do not fetch another Ubuntu
+# release's binary packages.
+sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar perl autoconf automake libtool m4
+for tool in g++ python3 git meson ninja nasm pkg-config make curl tar perl autoconf automake libtoolize m4; do require "$tool"; done
+[[ -x /usr/bin/g++ ]] || die 'Expected /usr/bin/g++ for GCC_ENV=/usr and for the final NVDEC link.'
 mkdir -p "$DEPS_SRC"
 
 clone_pinned() {
     local url="$1" ref="$2" dest="$3" expected="$4"
+    if [[ -e "$dest" ]] && { [[ ! -d "$dest/.git" ]] || ! git -C "$dest" rev-parse --verify HEAD >/dev/null 2>&1; }; then
+        printf 'Removing incomplete checkout %s\n' "$dest" >&2
+        rm -rf -- "$dest"
+    fi
     if [[ ! -e "$dest" ]]; then
-        git clone --depth 1 --branch "$ref" "$url" "$dest"
+        pixvqa_git_clone "$ref" "$url" "$dest" || die "Could not clone $url"
     fi
     [[ -d "$dest/.git" ]] || die "Existing $dest is not a Git checkout. Inspect it manually."
     local got
@@ -131,6 +188,7 @@ if (( WITH_DAV1D )); then
     [[ -n "$DAV1D_PC" ]] || die "dav1d.pc missing under $DAV1D_PREFIX"
     export PKG_CONFIG_PATH="$(dirname "$DAV1D_PC")${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     [[ "$(pkg-config --modversion dav1d)" == 1.5.1 ]] || die 'Wrong dav1d version.'
+    require_pkgconfig_prefix dav1d "$DAV1D_PREFIX"
     export DAV1D_LIB="$(pkg-config --variable=libdir dav1d)"
     [[ -f "$DAV1D_LIB/libdav1d.so" ]] || die "Missing $DAV1D_LIB/libdav1d.so"
     add_runtime_libdir "$DAV1D_LIB"
@@ -157,22 +215,33 @@ if (( WITH_NVIDIA )); then
         elif command -v micromamba >/dev/null 2>&1; then
             micromamba create -y -p "$GCC13" --override-channels -c conda-forge 'gxx_linux-64=13.4'
         else
-            mkdir -p "$HOME/pixvqa-deps/tools"
-            curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/latest -o "$HOME/pixvqa-deps/tools/micromamba.tar.bz2"
-            tar -xjf "$HOME/pixvqa-deps/tools/micromamba.tar.bz2" -C "$HOME/pixvqa-deps/tools" bin/micromamba
-            "$HOME/pixvqa-deps/tools/bin/micromamba" create -y -p "$GCC13" --override-channels -c conda-forge 'gxx_linux-64=13.4'
+            mkdir -p "$PIXVQA_TOOLS_DIR"
+            curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/latest -o "$PIXVQA_TOOLS_DIR/micromamba.tar.bz2"
+            tar -xjf "$PIXVQA_TOOLS_DIR/micromamba.tar.bz2" -C "$PIXVQA_TOOLS_DIR" bin/micromamba
+            "$PIXVQA_TOOLS_DIR/bin/micromamba" create -y -p "$GCC13" --override-channels -c conda-forge 'gxx_linux-64=13.4'
         fi
     fi
     [[ -x "$compiler" ]] || die "Missing $compiler"
     "$compiler" -dumpfullversion | grep -Eq '^13\.4(\.|$)' || die 'GCC host compiler is not version 13.4.'
 
     info 'Checking or installing NVIDIA codec headers before FFmpeg configure'
-    if ! pkg-config --exists ffnvcodec; then
-        clone_pinned https://github.com/FFmpeg/nv-codec-headers.git n13.0.19.0 "$DEPS_SRC/nv-codec-headers" ''
-        make -C "$DEPS_SRC/nv-codec-headers" PREFIX="$HOME/pixvqa-deps/nv-codec-headers" install
-        export PKG_CONFIG_PATH="$HOME/pixvqa-deps/nv-codec-headers/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    # Isolated mode accepts only the headers installed under NVCODEC_PREFIX.
+    # The legacy mode still reuses an ffnvcodec package already visible to pkg-config.
+    nvcodec_ready=0
+    if (( PIXVQA_DEPS_ISOLATED )); then
+        if [[ -f "$NVCODEC_PREFIX/lib/pkgconfig/ffnvcodec.pc" ]]; then nvcodec_ready=1; fi
+    elif pkg-config --exists ffnvcodec; then
+        nvcodec_ready=1
     fi
+    if (( ! nvcodec_ready )); then
+        clone_pinned https://github.com/FFmpeg/nv-codec-headers.git n13.0.19.0 "$DEPS_SRC/nv-codec-headers" ''
+        make -C "$DEPS_SRC/nv-codec-headers" PREFIX="$NVCODEC_PREFIX" install
+    fi
+    export PKG_CONFIG_PATH="$NVCODEC_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     pkg-config --modversion ffnvcodec || die 'ffnvcodec headers unavailable.'
+    if (( PIXVQA_DEPS_ISOLATED )); then
+        require_pkgconfig_prefix ffnvcodec "$NVCODEC_PREFIX"
+    fi
 fi
 
 if (( WITH_DAV1D )); then
@@ -258,6 +327,15 @@ if [[ "$PIXVQA_HAS_VMAF" != 1 ]]; then
     die 'libvmaf archive exists but detection is disabled. Ensure the new helper is installed at scripts/libvmaf_flags.sh (not repository root).'
 fi
 printf 'Pinned libvmaf enabled: CFLAGS=%s LIBS=%s\n' "$PIXVQA_VMAF_CFLAGS" "$PIXVQA_VMAF_LIBS"
+case "$PIXVQA_VMAF_LIBS" in
+    *-lzimg*) ;;
+    *) die 'Pinned libvmaf is not linked with zimg.' ;;
+esac
+case "$PIXVQA_VMAF_CFLAGS" in
+    *74f930d17de8c58e7c2ce55e2b897b0030ebd8ef*) ;;
+    *) die 'Pinned libvmaf stamp is not commit 74f930d.' ;;
+esac
+grep -q vmaf_picture_convert "$LIBVMAF_PREFIX/include/libvmaf/picture.h" || die 'Pinned picture.h has no vmaf_picture_convert.'
 
 bash build.sh
 [[ -x build/cpu/pixvqa ]] || die 'CPU binary missing.'
@@ -314,11 +392,17 @@ if (( WITH_DAV1D )); then
         full_version="$(build/full/pixvqa --version)"
         grep -q 'decode: software nvdec' <<< "$full_version" || die 'Full binary does not report NVDEC.'
         PIXVQA_BIN=build/full/pixvqa
+        PIXVQA_EXPECT_BUILD=cuda
+        PIXVQA_EXPECT_DECODE="software nvdec"
     else
         PIXVQA_BIN=build/swdec/pixvqa
+        PIXVQA_EXPECT_BUILD=cpu
+        PIXVQA_EXPECT_DECODE=software
     fi
 else
     PIXVQA_BIN=build/cpu/pixvqa
+    PIXVQA_EXPECT_BUILD=cpu
+    PIXVQA_EXPECT_DECODE=none
 fi
 export PIXVQA_BIN
 
@@ -326,24 +410,11 @@ info 'Installing PixVQA application'
 [[ -x "$PIXVQA_BIN" ]] || die "Selected binary not executable: $PIXVQA_BIN"
 PREFIX="$PREFIX" PIXVQA_BIN="$PIXVQA_BIN" bash scripts/install.sh
 [[ -x "$PREFIX/bin/pixvqa" ]] || die 'Installed executable missing.'
-"$PREFIX/bin/pixvqa" --version
-show_missing_libraries "$PREFIX/bin/pixvqa" || die 'Unresolved runtime libraries in installed PixVQA.'
+bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$PIXVQA_EXPECT_BUILD" "$PIXVQA_EXPECT_DECODE"
 
-# Persist a documented launcher for NEW terminal sessions, which do not inherit
-# this installer's LD_LIBRARY_PATH. Do not alter user shell startup files.
-info 'Writing a launcher with the required private library paths'
-launcher="$PREFIX/bin/pixvqa-with-libs"
-{
-    printf '#!/usr/bin/env bash\nset -e\n'
-    printf 'export LD_LIBRARY_PATH=%q\n' "${LD_LIBRARY_PATH:-}"
-    printf 'exec %q "$@"\n' "$PREFIX/bin/pixvqa"
-} > "$launcher"
-chmod +x "$launcher"
-"$launcher" --version
-
-info 'Running CPU smoke QA'
-python3 scripts/run_qa.py --profile smoke
+info 'Running smoke QA on the installed executable'
+pixvqa_run_installed_smoke "$PIXVQA_SRC" "$PREFIX"
+PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"
-printf 'Portable-to-new-shell launcher (same machine): %s\n' "$launcher"
-printf 'NOTE: direct pixvqa execution in a new shell may require LD_LIBRARY_PATH; use the launcher.\n'
+printf 'Run it directly. Private libraries are recorded in the executable RPATH.\n'

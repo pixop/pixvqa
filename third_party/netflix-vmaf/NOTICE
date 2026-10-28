@@ -3,21 +3,27 @@ Netflix VMAF
 
 This directory redistributes licensing materials for the official Netflix VMAF
 project (https://github.com/Netflix/vmaf), used by PixVQA for optional CPU VMAF
-v1 evaluation via libvmaf 3.2.1.
+evaluation via libvmaf commit 74f930d17de8c58e7c2ce55e2b897b0030ebd8ef.
+That commit is not a tagged release. The previous tagged revision remains
+v3.2.1.
 
 Pinned upstream revision
 ------------------------
 
 - Repository: https://github.com/Netflix/vmaf
-- Tag: v3.2.1
-- Commit: f85a853692a8c730d0270cd733c8bb30b5b93b7c
+- Commit: 74f930d17de8c58e7c2ce55e2b897b0030ebd8ef
+- Previous tag: v3.2.1
+- Previous commit: f85a853692a8c730d0270cd733c8bb30b5b93b7c
+- Picture conversion: zimg 3.0.6, commit f819b14e8f39d1282400b0d9543e8ef73c1b2bbd
+  (https://github.com/sekrit-twc/zimg). zimg is linked, not vendored as source.
 
 Vendored model JSON assets
 --------------------------
 
-The eight VMAF v1.0.16 model JSON files under `model/` in this repository are
-exact byte copies of the corresponding files from the pinned Netflix commit.
-See `model/README.md` and `reports/VMAF_MODEL_CHECKSUMS.md`.
+The eight VMAF v1.0.16 model JSON files under `model/` are exact byte copies
+of the corresponding files from v3.2.1. The eight HDR VMAF v1.1.8 files under
+`model/hdr_vmaf_v1.1.8/` and `model/hdr_vmaf_v1.1.8_hfr/` are exact byte copies
+from commit 74f930d. See `model/README.md` and `reports/VMAF_MODEL_CHECKSUMS.md`.
 
 Copyright (c) 2020 Netflix, Inc.
 

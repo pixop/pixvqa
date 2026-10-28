@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build tools/vmaf_ref_oracle against pinned libvmaf 3.2.1.
+# Build tools/vmaf_ref_oracle against the pinned libvmaf checkout
+# (commit 74f930d, zimg 3.0.6). The previous v3.2.1 prefix is refused.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/libvmaf_flags.sh

@@ -50,6 +50,10 @@ reports/*.json
 reports/*.txt
 /reports/qa/
 
+# Default install prefix is the checkout. These are install outputs, not source.
+/bin/
+/share/
+
 # Media is not part of this source tree.
 *.yuv
 *.mp4

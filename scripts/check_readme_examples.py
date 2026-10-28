@@ -65,7 +65,10 @@ def main() -> int:
         return 2
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     blocks = re.findall(r"```bash\n(.*?)```", text, flags=re.S)
-    blocks = [b.strip() for b in blocks if "pixvqa " in b and not b.strip().startswith("export") and "bash " not in b]
+    blocks = [
+        b.strip() for b in blocks
+        if re.match(r"pixvqa\b", b.strip()) and "bash " not in b
+    ]
     if len(blocks) < 5:
         print(f"expected the usage examples, found {len(blocks)}", file=sys.stderr)
         return 2
@@ -81,9 +84,12 @@ def main() -> int:
         write_yuv(td / "distorted10.yuv", 1920, 1080, 10, 2, 40)
         model = ROOT / "model"
         if model.is_dir():
-            (td / "model").mkdir()
-            for path in model.glob("*.json"):
-                (td / "model" / path.name).write_bytes(path.read_bytes())
+            for path in model.rglob("*.json"):
+                dest = td / "model" / path.relative_to(model)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(path.read_bytes())
+        write_yuv(td / "caller10.yuv", 320, 240, 10, 2, 0)
+        write_yuv(td / "caller10b.yuv", 320, 240, 10, 2, 40)
         if ff:
             encode(ff, td / "reference.yuv", td / "reference.mp4", "yuv420p", "1920x1080", 2,
                    ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "18"])
@@ -91,14 +97,30 @@ def main() -> int:
                    ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-qp", "28"])
             encode(ff, td / "reference10.yuv", td / "reference10.hevc.mp4", "yuv420p10le", "1920x1080", 2,
                    ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1", "-tag:v", "hvc1"])
+            encode(ff, td / "caller10.yuv", td / "ref_hevc.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"])
+            encode(ff, td / "caller10b.yuv", td / "dist_hevc.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "lossless=1:bframes=0", "-tag:v", "hvc1"])
+            encode(ff, td / "caller10.yuv", td / "ref_av1.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libsvtav1", "-pix_fmt", "yuv420p10le", "-preset", "10"])
+            encode(ff, td / "caller10b.yuv", td / "dist_av1.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libsvtav1", "-pix_fmt", "yuv420p10le", "-preset", "10"])
+            encode(ff, td / "caller10.yuv", td / "ref_vvc.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libvvenc", "-pix_fmt", "yuv420p10le", "-preset", "faster", "-qp", "32"])
+            encode(ff, td / "caller10b.yuv", td / "dist_vvc.mp4", "yuv420p10le", "320x240", 2,
+                   ["-c:v", "libvvenc", "-pix_fmt", "yuv420p10le", "-preset", "faster", "-qp", "32"])
         env = os.environ.copy()
         env["PATH"] = str(binary.parent) + os.pathsep + env.get("PATH", "")
         full = ROOT / "build" / "full" / "pixvqa"
         for i, block in enumerate(blocks):
             use = env
-            if "--decode gpu" in block:
-                if os.environ.get("PIXVQA_CHECK_GPU") != "1" or not full.is_file():
+            if "--decode gpu" in block or ("av1" in block and full.is_file()):
+                if "--decode gpu" in block and (os.environ.get("PIXVQA_CHECK_GPU") != "1" or not full.is_file()):
                     print(f"SKIP example {i} gpu")
+                    continue
+                if not full.is_file():
+                    print(f"FAIL example {i} needs build/full/pixvqa", file=sys.stderr)
+                    fails += 1
                     continue
                 use = env.copy()
                 use["PATH"] = str(full.parent) + os.pathsep + env.get("PATH", "")

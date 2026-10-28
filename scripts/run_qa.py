@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -90,10 +92,84 @@ def coverage(results: list) -> dict:
     return executed
 
 
+def select_qa_executable(root: Path, override: str = "") -> Path:
+    """Choose the executable a QA profile scores.
+
+    Priority: explicit override, then the installed bin/pixvqa, then the
+    development build/cpu/pixvqa. An installed tree has no build/ directory.
+    """
+    chosen = override.strip()
+    if chosen:
+        path = Path(chosen)
+        if not path.is_file():
+            raise FileNotFoundError(f"QA executable override is not a file: {path}")
+        return path
+    installed = root / "bin" / "pixvqa"
+    if installed.is_file():
+        return installed
+    developed = root / "build" / "cpu" / "pixvqa"
+    if developed.is_file():
+        return developed
+    raise FileNotFoundError(
+        "No PixVQA executable found. Expected bin/pixvqa after installation "
+        "or build/cpu/pixvqa during development. Pass --cpu or set PIXVQA_QA_CPU."
+    )
+
+
+def install_profile(path: Path) -> tuple[str, str]:
+    """Read build and decode lines. Empty when the program cannot run."""
+    if not path.is_file():
+        return "", ""
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    try:
+        proc = subprocess.run(
+            [str(path), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "", ""
+    build = decode = ""
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("build: "):
+            build = line.split(": ", 1)[1].strip()
+        elif line.startswith("decode: "):
+            decode = line.split(": ", 1)[1].strip()
+    return build, decode
+
+
+def companion_binaries(root: Path, primary: Path) -> tuple[Path, Path]:
+    """Software and CUDA/NVDEC binaries for profiles that need them.
+
+    A development tree uses build/swdec and build/full. After installation
+    those directories are gone, so a software or CUDA primary stands in.
+    A CPU binary is never treated as the CUDA binary.
+    """
+    swdec = root / "build" / "swdec" / "pixvqa"
+    full = root / "build" / "full" / "pixvqa"
+    if swdec.is_file() and full.is_file():
+        return swdec, full
+    build, decode = install_profile(primary)
+    if not swdec.is_file() and decode in {"software", "software nvdec"}:
+        swdec = primary
+    if not full.is_file() and build == "cuda" and decode == "software nvdec":
+        full = primary
+    return swdec, full
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="PixVQA QA profiles")
     parser.add_argument("--profile", required=True, choices=("smoke", "full", "hardware"))
     parser.add_argument("--output-dir", type=Path, default=ROOT / "reports" / "qa")
+    parser.add_argument(
+        "--cpu",
+        type=Path,
+        help="Executable to test. Overrides PIXVQA_QA_CPU. "
+        "Default is bin/pixvqa, then build/cpu/pixvqa.",
+    )
     args = parser.parse_args()
 
     inventory = build_inventory(ROOT)
@@ -111,12 +187,22 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with tempfile.TemporaryDirectory(prefix=f"pixvqa_qa_{args.profile}_") as tmp:
+        override = str(args.cpu) if args.cpu else os.environ.get("PIXVQA_QA_CPU", "")
+        try:
+            cpu_binary = select_qa_executable(ROOT, override)
+        except FileNotFoundError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        print(f"QA executable: {cpu_binary}", flush=True)
+        swdec_binary, full_binary = companion_binaries(ROOT, cpu_binary)
+        print(f"QA software decoder: {swdec_binary}", flush=True)
+        print(f"QA CUDA/NVDEC binary: {full_binary}", flush=True)
         world = World(
             root=ROOT,
             tmp=Path(tmp),
-            cpu=ROOT / "build" / "cpu" / "pixvqa",
-            swdec=ROOT / "build" / "swdec" / "pixvqa",
-            full=ROOT / "build" / "full" / "pixvqa",
+            cpu=cpu_binary,
+            swdec=swdec_binary,
+            full=full_binary,
             ffmpeg=find_ffmpeg(),
             vvdec=find_vvdec(),
             model=ROOT / "model" / "vmaf_v1.0.16_3d0h.json",

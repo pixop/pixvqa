@@ -60,12 +60,12 @@ def main() -> int:
             "-f",
             "420p:10"]
         expect_fail("missing-model", ["--metrics", "vmaf", *base], "--model")
-        version = run(["--version"])
-        gpu_metrics = "build: cuda" in version.stdout
+        # 64x64 is below the feature extractor. The GPU request must warn and
+        # select CPU libvmaf before that failure, rather than refusing the device.
         expect_fail(
-            "cuda-backend",
+            "gpu-vmaf-falls-back-then-feature-size",
             ["--metrics", "vmaf", "--metric-device", "gpu", "--model", str(MODEL), *base],
-            "no GPU implementation" if gpu_metrics else "no GPU metrics",
+            "using CPU libvmaf",
         )
         expect_fail(
             "missing-file",
@@ -101,16 +101,17 @@ def main() -> int:
             ["--metrics", "vmaf", "--model", str(MODEL),  "--tf", "stdb67", *base],
             "rejects explicit HDR",
         )
+        # QCS accepts vmaf. This geometry is too small for the model, so the
+        # failure is the feature-extractor size check, after QCS is allowed.
         expect_fail(
-            "qcs-vmaf-range",
-            ["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100", *base],
-            "not supported",
-        )
-        expect_fail(
-            "qcs-vmaf-only",
+            "qcs-vmaf-only-too-small",
             ["--metrics", "vmaf", "--model", str(MODEL),  "--qcs", *base],
-            "not a QCS metric",
+            "needs at least",
         )
+        p = run(["--metrics", "psnr", "--qcs", "--qcs-range", "vmaf=70:100", *base])
+        if p.returncode != 0 or "PSNR-QCS" not in p.stdout:
+            raise SystemExit(f"qcs-vmaf-range: unexpected fail\n{p.stderr}{p.stdout}")
+        print("OK   qcs-vmaf-range")
         # Valid pre-existing QCS with a supported metric must still succeed
         # (geometry here is fine for PSNR; ignore VMAF).
         p = run(["--metrics", "psnr", "--qcs", *base])

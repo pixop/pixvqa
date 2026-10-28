@@ -12,6 +12,29 @@ def _case(id_, group, profiles, tags, func, optional=False) -> Case:
     return Case(id_, group, frozenset(profiles), tuple(tags), func, optional)
 
 
+def installation_profile(text: str) -> tuple:
+    """Return (build, decode) from `pixvqa --version`.
+
+    The three installations the guided installer can produce are:
+    cpu/none, cpu/software, and cuda/software nvdec.
+    """
+    build = decode = ""
+    for line in text.splitlines():
+        if line.startswith("build: "):
+            build = line[len("build: "):].strip()
+        elif line.startswith("decode: "):
+            decode = line[len("decode: "):].strip()
+    return build, decode
+
+
+# CPU-only, software decoding, and the combined CUDA/NVDEC executable.
+SUPPORTED_INSTALLATIONS = {
+    ("cpu", "none"),
+    ("cpu", "software"),
+    ("cuda", "software nvdec"),
+}
+
+
 def _pair(world: World, w=64, h=64, chroma="420", bits=10, frames=2, bias=20):
     fmt = f"{chroma}p:{bits}"
     ref = world.tmp / f"r_{w}x{h}_{fmt}_{frames}_{bias}.yuv"
@@ -84,16 +107,17 @@ def cases() -> list:
             return Result("FAIL", "help printed a device name", command)
         if version.returncode != 0 or "pixvqa version 0.3.0-dev" not in version.stdout:
             return Result("FAIL", version.stdout, f"{path} --version")
-        if "decode: none" not in version.stdout:
+        profile = installation_profile(version.stdout)
+        if profile not in SUPPORTED_INSTALLATIONS:
             return Result("FAIL", version.stdout, f"{path} --version")
         if hdr.returncode != 0 or "per-input option, shared option, stream metadata" not in hdr.stdout:
             return Result("FAIL", "help-hdr missing precedence", f"{path} --help-hdr")
         sw = world.binary("swdec")
-        if sw is not None:
+        if sw is not None and sw.resolve() != path.resolve():
             swv = run_cmd([str(sw), "--version"])
-            if swv.returncode != 0 or "decode: software" not in swv.stdout:
+            if swv.returncode != 0 or installation_profile(swv.stdout) != ("cpu", "software"):
                 return Result("FAIL", swv.stdout, f"{sw} --version")
-        return Result("PASS", "help, version, and help-hdr", command)
+        return Result("PASS", f"help, version ({profile[0]} / {profile[1]}), and help-hdr", command)
 
     out.append(_case("help-version", "cli", ["smoke"], ["help", "version"], help_version))
 
@@ -102,6 +126,13 @@ def cases() -> list:
         return _reject(proc, "Usage:", cmd)
 
     out.append(_case("missing-args", "cli", ["smoke"], ["cli-missing"], missing))
+
+    def raw_requires_geometry(world: World) -> Result:
+        ref, dist, _size, _fmt = _pair(world)
+        proc, cmd = _run(world, "cpu", ["--metrics", "psnr", "-v", "0", "-r", str(ref), "-t", str(dist)])
+        return _reject(proc, "requires -s and -f", cmd)
+
+    out.append(_case("raw-requires-geometry", "cli", ["smoke"], ["cli-raw"], raw_requires_geometry))
 
     def unknown(world: World) -> Result:
         proc, cmd = _run(world, "cpu", ["--not-a-real-option"])
@@ -210,7 +241,7 @@ def cases() -> list:
             (["--metrics", "psnr", "-r", str(ref), "-s", "axb", "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], "bad -s"),
             (["--metrics", "psnr", "--qcs-range", "psnr=40:30", *common], "lower < upper"),
             (["--metrics", "psnr", "--qcs-range", "psnr=nan:1", *common], "invalid --qcs-range"),
-            (["--metrics", "vmaf", "--qcs", *common], "not a QCS metric"),
+            (["--metrics", "vmaf", "--qcs", *common], "--model"),
             (["--metrics", "psnr", "--model", "model.json", *common], "require vmaf"),
             (["--metrics", "psnr", "--tf", "st2084", "--hdr-transfer", "pq", *common], "--tf and --hdr-transfer both set"),
             (["--metrics", "psnr", "--hdr-peak-nits", "nan", *common], "expects auto or a number"),
@@ -230,6 +261,14 @@ def cases() -> list:
             proc, cmd = _run(world, "cpu", args)
             last = cmd
             got = _reject(proc, needle, cmd)
+            # Hosted CI builds without libvmaf. That refusal is compiled in
+            # ahead of the missing --model check, which only exists with libvmaf.
+            if (
+                got.status != "PASS"
+                and needle == "--model"
+                and "no libvmaf" in (proc.stderr + proc.stdout)
+            ):
+                got = _reject(proc, "no libvmaf", cmd)
             if got.status != "PASS":
                 failed.append(f"{needle}: {got.detail}")
         if failed:
@@ -341,8 +380,25 @@ def cases() -> list:
     out.append(_case("model-disagree", "cli", ["full"], ["metric:vmaf"], model_conflict))
 
     def cpu_rejects_gpu_metric(world: World) -> Result:
+        path = world.binary("cpu")
+        if path is None:
+            return Result("FAIL", "executable is absent", "")
+        version = run_cmd([str(path), "--version"])
+        profile = installation_profile(version.stdout)
         args = ["--metric-device", "gpu", *_base(world)]
         proc, cmd = _run(world, "cpu", args)
+        # A CUDA installation implements GPU metrics. The rejection applies
+        # only to the CPU-only and software-decoding executables.
+        if profile[0] == "cuda":
+            if proc.returncode != 0 or not scored(proc.stdout) or "PSNR: gpu" not in proc.stdout:
+                return Result(
+                    "FAIL",
+                    f"rc={proc.returncode} {proc.stderr[-300:]} {proc.stdout[-400:]}",
+                    cmd,
+                )
+            return Result("PASS", "cuda build scores PSNR on the GPU", cmd)
+        if profile not in SUPPORTED_INSTALLATIONS:
+            return Result("FAIL", version.stdout, f"{path} --version")
         return _reject(proc, "no GPU metrics", cmd)
 
     out.append(_case("cpu-build-rejects-gpu-metric", "backend", ["smoke"], ["metric-device:gpu"], cpu_rejects_gpu_metric))

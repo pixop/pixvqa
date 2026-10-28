@@ -4,9 +4,9 @@ This file records the dependencies PixVQA is built and validated against.
 It is an engineering inventory for legal review. It is not a certification
 that a particular distribution complies with those licenses.
 
-PixVQA's own source license has not been selected. Do not publish the
-repository, and do not ship a binary, until that license is chosen and a
-`LICENSE` file is added.
+PixVQA's own source is under the MIT License in `LICENSE`. Copyright (c) 2026
+Pixop ApS. That license does not relicense the third-party components below.
+See `docs/LICENSING.md`.
 
 ## FFmpeg
 
@@ -37,12 +37,20 @@ runtime. It does not require CUDA.
 
 ## libvmaf and the VMAF models
 
-libvmaf 3.2.1, Netflix commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c`.
-The license text redistributed in this tree is BSD-2-Clause-Patent:
-`third_party/netflix-vmaf/LICENSE` and `third_party/netflix-vmaf/NOTICE`.
+Netflix libvmaf commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. This is
+not a tagged release. The previous tag is v3.2.1, commit
+`f85a853692a8c730d0270cd733c8bb30b5b93b7c`, still reproducible with
+`scripts/build_libvmaf_3.2.1.sh`. The license text redistributed in this tree
+is BSD-2-Clause-Patent: `third_party/netflix-vmaf/LICENSE` and
+`third_party/netflix-vmaf/NOTICE`.
 
-The eight JSON files under `model/` are byte copies of the VMAF v1.0.16
-models from that commit. See `model/README.md`. PixVQA does not select a
+HDR picture conversion links zimg 3.0.6, commit
+`f819b14e8f39d1282400b0d9543e8ef73c1b2bbd` (https://github.com/sekrit-twc/zimg).
+zimg's own COPYING file identifies the WTFPL.
+
+The eight SDR JSON files under `model/` are byte copies of the VMAF v1.0.16
+models from v3.2.1. The eight HDR JSON files are byte copies of HDR VMAF
+v1.1.8 from commit 74f930d. See `model/README.md`. PixVQA does not select a
 model automatically. The user passes `--model`.
 
 ## PU21
@@ -68,5 +76,6 @@ are not enabled. No proprietary video dataset is included.
 ## Trademark
 
 The Pixop name and logo are not covered by the dependency licenses above.
-The logo file is not in this tree. See `docs/brand/README.md`.
-A project license has not been selected. See `docs/LICENSING.md`.
+The logo shipped with this repository is `docs/brand/pixop-vqa-logo.png`.
+The MIT license does not grant unrestricted trademark or logo use.
+See `docs/brand/README.md`.

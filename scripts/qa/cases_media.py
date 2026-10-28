@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import os
 import random
 from pathlib import Path
 
@@ -19,6 +20,12 @@ def _reject(proc, needle) -> bool:
 
 def _ff(world: World, args: list, timeout: int = 90):
     return run_cmd([world.ffmpeg, "-y", "-hide_banner", "-loglevel", "error", *args], timeout=timeout)
+
+
+def _oracle_ff(world: World, args: list, timeout: int = 90):
+    """Decode with the FFmpeg that matches PixVQA's libraries when one is provided."""
+    tool = os.environ.get("PIXVQA_FFMPEG_ORACLE") or world.ffmpeg
+    return run_cmd([tool, "-y", "-hide_banner", "-loglevel", "error", *args], timeout=timeout)
 
 
 def _has_codec(world: World, kind: str, name: str) -> bool:
@@ -205,33 +212,60 @@ def _codec_cases() -> list:
             if not world.ffmpeg or world.binary("swdec") is None:
                 return Result("FAIL", "ffmpeg or swdec is absent", label)
             w = h = 64
-            src = world.tmp / f"{label}.src.yuv"
-            enc = world.tmp / f"{label}.{ext}"
-            oracle = world.tmp / f"{label}.oracle.yuv"
-            second = world.tmp / f"{label}.second.yuv"
+            count = frames
+            synthetic_vvc = False
             fmt_chroma = "420" if pix.startswith("yuvj") else chroma
-            write_yuv(src, w, h, fmt_chroma, bits, frames)
-            enc_cmd = ["-f", "rawvideo", "-pix_fmt", pix if not pix.startswith("yuvj") else "yuv420p",
-                       "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
-            if pix.startswith("yuvj"):
-                enc_cmd = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{w}x{h}", "-r", "24",
-                           "-i", str(src), "-frames:v", str(frames), *codec_args, str(enc)]
-            encoded = _ff(world, enc_cmd, timeout=180)
-            if encoded.returncode != 0 or not enc.is_file():
-                return Result("SKIP", f"encoder failed: {encoded.stderr[-200:]}", " ".join(codec_args))
-            dec_args = ["-i", str(enc)]
-            if forced:
-                dec_args = [*forced, *dec_args]
-            raw_pix = "yuv420p" if pix == "yuvj420p" else pix
-            one = _ff(world, [*dec_args, "-f", "rawvideo", "-pix_fmt", raw_pix, str(oracle)])
-            two = _ff(world, ["-i", str(enc), "-f", "rawvideo", "-pix_fmt", raw_pix, str(second)])
-            if one.returncode != 0 or two.returncode != 0:
-                return Result("FAIL", (one.stderr + two.stderr)[-300:], label)
-            if oracle.read_bytes() != second.read_bytes():
-                return Result("FAIL", "two independent decodes disagree", label)
-            expected = frame_bytes(w, h, fmt_chroma, bits) * frames
-            if oracle.stat().st_size != expected:
-                return Result("FAIL", f"oracle bytes {oracle.stat().st_size} != {expected}", label)
+            fixture = os.environ.get("PIXVQA_VVC_FIXTURE", "").strip() if label == "vvc" else ""
+            if fixture:
+                size = os.environ.get("PIXVQA_VVC_SIZE", "").lower().strip()
+                reference = os.environ.get("PIXVQA_VVC_REFERENCE", "").strip()
+                if "x" not in size or not reference:
+                    return Result("FAIL", "PIXVQA_VVC_FIXTURE requires PIXVQA_VVC_SIZE and PIXVQA_VVC_REFERENCE", label)
+                enc = Path(fixture)
+                oracle = Path(reference)
+                width_s, height_s = size.split("x", 1)
+                w, h = int(width_s), int(height_s)
+                if not enc.is_file() or not oracle.is_file():
+                    return Result("FAIL", f"synthetic VVC fixture is missing: {enc}", label)
+                frame = frame_bytes(w, h, chroma, bits)
+                if oracle.stat().st_size == 0 or oracle.stat().st_size % frame:
+                    return Result("FAIL", "synthetic VVC reference is not a whole number of frames", label)
+                count = oracle.stat().st_size // frame
+                synthetic_vvc = True
+            else:
+                src = world.tmp / f"{label}.src.yuv"
+                enc = world.tmp / f"{label}.{ext}"
+                oracle = world.tmp / f"{label}.oracle.yuv"
+                second = world.tmp / f"{label}.second.yuv"
+                write_yuv(src, w, h, fmt_chroma, bits, count)
+                enc_cmd = ["-f", "rawvideo", "-pix_fmt", pix if not pix.startswith("yuvj") else "yuv420p",
+                           "-s", f"{w}x{h}", "-r", "24", "-i", str(src), "-frames:v", str(count), *codec_args, str(enc)]
+                if pix.startswith("yuvj"):
+                    enc_cmd = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{w}x{h}", "-r", "24",
+                               "-i", str(src), "-frames:v", str(count), *codec_args, str(enc)]
+                encoded = _ff(world, enc_cmd, timeout=180)
+                if encoded.returncode != 0 or not enc.is_file():
+                    if label == "vvc":
+                        return Result(
+                            "FAIL",
+                            "VVC encoder is unavailable and no synthetic fixture was provided. "
+                            + encoded.stderr[-200:],
+                            " ".join(codec_args),
+                        )
+                    return Result("SKIP", f"encoder failed: {encoded.stderr[-200:]}", " ".join(codec_args))
+                dec_args = ["-i", str(enc)]
+                if forced:
+                    dec_args = [*forced, *dec_args]
+                raw_pix = "yuv420p" if pix == "yuvj420p" else pix
+                one = _oracle_ff(world, [*dec_args, "-f", "rawvideo", "-pix_fmt", raw_pix, str(oracle)])
+                two = _oracle_ff(world, ["-i", str(enc), "-f", "rawvideo", "-pix_fmt", raw_pix, str(second)])
+                if one.returncode != 0 or two.returncode != 0:
+                    return Result("FAIL", (one.stderr + two.stderr)[-300:], label)
+                if oracle.read_bytes() != second.read_bytes():
+                    return Result("FAIL", "two independent decodes disagree", label)
+                expected = frame_bytes(w, h, fmt_chroma, bits) * count
+                if oracle.stat().st_size != expected:
+                    return Result("FAIL", f"oracle bytes {oracle.stat().st_size} != {expected}", label)
             fmt = f"{fmt_chroma}p:{bits}"
             proc, cmd = _pix(world, "swdec", [
                 "--metrics", "psnr", "--decode", "cpu", "-v", "0",
@@ -241,20 +275,20 @@ def _codec_cases() -> list:
             text = proc.stdout + proc.stderr
             if proc.returncode != 0 or "999.99" not in proc.stdout:
                 return Result("FAIL", text[-500:], cmd)
-            if f"Total frames:{frames}" not in proc.stdout or "decoder threads: 8" not in proc.stdout:
+            if f"Total frames:{count}" not in proc.stdout or "decoder threads: 8" not in proc.stdout:
                 return Result("FAIL", f"frame count or decoder threads\n{proc.stdout[-400:]}", cmd)
             if f"decoder={decoder}" not in proc.stderr or "backend=software" not in proc.stderr:
                 return Result("FAIL", proc.stderr[-400:], cmd)
             if "reference: raw" not in proc.stdout or "distorted: cpu" not in proc.stdout:
                 return Result("FAIL", proc.stdout[-300:], cmd)
-            if decoder == "vvc" and world.vvdec:
+            if decoder == "vvc" and world.vvdec and not synthetic_vvc:
                 elem = world.tmp / f"{label}.266"
                 extracted = _ff(world, ["-i", str(enc), "-c", "copy", "-f", "vvc", str(elem)])
                 yuv = world.tmp / f"{label}.vvdec.yuv"
                 app = run_cmd([world.vvdec, "-b", str(elem), "-o", str(yuv)], timeout=60)
                 if extracted.returncode != 0 or app.returncode != 0 or yuv.read_bytes() != oracle.read_bytes():
                     return Result("FAIL", "VVdeC bytes differ from the FFmpeg vvc oracle", cmd)
-            return Result("PASS", f"exact oracle bytes and PSNR 999.99, {frames} frames, {decoder}", cmd)
+            return Result("PASS", f"exact oracle bytes and PSNR 999.99, {count} frames, {decoder}", cmd)
         return run
 
     out = []
@@ -312,9 +346,9 @@ def _negative_cases() -> list:
             "-r", str(path), "-s", "16x16", "-f", "420p:8",
             "-t", str(path), "-s", "16x16", "-f", "420p:8",
         ])
-        if not _reject(proc, "no CPU decoder"):
+        if not (_reject(proc, "no CPU decoder") or _reject(proc, "no video stream")):
             return Result("FAIL", proc.stderr[-300:], cmd)
-        return Result("PASS", "cpu build refuses a compressed request", cmd)
+        return Result("PASS", "compressed input without a decodable stream was not scored", cmd)
 
     def corrupt(world: World) -> Result:
         if not world.ffmpeg or world.binary("swdec") is None:
@@ -554,6 +588,7 @@ def _regression_cases() -> list:
         ("regression-dual-hevc", "test_dual_hevc.py", "swdec", {}, 180, ["codec:hevc"]),
         ("regression-vmaf", "test_vmaf_smoke.py", "swdec", {}, 240, ["metric:vmaf"]),
         ("regression-av1-vvc", "test_av1_vvc.py", "swdec", {}, 240, ["codec:av1", "codec:vvc"]),
+        ("regression-detect", "test_detect_format.py", "swdec", {}, 300, ["codec:hevc", "codec:av1", "metadata"]),
     ]
     out = []
 
@@ -584,7 +619,7 @@ def _hardware_cases() -> list:
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
         gpu_run = run_cmd([str(full), "--metrics", "psnr,ssim,msssim", "--metric-device", "gpu", "-v", "0",
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
-        eight = run_cmd([str(full), "--metrics", "psnr", "--metric-device", "gpu", "-v", "0",
+        eight = run_cmd([str(full), "--metrics", "psnr,ssim", "--qcs", "--metric-device", "gpu", "-v", "0",
                          "-r", str(ref8), "-s", size8, "-f", fmt8, "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=60)
         only_vmaf = run_cmd([str(full), "--metrics", "vmaf", "--model", str(world.model), "--metric-device", "gpu",
                              "-v", "0", "-r", str(ref8), "-s", size8, "-f", fmt8,
@@ -609,12 +644,20 @@ def _hardware_cases() -> list:
                     nums_g = [float(v) for v in re.findall(r"[-0-9.]+", g)]
                     if len(nums_c) != len(nums_g) or any(abs(a - b) > 1e-4 for a, b in zip(nums_c, nums_g)):
                         problems.append(f"{token} CPU/GPU differ beyond 1e-4")
-        if eight.returncode == 0 or "10-bit" not in eight.stderr:
-            problems.append("8-bit GPU PSNR was not rejected")
-        if only_vmaf.returncode == 0 or "no GPU implementation" not in only_vmaf.stderr:
-            problems.append("VMAF-only GPU was accepted")
-        if mixed.returncode != 0 or "stays on the CPU" not in mixed.stderr or "VMAF: cpu" not in mixed.stdout:
-            problems.append("mixed VMAF did not stay on the CPU")
+        eight_cpu = run_cmd([str(cpu), "--metrics", "psnr,ssim", "--qcs", "-v", "0",
+                             "-r", str(ref8), "-s", size8, "-f", fmt8, "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=60)
+        if eight.returncode != 0 or eight_cpu.returncode != 0:
+            problems.append("8-bit GPU PSNR/SSIM failed: " + (eight.stderr or eight_cpu.stderr)[-200:])
+        else:
+            for token in ("[ PSNR", "[ SSIM", "PSNR-QCS", "SSIM-QCS"):
+                c = next((ln for ln in eight_cpu.stdout.splitlines() if token in ln), "")
+                g = next((ln for ln in eight.stdout.splitlines() if token in ln), "")
+                if c != g:
+                    problems.append(f"8-bit {token} CPU/GPU text differs")
+        if only_vmaf.returncode != 0 or "using CPU libvmaf" not in only_vmaf.stderr or "VMAF: cpu libvmaf" not in only_vmaf.stdout:
+            problems.append("VMAF-only GPU did not fall back to CPU libvmaf")
+        if mixed.returncode != 0 or "using CPU libvmaf" not in mixed.stderr or "VMAF: cpu libvmaf" not in mixed.stdout or "PSNR: gpu" not in mixed.stdout:
+            problems.append("mixed VMAF did not stay on the CPU beside GPU PSNR")
         if problems:
             return Result("FAIL", "; ".join(problems), "gpu-metrics")
         return Result("PASS", "GPU metrics match the CPU within the existing tolerance and do not silently substitute", "gpu-metrics")

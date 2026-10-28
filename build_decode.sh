@@ -42,11 +42,11 @@ fi
 source "$ROOT/scripts/libvmaf_flags.sh"
 pixvqa_detect_libvmaf "$ROOT"
 CXXFLAGS="-O3 -Wall -Wextra -std=c++17 -Iinclude -I$FFMPEG_PREFIX/include -pthread -march=native -DPIXVQA_HAS_FFMPEG=1"
-LDFLAGS="-L$FFMPEG_PREFIX/lib -lavformat -lavcodec -lavutil -Wl,-rpath,$FFMPEG_PREFIX/lib -pthread"
+LDFLAGS="-L$FFMPEG_PREFIX/lib -lavformat -lavcodec -lavutil -Wl,--disable-new-dtags,-rpath,$FFMPEG_PREFIX/lib -pthread"
 # libdav1d is a dependency of libavcodec, not of PixVQA itself. The linker still
 # has to see it, and the binary has to find it at run time.
 if [[ -n "${DAV1D_LIB:-}" ]]; then
-  LDFLAGS+=" -L$DAV1D_LIB -Wl,-rpath,$DAV1D_LIB -Wl,-rpath-link,$DAV1D_LIB"
+  LDFLAGS+=" -L$DAV1D_LIB -Wl,--disable-new-dtags,-rpath,$DAV1D_LIB -Wl,-rpath-link,$DAV1D_LIB"
 fi
 srcs=(src/yuv_io.cpp src/psnr.cpp src/ssim_ref.cpp src/msssim.cpp
       src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/pu21.cpp src/decode.cpp)
@@ -104,8 +104,8 @@ if [[ "$ASAN_REQ" == "1" ]]; then
 fi
 
 if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; then
-  if [[ ! -f build/cuda/cuda_metrics.o ]]; then
-    echo "build/cuda/cuda_metrics.o is missing. Run bash build_cuda.sh before the full build." >&2
+  if [[ ! -f build/cuda/cuda_metrics.o || ! -f build/cuda/cuda_pu21.o ]]; then
+    echo "build/cuda/cuda_metrics.o or cuda_pu21.o is missing. Run bash build_cuda.sh before the full build." >&2
     exit 1
   fi
   if [[ ! -x "$GCC13/bin/g++" ]]; then
@@ -129,7 +129,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
   FULL_OBJS=(build/cuda/yuv_io.o build/cuda/psnr.o build/cuda/ssim_ref.o
              build/cuda/msssim.o build/cuda/thread_pool.o build/cuda/xpsnr.o build/cuda/hdr.o build/cuda/pu21.o
              build/cuda/ssim_simd.o build/cuda/msssim_avx2.o
-             build/cuda/cuda_metrics.o "$FULL/decode.o")
+             build/cuda/cuda_metrics.o build/cuda/cuda_pu21.o "$FULL/decode.o")
   if [[ -z "${PIXVQA_LIBCUDA_DIR:-}" ]]; then
     if [[ -d /usr/lib/wsl/lib ]]; then
       PIXVQA_LIBCUDA_DIR=/usr/lib/wsl/lib
@@ -153,7 +153,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
   fi
   FULL_LIBS=(-L"$GCC13/lib" -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda
              -L"$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
-             -Wl,-rpath,"$FULL_RPATH")
+             -Wl,--disable-new-dtags,-rpath,"$FULL_RPATH")
   if [[ -n "${DAV1D_LIB:-}" ]]; then
     FULL_LIBS+=(-L"$DAV1D_LIB" -Wl,-rpath-link,"$DAV1D_LIB")
   fi
@@ -162,6 +162,8 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     FULL_OBJS+=(build/cuda/vmaf.o)
     FULL_LIBS+=($PIXVQA_VMAF_LIBS)
   fi
+  # After libvmaf's -lstdc++, so the GCC 13 host runtime resolves __cxa_call_terminate.
+  FULL_LIBS+=(-L"$GCC13/lib" -lstdc++)
   echo "Final link compiler: $FULL_LINK_CXX (system glibc)"
   "$FULL_LINK_CXX" $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${FULL_OBJS[@]}" \
     -o "$FULL/pixvqa" "${FULL_LIBS[@]}"
