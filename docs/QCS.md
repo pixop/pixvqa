@@ -28,13 +28,15 @@ VMAF uses one interval for every SDR and HDR model. PU21-PSNR uses the PSNR inte
 
 ## Usage
 
-Enable QCS with `--qcs` and optionally override the default interval using `--qcs-range`.
+Enable QCS with `--qcs`. Override a default interval with `--qcs-range metric=lower:upper`. Several intervals may be comma-separated in one option, and the option may be repeated. The two forms can be combined. Naming one metric again with a different interval is an error; the same interval is unchanged.
 ```bash
-pixvqa --metrics psnr,vmaf --model model/vmaf_v1.0.16_3d0h.json \
-  --qcs --qcs-range psnr=40:55 \
-  -r reference.yuv -s 1920x1080 -f 420p:8 \
-  -t distorted.yuv -s 1920x1080 -f 420p:8
+pixvqa --metrics psnr,vmaf \
+  --model model/vmaf_v1.0.16_3d0h.json \
+  --qcs --qcs-range psnr=40:55,vmaf=30:100 \
+  -r samples/ref_hevc.mp4 \
+  -t samples/dist_hevc.mp4
 ```
+Repeating the option is equivalent: `--qcs-range psnr=40:55 --qcs-range vmaf=30:100`.
 
 QCS is computed independently for each selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
 

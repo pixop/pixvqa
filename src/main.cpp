@@ -222,9 +222,12 @@ void usage(const char* argv0) {
       "   selected base scores. Every metric in --metrics has a QCS value,\n"
       "   whether that metric runs on the CPU or the GPU.\n"
       "   --qcs               Print one QCS value for each selected metric.\n"
-      "   --qcs-range M=A:B   Repeatable. M is a --metrics name: psnr, xpsnr,\n"
-      "                       ssim, msssim, vmaf, pu21-psnr, pu21-ssim, or\n"
-      "                       pu21-msssim. Requires --qcs and A < B.\n"
+      "   --qcs-range LIST    Repeatable. LIST is metric=lower:upper, or several\n"
+      "                       such entries separated by commas. The metric is a\n"
+      "                       --metrics name: psnr, xpsnr, ssim, msssim, vmaf,\n"
+      "                       pu21-psnr, pu21-ssim, or pu21-msssim. Requires --qcs\n"
+      "                       and lower < upper. The same metric with a different\n"
+      "                       interval is an error.\n"
       "   Defaults: psnr and xpsnr [30,50]; ssim and msssim [0.8,1.0];\n"
       "   vmaf [70,100] for every SDR and HDR model; pu21-psnr [30,50];\n"
       "   pu21-ssim and pu21-msssim [0.8,1.0].\n"
@@ -430,6 +433,11 @@ PlaneScore score_msssim(const Frame& ref, const Frame& test, const VideoFormat& 
   return out;
 }
 
+void trim_ascii_space(std::string& s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+}
+
 bool assign_qcs_range(Options& opt, const std::string& spec) {
   const auto eq = spec.find('=');
   const auto colon = spec.find(':');
@@ -458,38 +466,74 @@ bool assign_qcs_range(Options& opt, const std::string& spec) {
   }
   double* slot_lo = nullptr;
   double* slot_hi = nullptr;
+  unsigned bit = 0;
   if (metric == "psnr") {
     slot_lo = &opt.qcs_psnr_lo;
     slot_hi = &opt.qcs_psnr_hi;
+    bit = 1u << 0;
   } else if (metric == "xpsnr") {
     slot_lo = &opt.qcs_xpsnr_lo;
     slot_hi = &opt.qcs_xpsnr_hi;
+    bit = 1u << 1;
   } else if (metric == "ssim") {
     slot_lo = &opt.qcs_ssim_lo;
     slot_hi = &opt.qcs_ssim_hi;
+    bit = 1u << 2;
   } else if (metric == "msssim") {
     slot_lo = &opt.qcs_msssim_lo;
     slot_hi = &opt.qcs_msssim_hi;
+    bit = 1u << 3;
   } else if (metric == "vmaf") {
     slot_lo = &opt.qcs_vmaf_lo;
     slot_hi = &opt.qcs_vmaf_hi;
+    bit = 1u << 4;
   } else if (metric == "pu21-psnr") {
     slot_lo = &opt.qcs_pu21_psnr_lo;
     slot_hi = &opt.qcs_pu21_psnr_hi;
+    bit = 1u << 5;
   } else if (metric == "pu21-ssim") {
     slot_lo = &opt.qcs_pu21_ssim_lo;
     slot_hi = &opt.qcs_pu21_ssim_hi;
+    bit = 1u << 6;
   } else if (metric == "pu21-msssim") {
     slot_lo = &opt.qcs_pu21_msssim_lo;
     slot_hi = &opt.qcs_pu21_msssim_hi;
+    bit = 1u << 7;
   } else {
     std::fprintf(stderr, "pixvqa: unknown --qcs-range metric %s\n", metric.c_str());
     return false;
   }
+  if ((opt.qcs_range_seen & bit) != 0) {
+    if (*slot_lo == lo && *slot_hi == hi) return true;
+    std::fprintf(stderr, "pixvqa: conflicting --qcs-range for %s\n", metric.c_str());
+    return false;
+  }
   *slot_lo = lo;
   *slot_hi = hi;
+  opt.qcs_range_seen |= bit;
   opt.qcs_range_set = true;
   return true;
+}
+
+bool assign_qcs_range_list(Options& opt, const std::string& spec) {
+  if (spec.empty()) {
+    std::fprintf(stderr, "pixvqa: empty --qcs-range entry\n");
+    return false;
+  }
+  std::size_t begin = 0;
+  for (;;) {
+    const auto comma = spec.find(',', begin);
+    const auto end = comma == std::string::npos ? spec.size() : comma;
+    std::string item = spec.substr(begin, end - begin);
+    trim_ascii_space(item);
+    if (item.empty()) {
+      std::fprintf(stderr, "pixvqa: empty --qcs-range entry\n");
+      return false;
+    }
+    if (!assign_qcs_range(opt, item)) return false;
+    if (comma == std::string::npos) return true;
+    begin = comma + 1;
+  }
 }
 
 void format_qcs_bound(double x, char* buf, size_t n) {
@@ -1578,7 +1622,7 @@ int main(int argc, char** argv) {
     } else if (a == "--qcs") {
       opt.enable_qcs = true;
     } else if (a == "--qcs-range") {
-      if (!assign_qcs_range(opt, need("--qcs-range"))) return 2;
+      if (!assign_qcs_range_list(opt, need("--qcs-range"))) return 2;
     } else if (a == "--model") {
       const auto v = need("--model");
       if (opt.vmaf_model_from_vmaf_model && opt.vmaf_model_path != v) {
