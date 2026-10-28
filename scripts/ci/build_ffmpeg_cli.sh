@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Build the ffmpeg program from the installer's already configured n8.1.3 tree.
+# Build the ffmpeg program from the installer's n8.1.3 source.
 # It is a decode oracle only. Encoding stays on the distribution ffmpeg.
-# The installed shared libraries are not replaced.
+# The ffmpeg program needs libavfilter, libswscale, and libswresample, which
+# the installer leaves disabled, so this rebuild stays in the source tree.
+# Nothing is installed over the libraries PixVQA already links.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
@@ -21,6 +23,7 @@ DAV1D_LIB="$(pkg-config --variable=libdir dav1d)"
 printf 'decode oracle uses dav1d %s\n' "$DAV1D_LIB"
 out="$root/deps/ci-ffmpeg"
 mkdir -p "$out"
+rpath="$src/libavcodec:$src/libavformat:$src/libavutil:$src/libswscale:$src/libswresample:$src/libavfilter:$DAV1D_LIB"
 (
     cd "$src"
     ./configure \
@@ -28,14 +31,17 @@ mkdir -p "$out"
         --enable-shared --disable-static \
         --disable-gpl --disable-version3 \
         --disable-doc \
-        --disable-ffplay --disable-ffprobe \
-        --disable-avdevice --disable-avfilter \
-        --disable-swscale --disable-swresample \
+        --enable-ffmpeg --disable-ffplay --disable-ffprobe \
+        --disable-avdevice \
         --disable-encoders --disable-muxers \
         --disable-autodetect \
         --enable-libdav1d --enable-protocol=file \
         --extra-cflags="-I$DAV1D_PREFIX/include" \
-        --extra-ldflags="-L$DAV1D_LIB -Wl,-rpath,$DAV1D_LIB -Wl,-rpath,$FFMPEG_PREFIX/lib"
+        --extra-ldflags="-L$DAV1D_LIB -Wl,-rpath,$rpath"
+    grep -q '^CONFIG_FFMPEG=yes$' ffbuild/config.mak || {
+        printf 'FAIL configure did not enable the ffmpeg program\n' >&2
+        exit 1
+    }
     make -j"$(nproc)" ffmpeg
 )
 cp "$src/ffmpeg" "$out/ffmpeg"
@@ -45,7 +51,7 @@ if ldd "$out/ffmpeg" | grep -q 'not found'; then
     printf 'FAIL decode oracle has unresolved libraries\n' >&2
     exit 1
 fi
-"$out/ffmpeg" -hide_banner -version
+env -u LD_LIBRARY_PATH "$out/ffmpeg" -hide_banner -version
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'ffmpeg=%s\n' "$out/ffmpeg" >> "$GITHUB_OUTPUT"
 fi
