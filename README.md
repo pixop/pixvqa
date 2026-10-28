@@ -15,7 +15,7 @@ PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU2
 | Name | Description |
 |---|---|
 | `psnr` | Peak signal-to-noise ratio (PSNR) and MSE on stored sample codes |
-| `xpsnr` | Extended PSNR (XPSNR). Requires `--fps` |
+| `xpsnr` | Extended PSNR (XPSNR). Uses a constant compressed frame rate, or `--fps` |
 | `ssim` | Structural similarity index (SSIM) |
 | `msssim` | Multi-scale structural similarity (MS-SSIM) |
 | `vmaf` | Netflix VMAF v1 through CPU libvmaf. Requires `--model` |
@@ -95,16 +95,27 @@ QCS is computed independently for each selected metric. The name in `--qcs-range
 
 ## Quick start
 
-The commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. Both inputs must use the same size. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
+A compressed input supplies its own resolution, pixel format, bit depth, and chroma subsampling. Raw YUV still requires `-s` and `-f` on that input. Both inputs must describe the same picture. An explicit `-s` or `-f` on a compressed input is checked against the decoded picture.
 
-Compressed video, software decoder:
+XPSNR uses `--fps` for raw YUV. When a compressed input has one constant frame rate, and both compressed inputs agree, that rate is used. A missing, variable, or conflicting rate still requires `--fps`.
+
+The raw commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
+
+Compressed video. Resolution and pixel format are detected:
 ```bash
-pixvqa --metrics psnr --decode cpu \
-  -r reference.mp4 --input compressed -s 1920x1080 -f 420p:8 \
-  -t distorted.mp4 --input compressed -s 1920x1080 -f 420p:8
+pixvqa --metrics psnr,xpsnr,ssim,msssim --decode cpu \
+  -r reference.mp4 \
+  -t distorted.mp4
 ```
 
-PSNR, XPSNR, SSIM, and MS-SSIM together. XPSNR needs a frame rate:
+Raw reference and compressed distorted video:
+```bash
+pixvqa --metrics psnr,ssim \
+  -r reference.yuv --input raw -s 1920x1080 -f 420p:8 \
+  -t distorted.mp4
+```
+
+PSNR, XPSNR, SSIM, and MS-SSIM on raw YUV. XPSNR needs `--fps` because raw frames have no rate:
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
@@ -145,11 +156,11 @@ pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg --hdr-peak-nits 1000 \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
 
-HEVC 10-bit 4:2:0 on NVDEC:
+HEVC 10-bit 4:2:0 on NVDEC. The raw reference keeps `-s` and `-f`; the compressed input is detected:
 ```bash
 pixvqa --metrics psnr --decode gpu \
   -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
-  -t reference10.hevc.mp4 --input compressed -s 1920x1080 -f 420p:10
+  -t reference10.hevc.mp4
 ```
 
 ## Installation
@@ -211,10 +222,10 @@ For clean-install testing and known validation limitations, see [Installation Va
 | `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
 | `--metric-device` | `auto`, `cpu`, or `gpu`. Default `auto` |
 | `--threads` | `auto` or a positive integer. Default `auto` |
-| `-s WxH` | Luma size. Give it again after `-t` |
-| `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10` |
+| `-s WxH` | Luma size. Required for raw YUV. Checked when set on compressed video |
+| `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10`. Required for raw YUV |
 | `--input` | `auto`, `raw`, or `compressed` |
-| `--fps` | `N` or `N/D`. Required for `xpsnr` |
+| `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available |
 | `--model` | VMAF model JSON. No default |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
@@ -255,7 +266,8 @@ HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG
 NVDEC decodes HEVC and AV1. Other codecs use software decoding.
 
 **Limitations:**
-- HDR transfer characteristics (PQ/HLG) must be correctly specified; they are not inferred from bit depth or filename.
+- HDR transfer characteristics (PQ/HLG) come from the stream or from `--hdr-transfer`. They are not inferred from bit depth, BT.2020 primaries, or the filename.
+- A variable frame rate is not treated as constant. XPSNR then requires `--fps`.
 - Unsupported pixel formats are rejected rather than automatically converted.
 
 For detailed backend behavior, supported options, and restrictions, use `pixvqa --help` or consult the technical documentation.

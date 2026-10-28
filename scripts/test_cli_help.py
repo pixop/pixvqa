@@ -120,11 +120,17 @@ def with_executable(block: str, binary: Path) -> str:
 
 
 def examples() -> list[str]:
+    """Bare `pixvqa` examples. Installer snippets use ./bin/pixvqa and are not run here."""
     blocks = re.findall(r"```bash\n(.*?)```", README, flags=re.S)
-    return [
-        b.strip() for b in blocks
-        if "pixvqa " in b and "bash " not in b and not b.strip().startswith("export")
-    ]
+    chosen = []
+    for raw in blocks:
+        text = raw.strip()
+        if "bash " in text or text.startswith("export"):
+            continue
+        if not re.match(r"pixvqa\b", text):
+            continue
+        chosen.append(text)
+    return chosen
 
 
 def main() -> int:

@@ -122,6 +122,11 @@ enum class DecodeMode { Raw, Software, Nvdec };
 enum class DeviceChoice { Auto, Cpu, Gpu };
 enum class InputKind { Auto, Raw, Compressed };
 
+// Constant: nominal and average rates match, and present packet durations
+// do not change. Variable: those rates disagree, or durations change.
+// Missing: the container does not carry a usable rate.
+enum class FrameRateKind { Missing, Constant, Variable };
+
 // Split HDR overrides. "auto" is represented by leaving the corresponding set flag false.
 struct HdrCli {
   bool transfer_set = false;

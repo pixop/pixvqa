@@ -127,6 +127,13 @@ def cases() -> list:
 
     out.append(_case("missing-args", "cli", ["smoke"], ["cli-missing"], missing))
 
+    def raw_requires_geometry(world: World) -> Result:
+        ref, dist, _size, _fmt = _pair(world)
+        proc, cmd = _run(world, "cpu", ["--metrics", "psnr", "-v", "0", "-r", str(ref), "-t", str(dist)])
+        return _reject(proc, "requires -s and -f", cmd)
+
+    out.append(_case("raw-requires-geometry", "cli", ["smoke"], ["cli-raw"], raw_requires_geometry))
+
     def unknown(world: World) -> Result:
         proc, cmd = _run(world, "cpu", ["--not-a-real-option"])
         return _reject(proc, "PARSE ERROR", cmd)

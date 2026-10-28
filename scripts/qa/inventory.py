@@ -64,7 +64,7 @@ CONSTRAINTS = [
         "id": "xpsnr-fps",
         "file": "src/main.cpp",
         "needle": "xpsnr requires --fps",
-        "rule": "xpsnr requires --fps as a positive integer or num/den. A decimal is truncated toward zero.",
+        "rule": "xpsnr requires --fps for raw YUV and when compressed inputs lack one matching constant frame rate. A decimal is truncated toward zero.",
     },
     {
         "id": "qcs",

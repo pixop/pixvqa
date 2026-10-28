@@ -49,6 +49,22 @@ class CompressedTestReader {
 // is set, it receives FFmpeg's name for that stream (av1, vvc, hevc, ...).
 bool probe_video_input(const std::string& path, std::string* codec_name = nullptr);
 
+struct CompressedInfo {
+  VideoFormat format;
+  bool size_known = false;
+  bool layout_known = false;
+  int fps_num = 0;
+  int fps_den = 1;
+  int nominal_num = 0;
+  int nominal_den = 1;
+  FrameRateKind rate = FrameRateKind::Missing;
+  std::string codec;
+};
+
+// Demuxer metadata, plus one software picture when the stream header has no
+// supported pixel format or size. Does not convert samples. err is one line.
+bool detect_compressed_info(const std::string& path, CompressedInfo& out, std::string& err);
+
 // True when this process's libavcodec registered libdav1d or libaom-av1.
 bool av1_software_available();
 

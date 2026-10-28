@@ -45,6 +45,12 @@ struct SideSpec {
   VideoFormat format;
   bool has_size = false;
   bool has_fmt = false;
+  bool compressed = false;
+  FrameRateKind rate = FrameRateKind::Missing;
+  int fps_num = 0;
+  int fps_den = 1;
+  int nominal_num = 0;
+  int nominal_den = 1;
   InputKind input = InputKind::Auto;
 };
 
@@ -102,20 +108,26 @@ void print_version_and_exit(const char* /*argv0*/) {
 }
 
 void usage(const char* argv0) {
-  std::printf("Usage: %s [options] -r REF -s WxH -f FORMAT -t TEST -s WxH -f FORMAT\n", argv0);
+  std::printf("Usage: %s [options] -r REF -t TEST\n", argv0);
   std::fputs(
       "\n"
       "1. Usage\n"
-      "   Compare a reference planar YUV file with a reconstructed one.\n"
+      "   Compare a reference with a reconstructed picture sequence.\n"
       "   --metrics is required. Names: psnr, xpsnr, ssim, msssim, vmaf,\n"
       "   pu21-psnr, pu21-ssim, pu21-msssim. HDR parameters: --help-hdr.\n"
       "   --help and --version do not read inputs and do not initialize a GPU.\n"
+      "   A compressed input takes resolution, pixel format, bit depth, and\n"
+      "   chroma subsampling from the stream. Raw YUV still requires -s and -f.\n"
       "\n"
       "2. Input files and pixel formats\n"
       "   -r, -t              Reference and test paths. Regular files or FIFOs.\n"
-      "   -s WxH              Luma size. Repeat after -r and again after -t.\n"
-      "                       The two sides must match.\n"
-      "   -f 420p:10          420p, 422p, or 444p, with :8 or :10. Default bits are 10.\n"
+      "   -s WxH              Luma size. Required for each raw input. Optional for\n"
+      "                       a compressed input, where it is checked against the\n"
+      "                       decoded picture. The two sides must match.\n"
+      "   -f 420p:10          420p, 422p, or 444p, with :8 or :10. Default bits are 10\n"
+      "                       only when -f is given without a bit depth. Required for\n"
+      "                       each raw input. A compressed input uses the decoded\n"
+      "                       layout, and an explicit -f must match it.\n"
       "                       4:2:0 requires even width and height.\n"
       "                       Samples are planar, little-endian, low bits occupied.\n"
       "   --decode auto|cpu|gpu\n"
@@ -153,7 +165,9 @@ void usage(const char* argv0) {
       "                       [ SSIM  y: u: v: avg: ].\n"
       "                       msssim is the five-scale product MS-SSIM, printed as\n"
       "                       [ MS-SSIM  y: u: v: avg: ]. ssim does not imply msssim.\n"
-      "                       xpsnr requires --fps and prints Y U V avg and min.\n"
+      "                       xpsnr requires --fps when no single constant frame rate\n"
+      "                       can be read from the compressed inputs, and prints\n"
+      "                       Y U V avg and min.\n"
       "                       vmaf is Official Netflix VMAF v1 via libvmaf (CPU).\n"
       "   --model PATH        Required when vmaf is selected. VMAF model JSON.\n"
       "                       Absolute or relative to the working directory.\n"
@@ -229,9 +243,13 @@ void usage(const char* argv0) {
       "   Those frames still count in QCS.\n"
       "\n"
       "6. Frame rate and frame limits\n"
-      "   --fps N or N/D      Required for xpsnr. Positive integer or rational.\n"
-      "                       59.94 is truncated to 59. Resolution and frame rate\n"
-      "                       never switch the VMAF model.\n"
+      "   --fps N or N/D      Positive integer or rational. xpsnr requires --fps\n"
+      "                       for raw YUV, and for compressed input whose frame rate\n"
+      "                       is missing, variable, or different on the two sides.\n"
+      "                       A matching constant rate from a compressed input is\n"
+      "                       used when --fps is omitted. An explicit --fps is used\n"
+      "                       as given. 59.94 is truncated to 59. Resolution and\n"
+      "                       frame rate never switch the VMAF model.\n"
       "   -n N, --frames N    Stop after N frames. N is a positive integer.\n"
       "   -v 0                Summary only. -v 1 (default) prints each frame.\n"
       "\n"
@@ -1379,6 +1397,136 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
   return 1;
 }
 
+#ifdef PIXVQA_HAS_FFMPEG
+std::string layout_phrase(const VideoFormat& fmt) {
+  const char* chroma = "4:2:0";
+  if (fmt.chroma == ChromaFormat::YUV422) chroma = "4:2:2";
+  else if (fmt.chroma == ChromaFormat::YUV444) chroma = "4:4:4";
+  return std::to_string(fmt.bit_depth) + "-bit " + chroma;
+}
+#endif
+
+std::string rate_phrase(const SideSpec& side) {
+  if (side.rate == FrameRateKind::Variable) {
+    return "variable (nominal " + std::to_string(side.nominal_num) + "/" +
+           std::to_string(side.nominal_den) + ", average " + std::to_string(side.fps_num) + "/" +
+           std::to_string(side.fps_den) + ")";
+  }
+  if (side.rate == FrameRateKind::Constant) {
+    return std::to_string(side.fps_num) + "/" + std::to_string(side.fps_den);
+  }
+  return "unavailable";
+}
+
+bool same_rate(const SideSpec& a, const SideSpec& b) {
+  return static_cast<long long>(a.fps_num) * b.fps_den ==
+         static_cast<long long>(b.fps_num) * a.fps_den;
+}
+
+int classify_side(const Options& opt, SideSpec& side, const char* role) {
+  (void)opt;
+  side.compressed = false;
+  if (side.input == InputKind::Raw) return 0;
+#ifdef PIXVQA_HAS_FFMPEG
+  side.compressed = probe_video_input(side.path);
+#else
+  side.compressed = file_looks_compressed(side.path, opt.decode_request);
+#endif
+  if (side.input == InputKind::Compressed && !side.compressed) {
+    std::fprintf(stderr,
+                 "pixvqa: %s: no video stream; --input compressed will not read it as raw YUV\n",
+                 role);
+    return 2;
+  }
+  return 0;
+}
+
+int adopt_detected_layout(SideSpec& side, const char* role) {
+  if (!side.compressed) {
+    if (!side.has_size || !side.has_fmt) {
+      std::fprintf(stderr, "pixvqa: %s is raw YUV and requires -s and -f\n", role);
+      return 2;
+    }
+    return 0;
+  }
+#ifndef PIXVQA_HAS_FFMPEG
+  if (!side.has_size || !side.has_fmt) {
+    std::fprintf(stderr,
+                 "pixvqa: %s: this build cannot detect compressed metadata and has no decoder\n",
+                 role);
+    return 2;
+  }
+  return 0;
+#else
+  CompressedInfo info;
+  std::string err;
+  if (!detect_compressed_info(side.path, info, err)) {
+    std::fprintf(stderr, "pixvqa: %s: %s\n", role, err.c_str());
+    return 2;
+  }
+  if (!info.size_known || !info.layout_known) {
+    std::fprintf(stderr, "pixvqa: %s: could not detect resolution and pixel format\n", role);
+    return 2;
+  }
+  if (side.has_size &&
+      (side.format.width != info.format.width || side.format.height != info.format.height)) {
+    std::fprintf(stderr, "pixvqa: %s -s asks for %dx%d, decoded input is %dx%d\n", role,
+                 side.format.width, side.format.height, info.format.width, info.format.height);
+    return 2;
+  }
+  if (side.has_fmt && (side.format.bit_depth != info.format.bit_depth ||
+                       side.format.chroma != info.format.chroma)) {
+    std::fprintf(stderr, "pixvqa: %s -f asks for %s, decoded input is %s\n", role,
+                 layout_phrase(side.format).c_str(), layout_phrase(info.format).c_str());
+    return 2;
+  }
+  side.format = info.format;
+  side.has_size = true;
+  side.has_fmt = true;
+  side.rate = info.rate;
+  side.fps_num = info.fps_num;
+  side.fps_den = info.fps_den;
+  side.nominal_num = info.nominal_num;
+  side.nominal_den = info.nominal_den;
+  return 0;
+#endif
+}
+
+int prepare_formats(Options& opt, SideSpec& ref, SideSpec& test) {
+  if (classify_side(opt, ref, "reference") != 0) return 2;
+  if (classify_side(opt, test, "test") != 0) return 2;
+  if (adopt_detected_layout(ref, "reference") != 0) return 2;
+  if (adopt_detected_layout(test, "test") != 0) return 2;
+  return 0;
+}
+
+int adopt_frame_rate(Options& opt, const SideSpec& ref, const SideSpec& test) {
+  if (!opt.enable_xpsnr || opt.fps_set) return 0;
+  if (!ref.compressed && !test.compressed) {
+    std::fprintf(stderr,
+                 "pixvqa: xpsnr requires --fps (raw YUV has no frame rate; "
+                 "example: --fps 60 or --fps 60000/1001)\n");
+    return 2;
+  }
+  const bool bad_ref = ref.compressed && ref.rate != FrameRateKind::Constant;
+  const bool bad_test = test.compressed && test.rate != FrameRateKind::Constant;
+  if (bad_ref || bad_test || (ref.compressed && test.compressed && !same_rate(ref, test))) {
+    std::fprintf(stderr,
+                 "pixvqa: xpsnr requires --fps (reference frame rate is %s; "
+                 "test frame rate is %s)\n",
+                 ref.compressed ? rate_phrase(ref).c_str() : "absent on raw YUV",
+                 test.compressed ? rate_phrase(test).c_str() : "absent on raw YUV");
+    return 2;
+  }
+  const SideSpec& source = ref.compressed ? ref : test;
+  opt.fps_num = source.fps_num;
+  opt.fps_den = source.fps_den;
+  opt.fps_set = true;
+  std::fprintf(stderr, "pixvqa: xpsnr using frame rate %d/%d from the compressed input\n",
+               opt.fps_num, opt.fps_den);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1665,8 +1813,12 @@ int main(int argc, char** argv) {
   if (!opt.test_path.empty()) std::printf("%s\n", opt.test_path.c_str());
   std::printf("\n");
 
-  if (opt.ref_path.empty() || opt.test_path.empty() || !ref_side.has_size || !test_side.has_size ||
-      !ref_side.has_fmt || !test_side.has_fmt) {
+  if (opt.ref_path.empty() || opt.test_path.empty()) {
+    usage(argv[0]);
+    return 2;
+  }
+  if (prepare_formats(opt, ref_side, test_side) != 0) return 2;
+  if (!ref_side.has_size || !test_side.has_size || !ref_side.has_fmt || !test_side.has_fmt) {
     usage(argv[0]);
     return 2;
   }
@@ -1759,12 +1911,7 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "pixvqa: --model and --vmaf-model require vmaf in --metrics\n");
     return 2;
   }
-  if (opt.enable_xpsnr && !opt.fps_set) {
-    std::fprintf(stderr,
-                 "pixvqa: xpsnr requires --fps (raw YUV has no frame rate; "
-                 "example: --fps 60 or --fps 60000/1001)\n");
-    return 2;
-  }
+  if (adopt_frame_rate(opt, ref_side, test_side) != 0) return 2;
   if (opt.enable_xpsnr && !xpsnr_geometry_supported(opt.format.width, opt.format.height)) {
     std::fprintf(stderr,
                  "pixvqa: XPSNR does not support %dx%d (odd luma edge above 2048*1152 "
