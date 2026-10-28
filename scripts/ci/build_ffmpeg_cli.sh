@@ -10,9 +10,15 @@ source "$root/scripts/deps_layout.sh"
 pixvqa_apply_deps_layout "$root"
 src="$DEPS_SRC/ffmpeg"
 [[ -d "$src" ]] || { printf 'FAIL FFmpeg source is missing: %s\n' "$src" >&2; exit 1; }
-export PKG_CONFIG_PATH="$DAV1D_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+DAV1D_PC="$(find "$DAV1D_PREFIX" -type f -name dav1d.pc -print -quit)"
+[[ -n "$DAV1D_PC" ]] || { printf 'FAIL dav1d.pc missing under %s\n' "$DAV1D_PREFIX" >&2; exit 1; }
+export PKG_CONFIG_PATH="$(dirname "$DAV1D_PC")${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 DAV1D_LIB="$(pkg-config --variable=libdir dav1d)"
-[[ -n "$DAV1D_LIB" && -f "$DAV1D_LIB/libdav1d.so" ]]
+[[ -n "$DAV1D_LIB" && -f "$DAV1D_LIB/libdav1d.so" ]] || {
+    printf 'FAIL libdav1d.so missing (libdir=%s)\n' "${DAV1D_LIB:-unset}" >&2
+    exit 1
+}
+printf 'decode oracle uses dav1d %s\n' "$DAV1D_LIB"
 out="$root/deps/ci-ffmpeg"
 mkdir -p "$out"
 (
@@ -34,7 +40,12 @@ mkdir -p "$out"
 )
 cp "$src/ffmpeg" "$out/ffmpeg"
 chmod 755 "$out/ffmpeg"
-"$out/ffmpeg" -hide_banner -version | head -n 1
+if ldd "$out/ffmpeg" | grep -q 'not found'; then
+    ldd "$out/ffmpeg" >&2
+    printf 'FAIL decode oracle has unresolved libraries\n' >&2
+    exit 1
+fi
+"$out/ffmpeg" -hide_banner -version
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'ffmpeg=%s\n' "$out/ffmpeg" >> "$GITHUB_OUTPUT"
 fi
