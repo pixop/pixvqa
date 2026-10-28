@@ -35,11 +35,13 @@ bash install_pixvqa.sh
 
 That profile covers PSNR, XPSNR, SSIM, MS-SSIM, SDR and HDR VMAF, PU21-PSNR, PU21-SSIM, PU21-MS-SSIM, QCS, 8-bit and 10-bit, SDR, PQ, and HLG, raw YUV, software HEVC, AV1, and VVC, and invalid-input cases. The installer builds FFmpeg with libdav1d. Apt FFmpeg supplies the independent HEVC and AV1 encodes. Ubuntu's FFmpeg does not decode VVC.
 
-Start it from the branch under test:
+After this workflow file is on the default branch, start it from the branch under test:
 
 ```bash
 gh workflow run "Full CPU QA" --ref feature/hdr-vmaf-remote-reconcile
 ```
+
+Until then, GitHub does not list the workflow for `workflow_dispatch`. Add the `full-cpu` label to the pull request. That event starts the same job once. A later push does not start it again.
 
 The job fails unless the profile verdict is PASS. Optional skips such as valgrind do not fail it. A mandatory skip does.
 
@@ -56,6 +58,8 @@ The full CPU job tries to build VVenC 1.14.0 and VVdeC 3.2.1 and generate a smal
 ```bash
 gh workflow run "GPU QA" --ref feature/hdr-vmaf-remote-reconcile
 ```
+
+`workflow_dispatch` for this file is available once it is on the default branch. Do not start it unless a runner with those labels exists. A queued job with no runner is not a successful GPU run.
 
 It requires a self-hosted runner labeled `self-hosted`, `linux`, and `nvidia`, plus CUDA toolkit 12.8 already installed (`nvcc` on `PATH` or `/usr/local/cuda-12.8`). The workflow does not install the driver or the toolkit. It fails immediately when `nvidia-smi` or CUDA 12.8 is missing. A queued run with no runner is not a pass, and this repository does not register one.
 
