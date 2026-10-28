@@ -170,6 +170,8 @@ struct Options {
   VmafBackend vmaf_backend = VmafBackend::Cpu;
   bool enable_qcs = false;
   bool qcs_range_set = false;
+  // One bit per metric once --qcs-range names it. A later different interval errors.
+  unsigned qcs_range_seen = 0;
   // Exact-survival ranges. XPSNR inherits the PSNR default by convention.
   double qcs_psnr_lo = 30.0, qcs_psnr_hi = 50.0;
   double qcs_xpsnr_lo = 30.0, qcs_xpsnr_hi = 50.0;

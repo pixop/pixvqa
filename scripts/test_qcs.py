@@ -449,6 +449,57 @@ def main() -> int:
                 fail(f"range reject {args} rc={bad.returncode} {bad.stderr.strip()}")
             else:
                 print(f"OK   reject {needle}")
+        syntax = [
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55"], "single"),
+            (["--metrics", "psnr,ssim", "--qcs", "--qcs-range", "psnr=40:55,ssim=0.85:0.99"], "comma"),
+            (["--metrics", "psnr,ssim", "--qcs", "--qcs-range", "psnr=40:55", "--qcs-range", "ssim=0.85:0.99"], "repeated"),
+            (["--qcs-range", "vmaf=30:100,psnr=40:55", "--metrics", "ssim,psnr", "--qcs",
+              "--qcs-range", "ssim=0.85:0.99"], "combined-order"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55,psnr=40:55"], "same-duplicate"),
+        ]
+        produced = []
+        for args, label in syntax:
+            proc = run(args, ref, tst, size, "444p:10")
+            if proc.returncode != 0:
+                fail(f"syntax {label} rc={proc.returncode} {proc.stderr.strip()}")
+                produced.append(None)
+            else:
+                produced.append(qcs_map(proc.stdout))
+                print(f"OK   syntax {label}")
+        if produced[0] and produced[4] and produced[0] != produced[4]:
+            fail(f"identical duplicate changed QCS {produced[0]} vs {produced[4]}")
+        elif produced[0] and produced[4]:
+            print("OK   identical duplicate unchanged")
+        if produced[1] and produced[2] and produced[1] != produced[2]:
+            fail(f"comma and repeated differ {produced[1]} vs {produced[2]}")
+        elif produced[1] and produced[2]:
+            print("OK   comma matches repeated")
+        if produced[2] and produced[3]:
+            shared = {k: produced[2][k] for k in ("PSNR-QCS", "SSIM-QCS")}
+            other = {k: produced[3][k] for k in ("PSNR-QCS", "SSIM-QCS")}
+            if shared != other:
+                fail(f"combined order changed shared QCS {shared} vs {other}")
+            else:
+                print("OK   combined order matches")
+        for args, needle in (
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "nope=1:2,psnr=40:55"], "unknown"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55,"], "empty"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", ",psnr=40:55"], "empty"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55,,ssim=0.8:0.9"], "empty"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr"], "invalid"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40"], "invalid"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:"], "invalid"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=:55"], "invalid"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:40"], "lower < upper"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=55:40"], "lower < upper"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55,psnr=30:50"], "conflicting"),
+            (["--metrics", "psnr", "--qcs", "--qcs-range", "psnr=40:55", "--qcs-range", "psnr=30:50"], "conflicting"),
+        ):
+            bad = run(args, ref, tst, size, "444p:10")
+            if bad.returncode != 2 or needle not in bad.stderr:
+                fail(f"list reject {args[-1]} rc={bad.returncode} {bad.stderr.strip()}")
+            else:
+                print(f"OK   list reject {needle}")
         if CUDA.exists():
             cpu = run(["--metrics", "psnr", "--qcs"], ref, tst, size, "444p:10")
             gpu = run(["--metric-device", "gpu", "--metrics", "psnr", "--qcs"],

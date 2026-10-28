@@ -210,7 +210,7 @@ pixvqa --metrics psnr --decode gpu \
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
 | `--qcs` | Enable QCS for selected supported per-frame metrics |
-| `--qcs-range` | `metric=lower:upper`, with lower < upper |
+| `--qcs-range` | `metric=lower:upper`, comma-separated and repeatable, with lower < upper |
 
 
 ## Supported Video Formats

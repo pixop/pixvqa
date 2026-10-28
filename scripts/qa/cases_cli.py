@@ -241,6 +241,8 @@ def cases() -> list:
             (["--metrics", "psnr", "-r", str(ref), "-s", "axb", "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], "bad -s"),
             (["--metrics", "psnr", "--qcs-range", "psnr=40:30", *common], "lower < upper"),
             (["--metrics", "psnr", "--qcs-range", "psnr=nan:1", *common], "invalid --qcs-range"),
+            (["--metrics", "psnr", "--qcs-range", "psnr=40:55,", *common], "empty --qcs-range"),
+            (["--metrics", "psnr", "--qcs-range", "psnr=40:55,psnr=30:50", *common], "conflicting --qcs-range"),
             (["--metrics", "vmaf", "--qcs", *common], "--model"),
             (["--metrics", "psnr", "--model", "model.json", *common], "require vmaf"),
             (["--metrics", "psnr", "--tf", "st2084", "--hdr-transfer", "pq", *common], "--tf and --hdr-transfer both set"),
