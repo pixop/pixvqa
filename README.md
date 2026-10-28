@@ -100,7 +100,7 @@ PixVQA installs a single executable at `bin/pixvqa`, containing the features sel
 
 System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
 
-### Troubleshooting and Manual Installation
+**Troubleshooting and Manual Installation:**
 
 If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
 
@@ -112,13 +112,14 @@ For clean-install testing and known validation limitations, see [Installation Va
 
 ## Quick Start
 
-A compressed input supplies its own resolution, pixel format, bit depth, and chroma subsampling. Raw YUV still requires `-s` and `-f` on that input. Both inputs must describe the same picture. An explicit `-s` or `-f` on a compressed input is checked against the decoded picture.
+For compressed video, PixVQA automatically detects resolution and pixel format. Explicit `-s` or `-f` values must match the decoded stream; otherwise, an error is reported. Raw YUV requires both parameters, and reference and distorted inputs must have matching properties.
 
-XPSNR uses `--fps` for raw YUV. When a compressed input has one constant frame rate, and both compressed inputs agree, that rate is used. A missing, variable, or conflicting rate still requires `--fps`.
+XPSNR automatically uses a reliable constant frame rate from compressed inputs. Otherwise, `--fps` is required.
 
-The raw commands use 1920×1080. The same options apply at 3840×2160 with `-s 3840x2160`. In the examples below, `pixvqa` denotes `./bin/pixvqa` after installation, or the same executable on `PATH`. The GPU command requires an installation built with NVIDIA support.
+The examples use `pixvqa` for `./bin/pixvqa` or an executable on `PATH`. For raw YUV, specify the input resolution using `-s WxH` (e.g., `1920x1080` or `3840x2160`). Compressed-video resolution is detected automatically. GPU acceleration requires an NVIDIA-enabled build.
 
-Compressed inputs. Resolution, pixel format, and a constant frame rate are read from the file. `samples/` holds short Big Buck Bunny excerpts:
+The `samples/` directory contains short Big Buck Bunny excerpts for compressed-video examples.
+
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
   -r samples/ref_hevc.mp4 \
