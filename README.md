@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/brand/pixop-vqa-logo.png" alt="Pixop VQA" width="640">
+  <img src="docs/brand/pixop-vqa-logo-crop.png" alt="Pixop VQA" width="640">
 </p>
 
 # PixVQA — A Unified Video Quality Assessment Tool by Pixop
@@ -10,7 +10,7 @@ PixVQA compares a reference sequence with a distorted sequence and prints text s
 
 PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU21-SSIM, and PU21-MS-SSIM compare light after PQ or HLG is interpreted. All eight metrics have a CPU implementation. PSNR, SSIM, MS-SSIM, XPSNR, and the three PU21 metrics also have optional CUDA implementations. An optional CUDA build adds NVDEC for HEVC and AV1.
 
-## Supported metrics
+## Supported VQA Metrics
 
 | Name | Description |
 |---|---|
@@ -22,12 +22,13 @@ PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU2
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
+| [`--qcs`](docs/QCS.md) | Quality Consistency Score (QCS): temporal quality reliability descriptor derived from per-frame VQA scores |
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
 
-Select metrics using `--metrics`. QCS can additionally be enabled using `--qcs`.
+Select VQA metrics using `--metrics`; enable the QCS descriptor separately using `--qcs`.
 
-## Recommended metrics by video format
+## Recommended Metrics for SDR and HDR Video
 
 | Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
 |---|:---:|:---:|:---:|
@@ -53,47 +54,15 @@ Select metrics using `--metrics`. QCS can additionally be enabled using `--qcs`.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
 - QCS can be applied to any supported metric using `--qcs`.
 
-## Quality Consistency Score (QCS)
+## Quality Consistency Score (QCS) - ICIP 2026
+
+QCS is a metric-agnostic **temporal quality reliability descriptor** derived from per-frame VQA scores. It quantifies the proportion of viewing time during which video quality meets or exceeds specified thresholds, complementing conventional average quality metrics.
 
 **Publication:** S. Sanz-Rodríguez and J. Frydensbjerg, "[Quality Consistency Score (QCS): A Survival-Based Reliability Descriptor for Video Quality Assessment](https://ieeexplore.ieee.org/document/11629873/)," *IEEE International Conference on Image Processing (ICIP)*, 2026.
 
-Quality Consistency Score (QCS) is a metric-agnostic descriptor of **temporal quality reliability**. It measures the proportion of viewing time during which video quality meets or exceeds specified thresholds, revealing degradations that may be hidden by average quality metrics or conventional rate-distortion (RD/BD-rate) analysis.
+For further details, see the [QCS documentation](docs/QCS.md) or the [QCS reference implementation](https://github.com/pixop/Quality-Consistency-Score).
 
-### Definition
-
-Let $Q(t)$ represent the frame-level quality scores and $S(x)=P(Q\ge x)$ their survival function. QCS is the normalized area under the survival curve over a quality interval $[a,b]$:
-$$
-\mathrm{QCS}_{[a,b]} = \frac{1}{b-a}\int_a^b S(x)\,dx
-$$
-QCS ranges from 0% to 100% when expressed as a percentage. Scores at or below $a$ contribute 0%, scores at or above $b$ contribute 100%, and intermediate scores contribute proportionally. NaN values are excluded. +inf contributes 100% and -inf contributes 0%. A VMAF score above 100 is kept. With the default upper bound of 100 it contributes 100%.
-
-Each frame contributes equally (constant-frame-rate assumption). QCS describes the **distribution of quality scores**, not their temporal ordering.
-
-### Default QCS intervals
-
-| Metric | Interval |
-|---|---|
-| PSNR / XPSNR | [30, 50] dB |
-| SSIM / MS-SSIM | [0.8, 1.0] |
-| VMAF (SDR / HDR) | [70, 100] |
-| PU21-PSNR | [30, 50] dB |
-| PU21-SSIM / PU21-MS-SSIM | [0.8, 1.0] |
-
-VMAF uses one interval for every SDR and HDR model. PU21-PSNR uses the PSNR interval because its peak is 256, about 100 cd/m², which is an 8-bit-style decibel scale. PU21-SSIM and PU21-MS-SSIM use the SSIM interval because they are similarities on that same peak.
-
-### Usage
-
-Enable QCS with `--qcs` and optionally override the default interval using `--qcs-range`.
-```bash
-pixvqa --metrics psnr,vmaf --model model/vmaf_v1.0.16_3d0h.json \
-  --qcs --qcs-range psnr=40:55 \
-  -r reference.yuv -s 1920x1080 -f 420p:8 \
-  -t distorted.yuv -s 1920x1080 -f 420p:8
-```
-
-QCS is computed independently for each selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
-
-## Quick start
+## Quick Start
 
 A compressed input supplies its own resolution, pixel format, bit depth, and chroma subsampling. Raw YUV still requires `-s` and `-f` on that input. Both inputs must describe the same picture. An explicit `-s` or `-f` on a compressed input is checked against the decoded picture.
 
@@ -211,7 +180,7 @@ PixVQA installs a single executable at `bin/pixvqa`, containing the features sel
 
 System packages, the NVIDIA driver, and the CUDA toolkit remain outside this directory.
 
-### Troubleshooting and manual installation
+### Troubleshooting and Manual Installation
 
 If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
 
@@ -221,7 +190,7 @@ For clean-install testing and known validation limitations, see [Installation Va
 
 **Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
 
-## Command-line options
+## Command-line Options
 
 `pixvqa --help` is the full option list. `pixvqa --help-hdr` is the full HDR list, including defaults and the PU21 citation.
 
@@ -242,22 +211,22 @@ For clean-install testing and known validation limitations, see [Installation Va
 | `--qcs` | Enable QCS for selected supported per-frame metrics |
 | `--qcs-range` | `metric=lower:upper`, with lower < upper |
 
-## Formats and limitations
+
+## Supported Video Formats
 
 PixVQA supports raw YUV and compressed video through FFmpeg.
 
-### Supported formats
-
-| Format | Support |
+| Input format | Support |
 |---|---|
 | Raw YUV | 8-bit and 10-bit planar 4:2:0, 4:2:2, and 4:4:4 |
-| HEVC | Software decoding and NVIDIA NVDEC |
-| AV1 | Software decoding (libdav1d) and NVIDIA NVDEC |
-| VVC | Software decoding only |
+| Compressed video | Software decoding through FFmpeg (e.g., H.264, HEVC, AV1, VVC, VP9, MPEG-2, ProRes), subject to decoder availability and supported pixel formats |
+| NVIDIA NVDEC | Hardware decoding of HEVC 10-bit 4:2:0 and AV1 8-bit/10-bit 4:2:0 |
 
-Compressed video support depends on the installed FFmpeg build. Other codecs may work if supported by FFmpeg.
+Compressed video support depends on the available FFmpeg decoders. PixVQA accepts planar 8-bit and 10-bit YUV in 4:2:0, 4:2:2, and 4:4:4 formats; unsupported pixel formats are rejected rather than converted.
 
-### CPU and GPU support
+For AV1 software decoding, FFmpeg must include libdav1d or libaom-av1. NVIDIA NVDEC is limited to HEVC and AV1; `--decode gpu` does not fall back to software decoding.
+
+## CPU and GPU Support
 
 | Metric | CPU 8-bit | CPU 10-bit | CUDA 8-bit | CUDA 10-bit |
 |---|:---:|:---:|:---:|:---:|
