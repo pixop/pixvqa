@@ -66,3 +66,6 @@ reports/*.txt
 
 # Local third-party VVC test bitstream: redistribution not verified.
 /tests/fixtures/vvc/*.vvc
+
+# Locally generated synthetic VVC QA fixtures.
+/tests/fixtures/vvc/local/
