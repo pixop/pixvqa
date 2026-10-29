@@ -64,43 +64,68 @@ QCS is a metric-agnostic **temporal quality reliability descriptor** derived fro
 
 For further details, see the [QCS documentation](docs/QCS.md) or the [QCS reference implementation](https://github.com/pixop/Quality-Consistency-Score).
 
-## Installation
+## Installation and Building
 
 PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
 
-From the root of the cloned repository, run:
+### Recommended: Guided Installation
+
+For a first installation, clone the repository and run the guided installer:
 
 ```bash
+git clone https://github.com/pixop/pixvqa.git
+cd pixvqa
 bash install_pixvqa.sh
 ```
 
-The installer writes `bin/pixvqa` in that checkout. For subsequent incremental
-rebuilds without reinstalling dependencies, see [Developer builds](docs/BUILD_MAKE.md)
-(`make cpu`, `make swdec`, `make full`).
+The installer downloads and builds the required dependencies, compiles PixVQA, and installs the executable into `bin/pixvqa`. It offers **FFmpeg software decoding** for compressed inputs and optional **NVIDIA CUDA/NVDEC acceleration**. GPU builds require a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
 
-**Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
+To keep PixVQA-managed dependencies inside the repository rather than in shared directories under `$HOME`, run the installer with:
 
 ```bash
 PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
 ```
 
-The installer downloads the required dependencies, builds PixVQA, and asks whether to enable:
-
-1. **Software decoding (dav1d/FFmpeg):** Recommended for compressed video support.
-2. **NVIDIA GPU acceleration (CUDA/NVDEC):** Optional. Requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
-
-After installation, verify:
+Verify the installation:
 
 ```bash
 ./bin/pixvqa --version
 python3 scripts/run_qa.py --profile smoke
 ```
 
-**Troubleshooting and Manual Installation:**
+### Developer Builds: Incremental Compilation
 
-If automatic installation fails, consult the [Manual Installation Guide](docs/INSTALL.md).
+Once dependencies are installed, GNU Make supports incremental compilation without downloading or rebuilding them again.
 
-The guide provides step-by-step instructions for installing dependencies and compiling PixVQA manually. Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
+| Command | Build configuration | Executable |
+|---|---|---|
+| `make cpu` | CPU-only metrics, raw YUV inputs | `build/cpu/pixvqa` |
+| `make swdec` | CPU metrics + FFmpeg software decoding | `build/swdec/pixvqa` |
+| `make full` | CUDA metrics + FFmpeg software decoding + NVDEC | `build/full/pixvqa` |
+| `make test-cpu` | Build and run CPU self-tests | `build/cpu/selftest` |
+
+For example, to compile the full CUDA/NVDEC variant with repository-local dependencies already installed:
+
+```bash
+export PIXVQA_DEPS_ROOT="$PWD/deps"
+make -j"$(nproc)" full
+./build/full/pixvqa --version
+```
+
+Subsequent `make full` commands recompile only affected components. Building a variant does **not** automatically replace `bin/pixvqa`. To install the compiled executable into the checkout:
+
+```bash
+make install VARIANT=full PREFIX="$PWD"
+./bin/pixvqa --version
+```
+
+Use `VARIANT=cpu` or `VARIANT=swdec` to install another variant after building it. The installation prefix defaults to the checkout root unless a `PREFIX` environment variable or Make command-line argument overrides it; specifying `PREFIX="$PWD"` ensures a checkout-local installation.
+
+See [Developer builds](docs/BUILD_MAKE.md) for dependency configuration, other build options, and troubleshooting.
+
+### Troubleshooting and Manual Installation
+
+If the guided installer fails, consult the [Manual Installation Guide](docs/INSTALL.md). Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
 
 For clean-install testing and known validation limitations, see [Installation Validation](docs/INSTALL_VALIDATION.md).
 
