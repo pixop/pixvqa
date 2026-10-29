@@ -42,7 +42,7 @@ fi
 source "$ROOT/scripts/libvmaf_flags.sh"
 pixvqa_detect_libvmaf "$ROOT"
 CXXFLAGS="-O3 -Wall -Wextra -std=c++17 -Iinclude -I$FFMPEG_PREFIX/include -pthread -march=native -DPIXVQA_HAS_FFMPEG=1"
-LDFLAGS="-L$FFMPEG_PREFIX/lib -lavformat -lavcodec -lavutil -Wl,--disable-new-dtags,-rpath,$FFMPEG_PREFIX/lib -pthread"
+LDFLAGS="$FFMPEG_PREFIX/lib/libavformat.so $FFMPEG_PREFIX/lib/libavcodec.so $FFMPEG_PREFIX/lib/libavutil.so -Wl,--disable-new-dtags,-rpath,$FFMPEG_PREFIX/lib -pthread"
 # libdav1d is a dependency of libavcodec, not of PixVQA itself. The linker still
 # has to see it, and the binary has to find it at run time.
 if [[ -n "${DAV1D_LIB:-}" ]]; then
@@ -152,7 +152,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     FULL_RPATH="$DAV1D_LIB:$FULL_RPATH"
   fi
   FULL_LIBS=(-L"$GCC13/lib" -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda
-             -L"$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
+             "$FFMPEG_PREFIX/lib/libavformat.so" "$FFMPEG_PREFIX/lib/libavcodec.so" "$FFMPEG_PREFIX/lib/libavutil.so"
              -Wl,--disable-new-dtags,-rpath,"$FULL_RPATH")
   if [[ -n "${DAV1D_LIB:-}" ]]; then
     FULL_LIBS+=(-L"$DAV1D_LIB" -Wl,-rpath-link,"$DAV1D_LIB")
