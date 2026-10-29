@@ -74,7 +74,9 @@ From the root of the cloned repository, run:
 bash install_pixvqa.sh
 ```
 
-The installer writes `bin/pixvqa` in that checkout.
+The installer writes `bin/pixvqa` in that checkout. For subsequent incremental
+rebuilds without reinstalling dependencies, see [Developer builds](docs/BUILD_MAKE.md)
+(`make cpu`, `make swdec`, `make full`).
 
 **Optional**: To keep PixVQA-managed dependencies inside the repository instead of shared directories under `$HOME`, run:
 
