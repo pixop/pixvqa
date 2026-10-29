@@ -124,8 +124,10 @@ bool hdr_parse_range_token(const std::string& token, HdrRange& out);
 
 // Display-referred linear RGB in cd/m2.
 // PQ is the ST 2084 EOTF on R'G'B'. An explicit peak clips each component.
-// HLG is the BT.2100 inverse OETF, then scene RGB scaled so the luminance is
-// Lb + (Lw-Lb) * Ys^gamma. A zero scene maps to black on every channel.
+// HLG is the BT.2100 inverse OETF, then the reference OOTF
+// Rd = (Lw-Lb) * Ys^(gamma-1) * Rs + Lb, and the same for G and B.
+// Lb = 0 reduces to Rs * (Lw * Ys^gamma) / Ys. A zero scene maps to black
+// on every channel.
 // Nonlinear components outside [0, 1] are clamped before the nonlinear step.
 bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr, double& r_nits,
                      double& g_nits, double& b_nits);

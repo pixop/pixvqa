@@ -213,6 +213,7 @@ def main() -> int:
             print("OK   help lists the eight supported metrics")
 
         check_overrides(run)
+        check_hlg_black_ootf(run)
 
     if FAILS:
         print(FAILS, "failed", file=sys.stderr)
@@ -263,6 +264,21 @@ def display_pq(rgb: tuple[float, float, float], clip: float | None) -> tuple[flo
 
 def display_hlg(rgb: tuple[float, float, float], kr: float, kg: float, kb: float, peak: float,
                 black: float, gamma: float) -> tuple[float, float, float]:
+    """BT.2100 reference OOTF: Rd = (Lw-Lb) * Ys^(gamma-1) * Rs + Lb."""
+    scene = tuple(hlg_scene(c) for c in rgb)
+    ys = kr * scene[0] + kg * scene[1] + kb * scene[2]
+    if ys <= 0.0:
+        return black, black, black
+    if black == 0.0:
+        scale = peak * (ys ** gamma) / ys
+        return scene[0] * scale, scene[1] * scale, scene[2] * scale
+    factor = (peak - black) * (ys ** (gamma - 1.0))
+    return scene[0] * factor + black, scene[1] * factor + black, scene[2] * factor + black
+
+
+def display_hlg_proportional(rgb: tuple[float, float, float], kr: float, kg: float, kb: float, peak: float,
+                             black: float, gamma: float) -> tuple[float, float, float]:
+    """Pre-correction OOTF, which folds Lb into the scale. Used only to show it differs."""
     scene = tuple(hlg_scene(c) for c in rgb)
     ys = kr * scene[0] + kg * scene[1] + kb * scene[2]
     if ys <= 0.0:
@@ -345,6 +361,54 @@ def write_420_planes(path: Path, y: int, cb: list[int], cr: list[int]) -> None:
 def run_psnr(run, args: list[str]) -> tuple[subprocess.CompletedProcess[str], float | None]:
     done = run(args)
     return done, score(done.stdout, "PU21-PSNR")
+
+
+def check_hlg_black_ootf(run) -> None:
+    """Neutral grey and saturated RGB at black 0 and 5 cd/m2.
+
+    Grey and black 0 agree with the old proportional scale. Saturated color at
+    5 cd/m2 must follow BT.2100 and must not follow that scale.
+    """
+    kr, kg, kb = coef("bt2020")
+    gamma = 1.2
+    peak = 1000.0
+    grey = ((480, 512, 512), (560, 512, 512))
+    saturated = ((480, 512, 800), (560, 400, 700))
+    with tempfile.TemporaryDirectory(prefix="pixvqa_pu21_hlg_black_") as td:
+        root = Path(td)
+        for kind, pair_codes in (("grey", grey), ("saturated", saturated)):
+            ref = root / f"{kind}_ref.yuv"
+            dist = root / f"{kind}_dist.yuv"
+            write_444(ref, *pair_codes[0])
+            write_444(dist, *pair_codes[1])
+            for black in (0.0, 5.0):
+                def light(codes: tuple[int, int, int], formula) -> tuple[float, float, float]:
+                    nonlinear = rgb_ncl(kr, kg, kb, nominal(codes[0], False, False),
+                                        nominal(codes[1], True, False), nominal(codes[2], True, False))
+                    return formula(nonlinear, kr, kg, kb, peak, black, gamma)
+
+                bt2100 = psnr_of(light(pair_codes[0], display_hlg), light(pair_codes[1], display_hlg))
+                old = psnr_of(light(pair_codes[0], display_hlg_proportional),
+                              light(pair_codes[1], display_hlg_proportional))
+                label = f"hlg {kind} black {black:g}"
+                if kind == "grey" or black == 0.0:
+                    if abs(bt2100 - old) > 1e-9:
+                        fail(f"{label}: zero-black or grey formulas diverged {bt2100} vs {old}")
+                elif abs(bt2100 - old) < 1e-3:
+                    fail(f"{label}: BT.2100 did not separate from the proportional OOTF")
+                args = ["-r", str(ref), "-s", f"{W}x{H}", "-f", "444p:10",
+                        "-t", str(dist), "-s", f"{W}x{H}", "-f", "444p:10",
+                        "--metrics", "pu21-psnr", "--hdr-transfer", "hlg",
+                        "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc",
+                        "--hdr-range", "limited", "--hdr-peak-nits", "1000",
+                        "--hdr-black-nits", f"{black:g}", "-n", "1", "-v", "0"]
+                done, got = run_psnr(run, args)
+                if done.returncode != 0:
+                    fail(f"{label}: rc={done.returncode} {done.stderr[-300:]}")
+                    continue
+                expect_close(label, got, bt2100, 1e-4)
+                if got is not None and kind == "saturated" and black == 5.0 and abs(got - old) <= 1e-3:
+                    fail(f"{label}: score still matches the proportional OOTF")
 
 
 def check_overrides(run) -> None:

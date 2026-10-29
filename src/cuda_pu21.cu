@@ -274,11 +274,18 @@ __device__ bool display_rgb(const Pu21GpuHdr& h, double y, double cb, double cr,
     r = g = b = h.black;
     return true;
   }
-  const double yd = h.black + (h.peak - h.black) * dev_pow(ys, h.gamma);
-  const double scale = yd / ys;
-  r = rs * scale;
-  g = gs * scale;
-  b = bs * scale;
+  // Same BT.2100 split as hdr_display_rgb. Lb = 0 stays on the previous expression.
+  if (h.black == 0.0) {
+    const double scale = h.peak * dev_pow(ys, h.gamma) / ys;
+    r = rs * scale;
+    g = gs * scale;
+    b = bs * scale;
+  } else {
+    const double factor = (h.peak - h.black) * dev_pow(ys, h.gamma - 1.0);
+    r = rs * factor + h.black;
+    g = gs * factor + h.black;
+    b = bs * factor + h.black;
+  }
   return isfinite(r) && isfinite(g) && isfinite(b);
 }
 
