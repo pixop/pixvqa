@@ -3,6 +3,7 @@
 # install_pixvqa.sh still uses build.sh / build_decode.sh / build_cuda.sh.
 
 ROOT := $(abspath .)
+PREFIX ?= $(ROOT)
 SHELL := /bin/bash
 
 DEPFLAGS := -MMD -MP
@@ -25,7 +26,7 @@ help:
 	@echo "  make swdec            FFmpeg software decode -> build/swdec/pixvqa"
 	@echo "  make full             CUDA + NVDEC + FFmpeg -> build/full/pixvqa"
 	@echo "  make test-cpu         build/cpu/selftest and run it"
-	@echo "  make install VARIANT=full PREFIX=/path/to/prefix"
+	@echo "  make install VARIANT=full   install into checkout (PREFIX optional)"
 	@echo "  make clean            remove build/cpu build/swdec build/cuda build/full"
 	@echo ""
 	@echo "Optional environment (see scripts/deps_layout.sh defaults):"

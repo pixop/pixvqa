@@ -12,7 +12,7 @@ changed translation units. The guided installer and `docs/INSTALL.md` still use
 | `make swdec` | `build/swdec/pixvqa` | FFmpeg n8.1.3 software decode |
 | `make full` | `build/full/pixvqa` | CUDA metrics + NVDEC + FFmpeg |
 | `make test-cpu` | runs `build/cpu/selftest` | |
-| `make install VARIANT=… PREFIX=…` | wraps `scripts/install.sh` | `VARIANT` = `cpu`, `swdec`, or `full` |
+| `make install VARIANT=…` | wraps `scripts/install.sh` | Installs into checkout by default; override with `PREFIX=/path` |
 | `make clean` | removes `build/cpu`, `build/swdec`, `build/cuda`, `build/full` | |
 
 Object files and generated `config.mk` files live under separate `build/<variant>/`
@@ -31,6 +31,8 @@ export CUDA_HOME=/usr/local/cuda-12.8
 export GCC_ENV=/usr          # swdec host compiler (default /usr when /usr/bin/g++ exists)
 # Optional: FFMPEG_PREFIX, DAV1D_LIB, PIXVQA_DEPS_ROOT, LIBVMAF_PREFIX, ZIMG_PREFIX
 make full
+make install VARIANT=full         # copies to ./bin/pixvqa
+# make install VARIANT=full PREFIX=/custom/directory
 ```
 
 `make full` links with `/usr/bin/g++` by default (`PIXVQA_FULL_LINK_CXX`) so FFmpeg
