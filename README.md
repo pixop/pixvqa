@@ -26,6 +26,8 @@ PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU2
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
 
+**HDR / PU21:** To evaluate PQ or HLG video with PU21-PSNR, PU21-SSIM, or PU21-MS-SSIM, see the [PU21 usage guide](docs/PU21.md) for recommended transfer-function and display settings.
+
 Select VQA metrics using `--metrics`; enable the QCS descriptor separately using `--qcs`.
 
 ## Recommended Metrics for SDR and HDR Video
