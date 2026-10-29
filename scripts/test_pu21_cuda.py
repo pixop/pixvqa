@@ -160,6 +160,28 @@ def main() -> int:
         else:
             print("OK   integer PSNR unchanged beside CUDA PU21")
 
+        # Nonzero HLG black must agree on grey and on saturated RGB. PQ stays in the matrix above.
+        for label, ref_codes, dist_codes, extra in (
+            ("hlg grey black 0", (480, 512, 512), (560, 512, 512), ["--hdr-black-nits", "0"]),
+            ("hlg grey black 5", (480, 512, 512), (560, 512, 512), ["--hdr-black-nits", "5"]),
+            ("hlg saturated black 0", (480, 512, 800), (560, 400, 700), ["--hdr-black-nits", "0"]),
+            ("hlg saturated black 5", (480, 512, 800), (560, 400, 700), ["--hdr-black-nits", "5"]),
+        ):
+            ref = root / f"{label.replace(' ', '_')}_r.yuv"
+            dist = root / f"{label.replace(' ', '_')}_d.yuv"
+            write_frame(ref, 32, 32, "444", 10, [ref_codes])
+            write_frame(dist, 32, 32, "444", 10, [dist_codes])
+            args = ["--metrics", "pu21-psnr,pu21-ssim,pu21-msssim", "--hdr-transfer", "hlg",
+                    "--hdr-peak-nits", "1000", *extra,
+                    "-r", str(ref), "-s", "32x32", "-f", "444p:10",
+                    "-t", str(dist), "-s", "32x32", "-f", "444p:10"]
+            cpu = run(CPU, ["--metric-device", "cpu", *args])
+            gpu = run(GPU, ["--metric-device", "gpu", *args])
+            if cpu.returncode != 0 or gpu.returncode != 0:
+                fail(f"{label} rc {cpu.returncode}/{gpu.returncode}\n{cpu.stderr[-300:]}\n{gpu.stderr[-300:]}")
+            else:
+                compare(label, cpu.stdout, gpu.stdout, False)
+
         ffmpeg = Path(os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "")
         swdec = Path(os.environ.get("PIXVQA_SWDEC_BIN", ROOT / "build" / "swdec" / "pixvqa"))
         full = Path(os.environ.get("PIXVQA_FULL_BIN", ROOT / "build" / "full" / "pixvqa"))

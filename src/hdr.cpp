@@ -635,12 +635,20 @@ bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr, do
       r_nits = g_nits = b_nits = cfg.black_nits;
       return true;
     }
-    const double yd =
-        cfg.black_nits + (cfg.peak_nits - cfg.black_nits) * std::pow(ys, cfg.hlg_gamma);
-    const double scale = yd / ys;
-    r_nits = rs * scale;
-    g_nits = gs * scale;
-    b_nits = bs * scale;
+    // BT.2100 reference OOTF. The black offset is added to each component.
+    // Lb = 0 keeps Rs * (Lw * Ys^gamma) / Ys, including the 1000 cd/m2 default.
+    if (cfg.black_nits == 0.0) {
+      const double scale = cfg.peak_nits * std::pow(ys, cfg.hlg_gamma) / ys;
+      r_nits = rs * scale;
+      g_nits = gs * scale;
+      b_nits = bs * scale;
+    } else {
+      const double factor =
+          (cfg.peak_nits - cfg.black_nits) * std::pow(ys, cfg.hlg_gamma - 1.0);
+      r_nits = rs * factor + cfg.black_nits;
+      g_nits = gs * factor + cfg.black_nits;
+      b_nits = bs * factor + cfg.black_nits;
+    }
     return std::isfinite(r_nits) && std::isfinite(g_nits) && std::isfinite(b_nits);
   }
   return false;
