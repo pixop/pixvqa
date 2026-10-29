@@ -68,9 +68,14 @@ For further details, see the [QCS documentation](docs/QCS.md) or the [QCS refere
 
 PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
 
-### Recommended: Guided Installation
+There are **two ways to build PixVQA**, both available to all users:
 
-For a first installation, clone the repository and run the guided installer:
+- **Guided installation (recommended for first-time users):** `install_pixvqa.sh` sets up the required dependencies, compiles PixVQA, and installs the executable as `bin/pixvqa`.
+- **Incremental builds (for anyone with dependencies already installed):** GNU Make compiles a selected variant without reinstalling dependencies. This is useful after updating the source code or when choosing CPU-only, software-decoding, or CUDA/NVDEC support. You do **not** need to be a developer to use it.
+
+### Option 1: Guided Installation (Recommended for First-Time Users)
+
+Clone the repository and run the interactive installer:
 
 ```bash
 git clone https://github.com/pixop/pixvqa.git
@@ -78,33 +83,39 @@ cd pixvqa
 bash install_pixvqa.sh
 ```
 
-The installer downloads and builds the required dependencies, compiles PixVQA, and installs the executable into `bin/pixvqa`. It offers **FFmpeg software decoding** for compressed inputs and optional **NVIDIA CUDA/NVDEC acceleration**. GPU builds require a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
+The installer downloads and builds the required dependencies and asks which capabilities to enable. **FFmpeg software decoding** supports compressed video; **NVIDIA CUDA/NVDEC** acceleration is optional and requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
 
-To keep PixVQA-managed dependencies inside the repository rather than in shared directories under `$HOME`, run the installer with:
+By default, the installer installs the chosen build into **`bin/pixvqa`** inside the checkout. 
+
+**To keep PixVQA-managed dependencies inside this repository** rather than in shared directories under `$HOME`, use the following command *instead* of the plain installer command above:
 
 ```bash
 PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
 ```
 
-Verify the installation:
+Check which capabilities were installed:
 
 ```bash
 ./bin/pixvqa --version
 python3 scripts/run_qa.py --profile smoke
 ```
 
-### Developer Builds: Incremental Compilation
+The version output reports the compiled build and available decoders (for example, `build: cuda` and `decode: software nvdec` for a full build).
 
-Once dependencies are installed, GNU Make supports incremental compilation without downloading or rebuilding them again.
+### Option 2: Building from Source (Incremental Builds)
 
-| Command | Build configuration | Executable |
+**Anyone can use this workflow**, provided the required dependencies are already installed (for example, by running the guided installer once). The `make` commands do **not** download or install missing dependencies.
+
+Choose the build that matches your needs:
+
+| Command | Capabilities | Compiled executable |
 |---|---|---|
-| `make cpu` | CPU-only metrics, raw YUV inputs | `build/cpu/pixvqa` |
-| `make swdec` | CPU metrics + FFmpeg software decoding | `build/swdec/pixvqa` |
-| `make full` | CUDA metrics + FFmpeg software decoding + NVDEC | `build/full/pixvqa` |
+| `make cpu` | CPU metrics, raw YUV inputs only | `build/cpu/pixvqa` |
+| `make swdec` | CPU metrics and FFmpeg software decoding | `build/swdec/pixvqa` |
+| `make full` | CUDA metrics, FFmpeg software decoding, and NVDEC | `build/full/pixvqa` |
 | `make test-cpu` | Build and run CPU self-tests | `build/cpu/selftest` |
 
-For example, to compile the full CUDA/NVDEC variant with repository-local dependencies already installed:
+For example, if you previously installed dependencies into `./deps` and want the full CUDA/NVDEC build:
 
 ```bash
 export PIXVQA_DEPS_ROOT="$PWD/deps"
@@ -112,16 +123,22 @@ make -j"$(nproc)" full
 ./build/full/pixvqa --version
 ```
 
-Subsequent `make full` commands recompile only affected components. Building a variant does **not** automatically replace `bin/pixvqa`. To install the compiled executable into the checkout:
+Replace `full` with `swdec` or `cpu` to compile another variant. If your dependencies were installed elsewhere, use the appropriate dependency paths instead; see the [Make Build Guide](docs/BUILD_MAKE.md).
+
+**Building is not the same as installing.** Each `make` target writes its own executable under `build/`. Running `make full`, for example, does **not** replace `bin/pixvqa`. The executable at **`bin/pixvqa` is whichever variant you last installed**, either through the guided installer or through `make install`.
+
+To install your chosen compiled variant into `bin/pixvqa`, run:
 
 ```bash
 make install VARIANT=full PREFIX="$PWD"
 ./bin/pixvqa --version
 ```
 
-Use `VARIANT=cpu` or `VARIANT=swdec` to install another variant after building it. The installation prefix defaults to the checkout root unless a `PREFIX` environment variable or Make command-line argument overrides it; specifying `PREFIX="$PWD"` ensures a checkout-local installation.
+Use `VARIANT=cpu` or `VARIANT=swdec` if that is the variant you built. The `PREFIX="$PWD"` argument explicitly installs into the current checkout; without it, an existing `PREFIX` environment variable may redirect the installation. Installing a different variant **replaces** the previous `bin/pixvqa` executable.
 
-See [Developer builds](docs/BUILD_MAKE.md) for dependency configuration, other build options, and troubleshooting.
+After changing or updating source files, run the same `make` target again. GNU Make recompiles only affected components; if you want to use the updated build via `./bin/pixvqa`, run the matching `make install` command again.
+
+For dependency configuration, compiler options, and troubleshooting, see the [Make Build Guide](docs/BUILD_MAKE.md).
 
 ### Troubleshooting and Manual Installation
 
