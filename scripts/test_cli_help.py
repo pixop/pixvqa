@@ -43,15 +43,17 @@ def check_help(bin_path: Path, kind: str) -> None:
         fail(f"{kind} help rc {done.returncode}")
         return
     flat = collapsed(text)
+    help_lines = len(text.splitlines())
+    if not 40 <= help_lines <= 60:
+        fail(f"{kind} help length {help_lines}, expected 40-60 lines")
+        return
     for needle in (
-        "1. Usage", "2. Input files", "3. Metrics", "4. Execution",
-        "5. QCS", "6. Frame rate", "7. General", "8. Examples",
-        "five-scale product", "--metrics", "msssim", "--qcs-range",
-        "--metric-device", "--decode", "--threads", "--model PATH",
-        "Official Netflix VMAF",
-        "--metrics psnr,xpsnr,ssim,msssim,vmaf",
-        "Quality Consistency Score", "normalized area under the survival curve",
-        "--help-hdr", "docs/PU21.md",
+        "Input", "Metrics", "Execution", "QCS", "HDR", "General",
+        "--metrics", "msssim, vmaf", "pu21-psnr, pu21-ssim, pu21-msssim",
+        "--qcs-range", "--metric-device", "--decode", "--threads",
+        "--model PATH", "--fps", "--frames", "--input",
+        "docs/QCS.md", "docs/PU21.md", "--help-hdr",
+        "[30,50]", "[70,100]",
     ):
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
@@ -68,16 +70,23 @@ def check_help(bin_path: Path, kind: str) -> None:
         fail(f"{kind} --help-hdr missing --hdr-transfer rc={hdr.returncode}")
         return
     hdr_flat = collapsed(hdr.stdout)
+    hdr_lines = len(hdr.stdout.splitlines())
+    if not 20 <= hdr_lines <= 30:
+        fail(f"{kind} --help-hdr length {hdr_lines}, expected 20-30 lines")
+        return
     for needle in (
         "docs/PU21.md", "--hdr-primaries", "--hdr-matrix", "--hdr-range",
         "--hdr-peak-nits", "--hdr-black-nits", "--hdr-hlg-gamma",
-        "1000 cd/m2", "HLG black", "--ref-hdr-transfer",
+        "--hdr-chroma-loc", "--hdr-chroma-up",
+        "1000 cd/m2", "HLG black", "gamma 1.2", "--ref-hdr-transfer",
+        "st2084", "stdb67", "--hlg-peak", "bt601",
+        "per-input option, shared option, stream metadata",
     ):
         if needle not in hdr.stdout and needle not in hdr_flat:
             fail(f"{kind} --help-hdr missing {needle}")
             return
-    if "1.2 + 0.42" in hdr_flat:
-        fail(f"{kind} --help-hdr still contains the HLG gamma formula")
+    if "1.2 + 0.42" in hdr_flat or "10.1109/PCS50896.2021.9477471" in hdr.stdout:
+        fail(f"{kind} --help-hdr still contains the formula or the paper citation")
         return
     print(f"OK   {kind} help")
 

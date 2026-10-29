@@ -114,7 +114,7 @@ def main() -> int:
     cuda_has_vmaf = False
     if PIXVQA_CUDA.is_file():
         help_p = subprocess.run([str(PIXVQA_CUDA), "--help"], capture_output=True, text=True)
-        cuda_has_vmaf = "Official Netflix VMAF" in help_p.stdout and "msssim, vmaf" in help_p.stdout
+        cuda_has_vmaf = "msssim, vmaf" in help_p.stdout and "--model PATH" in help_p.stdout
     if PIXVQA_CUDA.is_file() and MODEL.is_file() and cuda_has_vmaf:
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
