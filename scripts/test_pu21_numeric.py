@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import shlex
 import struct
 import subprocess
 import sys
@@ -58,6 +59,84 @@ def write_grey(path: Path, code: int) -> None:
 
 def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([str(BIN), *args], capture_output=True, text=True)
+
+
+def write_frame(path: Path, width: int, height: int, bits: int) -> None:
+    cw, ch = width // 2, height // 2
+    if bits > 8:
+        y = struct.pack("<H", 400) * (width * height)
+        c = struct.pack("<H", 512) * (cw * ch)
+    else:
+        y = bytes([40]) * (width * height)
+        c = bytes([128]) * (cw * ch)
+    path.write_bytes(y + c + c)
+
+
+def guide_commands() -> list[str]:
+    text = (ROOT / "docs" / "PU21.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```bash\n(.*?)```", text, flags=re.S)
+    commands = []
+    for block in blocks:
+        buf: list[str] = []
+        for raw in block.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            continued = line.endswith("\\")
+            buf.append(line[:-1].strip() if continued else line)
+            if not continued:
+                commands.append(" ".join(buf))
+                buf = []
+        if buf:
+            commands.append(" ".join(buf))
+    return [command for command in commands if command.startswith("pixvqa ")]
+
+
+def check_documented_commands() -> None:
+    commands = guide_commands()
+    if len(commands) < 4:
+        fail(f"docs/PU21.md should show PQ and HLG commands, found {len(commands)}")
+        return
+    reject = ("PARSE ERROR", "Couldn't find match", "unsupported", "expects ", "both set")
+    with tempfile.TemporaryDirectory(prefix="pixvqa_pu21_docs_") as td:
+        root = Path(td)
+        for command in commands:
+            args = shlex.split(command)[1:]
+            width = height = bits = None
+            names: list[str] = []
+            i = 0
+            while i < len(args):
+                if args[i] == "-s" and i + 1 < len(args) and "x" in args[i + 1]:
+                    width_s, height_s = args[i + 1].split("x", 1)
+                    width, height = int(width_s), int(height_s)
+                    i += 2
+                    continue
+                if args[i] == "-f" and i + 1 < len(args):
+                    bits = 10 if args[i + 1].endswith(":10") else 8
+                    i += 2
+                    continue
+                if args[i] in ("-r", "-t") and i + 1 < len(args):
+                    names.append(args[i + 1])
+                    i += 2
+                    continue
+                i += 1
+            if width and height and bits:
+                for name in names:
+                    if name.endswith(".yuv"):
+                        write_frame(root / Path(name).name, width, height, bits)
+            ready = bool(names) and all((root / Path(name).name).is_file() for name in names)
+            proc = subprocess.run(
+                [str(BIN), *args], cwd=root, capture_output=True, text=True, timeout=180,
+            )
+            blob = proc.stdout + proc.stderr
+            label = " ".join(args[:6])
+            if any(marker in blob for marker in reject):
+                fail(f"documented command rejected: {command}\n{blob[-500:]}")
+            elif ready and (proc.returncode != 0 or "PU21" not in proc.stdout):
+                fail(f"documented command did not score rc={proc.returncode}: {command}\n{blob[-500:]}")
+            else:
+                state = "scored" if proc.returncode == 0 else "accepted"
+                print(f"OK   documented {state}: {label}")
 
 
 def score(text: str, name: str) -> float | None:
@@ -195,22 +274,39 @@ def main() -> int:
             print("OK   gpu pu21 refused")
 
         help_hdr = run(["--help-hdr"])
+        help_flat = re.sub(r"\s+", " ", help_hdr.stdout)
         if help_hdr.returncode != 0 or "10.1109/PCS50896.2021.9477471" not in help_hdr.stdout:
             fail("help-hdr missing the paper DOI")
         elif "gfxdisp/pu21" not in help_hdr.stdout or "--ref-hdr-transfer" not in help_hdr.stdout:
             fail("help-hdr missing citation or per-input example")
+        elif "docs/PU21.md" not in help_hdr.stdout or "1.2 + 0.42" in help_flat:
+            fail("help-hdr should point at docs/PU21.md and omit the gamma formula")
+        elif "rc3" in help_flat.lower() or "deviate" in help_flat.lower():
+            fail("help-hdr still describes the HLG black level as an outstanding defect")
         else:
             print("OK   help-hdr")
         help_main = run(["--help"])
         supported = ("psnr", "xpsnr", "ssim", "msssim", "vmaf", "pu21-psnr", "pu21-ssim", "pu21-msssim")
         if any(name not in help_main.stdout for name in supported):
             fail("ordinary help does not list the eight supported metrics")
+        elif "docs/PU21.md" not in help_main.stdout:
+            fail("ordinary help missing docs/PU21.md")
         elif "pu21-xpsnr" in help_main.stdout or "pu21-vmaf" in help_main.stdout:
             fail("ordinary help still lists an excluded experimental metric")
         elif "pu21-xpsnr" in help_hdr.stdout or "pu21-vmaf" in help_hdr.stdout:
             fail("help-hdr still lists an excluded experimental metric")
         else:
             print("OK   help lists the eight supported metrics")
+        guide = (ROOT / "docs" / "PU21.md").read_text(encoding="utf-8")
+        if "10.1109/PCS50896.2021.9477471" not in guide or "gfxdisp/pu21" not in guide:
+            fail("docs/PU21.md missing the paper or reference implementation")
+        elif "mantiuk2021_PU21.pdf" not in guide or "1.2 + 0.42 * log10(Lw / 1000)" not in guide:
+            fail("docs/PU21.md missing the paper PDF or the HLG gamma formula")
+        elif "rc3" in guide.lower() or "deviate" in guide.lower():
+            fail("docs/PU21.md still describes the HLG black level as an outstanding defect")
+        else:
+            print("OK   PU21 guide")
+        check_documented_commands()
 
         check_overrides(run)
         check_hlg_black_ootf(run)

@@ -51,7 +51,7 @@ def check_help(bin_path: Path, kind: str) -> None:
         "Official Netflix VMAF",
         "--metrics psnr,xpsnr,ssim,msssim,vmaf",
         "Quality Consistency Score", "normalized area under the survival curve",
-        "--help-hdr",
+        "--help-hdr", "docs/PU21.md",
     ):
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
@@ -66,6 +66,18 @@ def check_help(bin_path: Path, kind: str) -> None:
     hdr = run(bin_path, ["--help-hdr"])
     if hdr.returncode != 0 or "--hdr-transfer" not in hdr.stdout:
         fail(f"{kind} --help-hdr missing --hdr-transfer rc={hdr.returncode}")
+        return
+    hdr_flat = collapsed(hdr.stdout)
+    for needle in (
+        "docs/PU21.md", "--hdr-primaries", "--hdr-matrix", "--hdr-range",
+        "--hdr-peak-nits", "--hdr-black-nits", "--hdr-hlg-gamma",
+        "1000 cd/m2", "HLG black", "--ref-hdr-transfer",
+    ):
+        if needle not in hdr.stdout and needle not in hdr_flat:
+            fail(f"{kind} --help-hdr missing {needle}")
+            return
+    if "1.2 + 0.42" in hdr_flat:
+        fail(f"{kind} --help-hdr still contains the HLG gamma formula")
         return
     print(f"OK   {kind} help")
 
