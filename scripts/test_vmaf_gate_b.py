@@ -73,7 +73,7 @@ def has_vmaf(bin_path: Path) -> bool:
     if not bin_path.is_file():
         return False
     p = subprocess.run([str(bin_path), "--help"], capture_output=True, text=True)
-    return "Official Netflix VMAF" in p.stdout and "msssim, vmaf" in p.stdout
+    return "msssim, vmaf" in p.stdout and "--model PATH" in p.stdout
 
 
 def supports_cuda_xpsnr(bin_path: Path) -> bool:

@@ -16,8 +16,8 @@ PSNR, XPSNR, SSIM, MS-SSIM, and VMAF compare stored sample codes. PU21-PSNR, PU2
 |---|---|
 | `psnr` | Peak signal-to-noise ratio (PSNR) and MSE on stored sample codes |
 | `xpsnr` | Extended PSNR (XPSNR). Uses a constant compressed frame rate, or `--fps` |
-| `ssim` | Structural similarity index (SSIM) |
-| `msssim` | Multi-scale structural similarity (MS-SSIM) |
+| `ssim` | Structural similarity (SSIM): 11×11 Gaussian, sigma 1.5, K1=0.01, K2=0.03 |
+| `msssim` | Multi-scale structural similarity, the five-scale product (MS-SSIM) |
 | `vmaf` | Netflix VMAF v1 through CPU libvmaf. Requires `--model` |
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
@@ -187,7 +187,7 @@ pixvqa --metrics psnr --decode gpu \
 
 ## Command-line Options
 
-`pixvqa --help` is the full option list. `pixvqa --help-hdr` is the full HDR list, including defaults and the PU21 citation.
+`pixvqa --help` lists the options. `pixvqa --help-hdr` lists the HDR options and defaults. QCS is documented in [docs/QCS.md](docs/QCS.md). PQ and HLG setup is documented in [docs/PU21.md](docs/PU21.md).
 
 | Option | Purpose |
 |---|---|
@@ -198,8 +198,8 @@ pixvqa --metrics psnr --decode gpu \
 | `--threads` | `auto` or a positive integer. Default `auto` |
 | `-s WxH` | Luma size. Required for raw YUV. Checked when set on compressed video |
 | `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10`. Required for raw YUV |
-| `--input` | `auto`, `raw`, or `compressed` |
-| `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available |
+| `--input` | `auto`, `raw`, or `compressed`. Default `auto`. `raw` does not probe |
+| `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available. Decimals truncate toward zero |
 | `--model` | VMAF model JSON. No default |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
@@ -217,9 +217,11 @@ PixVQA supports raw YUV and compressed video through FFmpeg.
 | Compressed video | Software decoding through FFmpeg (e.g., H.264, HEVC, AV1, VVC, VP9, MPEG-2, ProRes), subject to decoder availability and supported pixel formats |
 | NVIDIA NVDEC | Hardware decoding of HEVC 10-bit 4:2:0 and AV1 8-bit/10-bit 4:2:0 |
 
-Compressed video support depends on the available FFmpeg decoders. PixVQA accepts planar 8-bit and 10-bit YUV in 4:2:0, 4:2:2, and 4:4:4 formats; unsupported pixel formats are rejected rather than converted.
+Compressed video support depends on the available FFmpeg decoders. PixVQA accepts planar 8-bit and 10-bit YUV in 4:2:0, 4:2:2, and 4:4:4 formats; unsupported pixel formats are rejected rather than converted. 4:2:0 requires even width and height. Samples are planar, little-endian, with the low bits occupied.
 
-For AV1 software decoding, FFmpeg must include libdav1d or libaom-av1. NVIDIA NVDEC is limited to HEVC and AV1; `--decode gpu` does not fall back to software decoding.
+For AV1 software decoding, FFmpeg must include libdav1d or libaom-av1. NVIDIA NVDEC is limited to HEVC and AV1; `--decode gpu` does not fall back to software decoding. `--decode auto` prefers a linked software decoder. AV1 uses NVDEC only when no software AV1 decoder is linked, and VVC stays on software. There is no codec or container allowlist. A FIFO stays raw.
+
+The two inputs are decoded independently and paired in presentation order. Timestamps do not drop, repeat, or resynchronize frames. A length or geometry mismatch is an error.
 
 ## CPU and GPU Support
 
@@ -235,16 +237,16 @@ For AV1 software decoding, FFmpeg must include libdav1d or libaom-av1. NVIDIA NV
 | PU21-SSIM | ✅ | ✅ | ✅ | ✅ |
 | PU21-MS-SSIM | ✅ | ✅ | ✅ | ✅ |
 
-HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested.
+HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested. CUDA PSNR, SSIM, and MS-SSIM use FP64.
 
-NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC.
+NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC. `--metric-device gpu` has no CPU substitute for a metric that cannot run on the GPU. `--metric-device auto` uses the CPU except one profile: 10-bit, at least 3840×2160, GPU decoding, no VMAF, on a CUDA build. `--threads auto` uses half of the processors visible to this process, at most 8 and at least 1, for metric workers. Software decoding keeps its own pool of 8 threads on each compressed input.
 
 **Limitations:**
 - HDR transfer characteristics (PQ/HLG) come from the stream or from `--hdr-transfer`. They are not inferred from bit depth, BT.2020 primaries, or the filename.
 - A variable frame rate is not treated as constant. XPSNR then requires `--fps`.
 - Unsupported pixel formats are rejected rather than automatically converted.
 
-For detailed backend behavior, supported options, and restrictions, use `pixvqa --help` or consult the technical documentation.
+Option names and defaults are in `pixvqa --help` and `pixvqa --help-hdr`. QCS is in [docs/QCS.md](docs/QCS.md). PQ and HLG setup is in [docs/PU21.md](docs/PU21.md).
 
 ## References
 

@@ -43,8 +43,11 @@ def test_help():
     text = done.stdout + done.stderr
     if done.returncode != 0:
         return fail(f"help status {done.returncode}")
-    if "five-scale product" not in text:
-        return fail("help does not identify five-scale MS-SSIM")
+    if "msssim" not in text or "docs/QCS.md" not in text:
+        return fail("help does not list msssim and docs/QCS.md")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    if "five-scale" not in readme:
+        return fail("README does not identify five-scale MS-SSIM")
     print("OK   help")
     return 0
 

@@ -275,28 +275,36 @@ def main() -> int:
 
         help_hdr = run(["--help-hdr"])
         help_flat = re.sub(r"\s+", " ", help_hdr.stdout)
-        if help_hdr.returncode != 0 or "10.1109/PCS50896.2021.9477471" not in help_hdr.stdout:
-            fail("help-hdr missing the paper DOI")
-        elif "gfxdisp/pu21" not in help_hdr.stdout or "--ref-hdr-transfer" not in help_hdr.stdout:
-            fail("help-hdr missing citation or per-input example")
-        elif "docs/PU21.md" not in help_hdr.stdout or "1.2 + 0.42" in help_flat:
-            fail("help-hdr should point at docs/PU21.md and omit the gamma formula")
+        hdr_lines = len(help_hdr.stdout.splitlines())
+        if help_hdr.returncode != 0:
+            fail(f"help-hdr rc={help_hdr.returncode}")
+        elif "docs/PU21.md" not in help_hdr.stdout or "--ref-hdr-transfer" not in help_hdr.stdout:
+            fail("help-hdr missing the guide pointer or per-input example")
+        elif "1.2 + 0.42" in help_flat or "10.1109/PCS50896.2021.9477471" in help_hdr.stdout:
+            fail("help-hdr still contains the gamma formula or the paper citation")
+        elif "1000 cd/m2" not in help_hdr.stdout or "HLG black" not in help_hdr.stdout:
+            fail("help-hdr missing the HLG peak or black default")
+        elif not 20 <= hdr_lines <= 30:
+            fail(f"help-hdr length {hdr_lines}")
         elif "rc3" in help_flat.lower() or "deviate" in help_flat.lower():
             fail("help-hdr still describes the HLG black level as an outstanding defect")
         else:
-            print("OK   help-hdr")
+            print(f"OK   help-hdr ({hdr_lines} lines)")
         help_main = run(["--help"])
+        help_lines = len(help_main.stdout.splitlines())
         supported = ("psnr", "xpsnr", "ssim", "msssim", "vmaf", "pu21-psnr", "pu21-ssim", "pu21-msssim")
         if any(name not in help_main.stdout for name in supported):
             fail("ordinary help does not list the eight supported metrics")
-        elif "docs/PU21.md" not in help_main.stdout:
-            fail("ordinary help missing docs/PU21.md")
+        elif "docs/PU21.md" not in help_main.stdout or "docs/QCS.md" not in help_main.stdout:
+            fail("ordinary help missing docs/PU21.md or docs/QCS.md")
+        elif not 40 <= help_lines <= 60:
+            fail(f"ordinary help length {help_lines}")
         elif "pu21-xpsnr" in help_main.stdout or "pu21-vmaf" in help_main.stdout:
             fail("ordinary help still lists an excluded experimental metric")
         elif "pu21-xpsnr" in help_hdr.stdout or "pu21-vmaf" in help_hdr.stdout:
             fail("help-hdr still lists an excluded experimental metric")
         else:
-            print("OK   help lists the eight supported metrics")
+            print(f"OK   help lists the eight supported metrics ({help_lines} lines)")
         guide = (ROOT / "docs" / "PU21.md").read_text(encoding="utf-8")
         if "10.1109/PCS50896.2021.9477471" not in guide or "gfxdisp/pu21" not in guide:
             fail("docs/PU21.md missing the paper or reference implementation")

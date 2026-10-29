@@ -28,7 +28,7 @@ VMAF uses one interval for every SDR and HDR model. PU21-PSNR uses the PSNR inte
 
 ## Usage
 
-Enable QCS with `--qcs`. Override a default interval with `--qcs-range metric=lower:upper`. Several intervals may be comma-separated in one option, and the option may be repeated. The two forms can be combined. Naming one metric again with a different interval is an error; the same interval is unchanged.
+Enable QCS with `--qcs`. Override a default interval with `--qcs-range metric=lower:upper`. `--qcs-range` requires `--qcs`. Several intervals may be comma-separated in one option, and the option may be repeated. The two forms can be combined. Naming one metric again with a different interval is an error; the same interval is unchanged. Every selected metric receives a QCS value, whether that metric runs on the CPU or the GPU.
 ```bash
 pixvqa --metrics psnr,vmaf \
   --model model/vmaf_v1.0.16_3d0h.json \
