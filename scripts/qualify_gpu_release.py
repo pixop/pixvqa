@@ -28,6 +28,13 @@ FAILS = 0
 CHECKS = 0
 
 
+def sample_path(filename: str) -> Path:
+    """Locate a video sample without requiring repository-root symlinks."""
+    root_file = ROOT / filename
+    if root_file.is_file():
+        return root_file
+    return ROOT / "samples" / filename
+
 def fail(msg: str) -> None:
     global FAILS
     FAILS += 1
@@ -383,7 +390,7 @@ def unsupported(td: Path) -> None:
         require_reject("4:2:2 NVDEC", rejected, "4:2:0 only")
     else:
         print("SKIP 4:2:2 HEVC encode is unavailable")
-    vvc = ROOT / "ref_vvc.mp4"
+    vvc = sample_path("ref_vvc.mp4")
     if vvc.is_file():
         rejected = run(INSTALLED, ["--metrics", "psnr", "--decode", "gpu", "-v", "0", "-r", str(vvc), "-t", str(vvc)])
         require_reject("VVC NVDEC", rejected, "does not support VVC")
@@ -393,9 +400,21 @@ def unsupported(td: Path) -> None:
 
 def kimono() -> None:
     pairs = {
-        "hevc": (ROOT / "ref_hevc.mp4", ROOT / "dist_hevc.mp4", True),
-        "av1": (ROOT / "ref_av1.mp4", ROOT / "dist_av1.mp4", True),
-        "vvc": (ROOT / "ref_vvc.mp4", ROOT / "dist_vvc.mp4", False),
+        "hevc": (
+            sample_path("ref_hevc.mp4"),
+            sample_path("dist_hevc.mp4"),
+            True,
+        ),
+        "av1": (
+            sample_path("ref_av1.mp4"),
+            sample_path("dist_av1.mp4"),
+            True,
+        ),
+        "vvc": (
+            sample_path("ref_vvc.mp4"),
+            sample_path("dist_vvc.mp4"),
+            False,
+        ),
     }
     metrics = ["--metrics", "psnr,ssim,msssim,xpsnr,pu21-psnr", "--qcs", "--hdr-transfer", "pq", "-v", "0", "-n", "4"]
     for name, (ref, dist, nvdec) in pairs.items():

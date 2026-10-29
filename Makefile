@@ -26,6 +26,8 @@ help:
 	@echo "  make swdec            FFmpeg software decode -> build/swdec/pixvqa"
 	@echo "  make full             CUDA + NVDEC + FFmpeg -> build/full/pixvqa"
 	@echo "  make test-cpu         build/cpu/selftest and run it"
+	@echo "  make release-check-cpu   CPU/SWDEC build + full QA"
+	@echo "  make release-check       Complete CPU/GPU release qualification"
 	@echo "  make install VARIANT=full   install into checkout (PREFIX optional)"
 	@echo "  make clean            remove build/cpu build/swdec build/cuda build/full"
 	@echo ""
@@ -208,3 +210,13 @@ full: build/full/pixvqa
 build/full/pixvqa: build/cuda/config.mk build/cuda/gcc13_host.stamp build/full/config.mk \
 		$(FULL_LINK_OBJS)
 	$(FULL_FULL_LINK_CXX) $(FULL_CXXFLAGS) -DPIXVQA_BUILD_KIND=\"cuda\" $(FULL_LINK_OBJS) -o $@ $(FULL_LDFLAGS)
+
+# --- release qualification ---
+
+.PHONY: release-check release-check-cpu
+
+release-check-cpu:
+	python3 scripts/release_check.py --profile cpu
+
+release-check:
+	python3 scripts/release_check.py --profile full

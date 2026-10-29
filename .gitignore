@@ -69,3 +69,5 @@ reports/*.txt
 
 # Locally generated synthetic VVC QA fixtures.
 /tests/fixtures/vvc/local/
+
+/reports/release/
