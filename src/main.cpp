@@ -1351,6 +1351,26 @@ bool same_rate(const SideSpec& a, const SideSpec& b) {
 
 int classify_side(const Options& opt, SideSpec& side, const char* role) {
   (void)opt;
+  struct stat st {};
+  if (stat(side.path.c_str(), &st) != 0) {
+    std::fprintf(stderr, "pixvqa: cannot open %s file '%s': %s\n",
+                 role, side.path.c_str(), std::strerror(errno));
+    return 2;
+  }
+  // FIFOs are valid raw inputs; opening them here could block or consume data.
+  if (S_ISREG(st.st_mode)) {
+    FILE* file = std::fopen(side.path.c_str(), "rb");
+    if (!file) {
+      std::fprintf(stderr, "pixvqa: cannot open %s file '%s': %s\n",
+                   role, side.path.c_str(), std::strerror(errno));
+      return 2;
+    }
+    std::fclose(file);
+  } else if (!S_ISFIFO(st.st_mode)) {
+    std::fprintf(stderr, "pixvqa: %s input '%s' must be a regular file or FIFO\n",
+                 role, side.path.c_str());
+    return 2;
+  }
   side.compressed = false;
   if (side.input == InputKind::Raw) return 0;
 #ifdef PIXVQA_HAS_FFMPEG
