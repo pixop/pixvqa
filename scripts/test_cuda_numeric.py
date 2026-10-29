@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 CPU = Path(__file__).resolve().parents[1] / "build/cpu/pixvqa"
-CUDA = Path(__file__).resolve().parents[1] / "build/cuda/pixvqa"
+CUDA = Path(__file__).resolve().parents[1] / "build/full/pixvqa"
 SS = re.compile(
     r"(?<![A-Z-])SSIM\s+y:(-?[0-9.]+)\s+u:(-?[0-9.]+)\s+v:(-?[0-9.]+)\s+avg:(-?[0-9.]+)"
 )

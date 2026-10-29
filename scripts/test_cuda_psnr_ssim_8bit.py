@@ -11,7 +11,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
-CUDA = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "cuda" / "pixvqa"))
+CUDA = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "full" / "pixvqa"))
 W, H, N = 64, 48, 3
 
 

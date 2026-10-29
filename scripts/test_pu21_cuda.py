@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
-GPU = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "cuda" / "pixvqa"))
+GPU = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "full" / "pixvqa"))
 NAMES = ("PU21-PSNR", "PU21-SSIM", "PU21-MS-SSIM")
 FAILS = 0
 WORST = {name: 0.0 for name in NAMES}

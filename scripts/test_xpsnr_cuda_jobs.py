@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 CPU = Path(__file__).resolve().parents[1] / "build/cpu/pixvqa"
-CUDA = Path(__file__).resolve().parents[1] / "build/cuda/pixvqa"
+CUDA = Path(__file__).resolve().parents[1] / "build/full/pixvqa"
 CACHE = Path("/tmp/pixvqa_p4")
 WSSE = re.compile(r"xpsnr_wsse (\d+) (\d+) (\d+) (\d+)")
 XLINE = re.compile(r"\[ XPSNR y:(\S+) u:(\S+) v:(\S+) avg:(\S+) min:(\S+) \]")

@@ -888,7 +888,7 @@ def main() -> int:
             {
                 "name": "path_cuda_only_raw_vmaf",
                 "status": "FAILED",
-                "detail": "build/cuda/pixvqa is not linked against libvmaf (help lacks --vmaf)",
+                "detail": "build/full/pixvqa is not linked against libvmaf (help lacks --vmaf)",
             }
         )
     elif not a_scores:

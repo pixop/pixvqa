@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_xpsnr_ffmpeg as xf
 
 CPU = Path(__file__).resolve().parents[1] / "build/cpu/pixvqa"
-CUDA = Path(__file__).resolve().parents[1] / "build/cuda/pixvqa"
+CUDA = Path(__file__).resolve().parents[1] / "build/full/pixvqa"
 WSSE = re.compile(r"xpsnr_wsse (\d+) (\d+) (\d+) (\d+)")
 FRAME = re.compile(r"\[ XPSNR y:(\S+) u:(\S+) v:(\S+) avg:(\S+) min:(\S+) \]")
 FAILS = 0

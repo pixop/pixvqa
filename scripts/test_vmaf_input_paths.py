@@ -180,7 +180,7 @@ def main() -> int:
             "(CUDA binary present but built without libvmaf / --vmaf)"
         )
     else:
-        results.append("NOT EXECUTED cuda_psnr_plus_cpu_vmaf (build/cuda/pixvqa absent)")
+        results.append("NOT EXECUTED cuda_psnr_plus_cpu_vmaf (build/full/pixvqa absent)")
 
     # CPU PSNR + CPU VMAF combo (always available when VMAF-enabled CPU binary exists).
     if PIXVQA_CPU.is_file() and MODEL.is_file():
