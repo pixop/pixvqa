@@ -104,81 +104,83 @@ For clean-install testing and known validation limitations, see [Installation Va
 
 **Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
 
-## Quick Start
 
-For compressed video, PixVQA automatically detects resolution and pixel format. Explicit `-s` or `-f` values must match the decoded stream; otherwise, an error is reported. Raw YUV requires both parameters, and reference and distorted inputs must have matching properties.
+## Command-line Samples
 
-XPSNR automatically uses a reliable constant frame rate from compressed inputs. Otherwise, `--fps` is required.
+PixVQA supports raw YUV and compressed video. For compressed inputs, resolution and pixel format are detected automatically; raw YUV requires `-s` (resolution) and `-f` (pixel format). Reference and distorted inputs must have matching properties.
 
-The examples use `pixvqa` for `./bin/pixvqa` or an executable on `PATH`. For raw YUV, specify the input resolution using `-s WxH` (e.g., `1920x1080` or `3840x2160`). Compressed-video resolution is detected automatically. GPU acceleration requires an NVIDIA-enabled build.
+XPSNR requires `--fps` unless a reliable constant frame rate can be determined from the compressed inputs. GPU acceleration requires an NVIDIA-enabled build.
 
-The `samples/` directory contains short Big Buck Bunny excerpts for compressed-video examples.
+The examples use `pixvqa` to refer to `./bin/pixvqa` or an executable on `PATH`. The `samples/` directory contains short Big Buck Bunny excerpts.
+
+**Compressed Reference and Distorted Video**
 
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
   -r samples/ref_hevc.mp4 \
   -t samples/dist_hevc.mp4
 ```
+
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
   -r samples/ref_av1.mp4 \
   -t samples/dist_av1.mp4
 ```
+
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
   -r samples/ref_vvc.mp4 \
   -t samples/dist_vvc.mp4
 ```
 
-Raw reference and compressed distorted video:
+**Uncompressed Reference and Compressed Distorted Video**
+
 ```bash
 pixvqa --metrics psnr,ssim \
   -r reference.yuv --input raw -s 1920x1080 -f 420p:8 \
   -t distorted.mp4
 ```
 
-PSNR, XPSNR, SSIM, and MS-SSIM on raw YUV. XPSNR needs `--fps` because raw frames have no rate:
+**Uncompressed Reference and Distorted Video**
+
+XPSNR requires `--fps` because raw YUV does not contain frame-rate metadata.
+
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
-VMAF has no default model. Picture size does not choose a model. An SDR model is refused when the effective transfer is PQ or HLG.
+**VMAF**
+
+VMAF requires an explicit model selection using `--model`. Bundled VMAF models are available in the `model/` directory.
+
 ```bash
 pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
   -r reference.yuv -s 1920x1080 -f 420p:8 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
-HDR VMAF v1.1.8 requires the transfer, primaries, matrix, and range on both inputs. This is the validated limited-range PQ BT.2020 case. The score keeps that model's clip, including values above 100.
-```bash
-pixvqa --metrics vmaf --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json --threads 1 \
-  --hdr-transfer pq --hdr-primaries bt2020 --hdr-matrix bt2020nc --hdr-range limited \
-  -r reference10.yuv -s 1920x1080 -f 420p:10 \
-  -t distorted10.yuv -s 1920x1080 -f 420p:10
-```
+**PU21 Metrics for HDR Video (PQ and HLG)**
 
-Raw planar YUV. `--input raw` does not probe the file:
-```bash
-pixvqa --metrics psnr --input raw \
-  -r reference.yuv -s 1920x1080 -f 420p:8 \
-  -t distorted.yuv -s 1920x1080 -f 420p:8
-```
+PU21 metrics account for HDR transfer functions, unlike conventional metrics that operate on encoded sample values. For PQ and HLG, PixVQA defaults to BT.2020 primaries, BT.2020nc matrix, and limited range when these are unspecified. HLG defaults to a 1000 cd/m² display peak; PQ requires no display peak. See the [PU21 guide](docs/PU21.md) for details.
 
-PQ, then HLG. PU21 uses the transfer. A stored-sample metric such as `psnr` does not.
 ```bash
 pixvqa --metrics pu21-psnr,pu21-ssim --hdr-transfer pq \
   -r reference10.yuv -s 1920x1080 -f 420p:10 \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
+
 ```bash
-pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg --hdr-peak-nits 1000 \
+pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg \
   -r reference10.yuv -s 1920x1080 -f 420p:10 \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
 
-HEVC 10-bit 4:2:0 on NVDEC. The raw reference keeps `-s` and `-f`; the compressed input is detected:
+**GPU Decoding (NVDEC)**
+
+Decode the compressed HEVC 10-bit 4:2:0 video using NVIDIA NVDEC while reading the reference as raw YUV.
+
 ```bash
 pixvqa --metrics psnr --decode gpu \
   -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
