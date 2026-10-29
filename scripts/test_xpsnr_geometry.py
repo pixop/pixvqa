@@ -47,7 +47,7 @@ def reject(name: str, w: int, h: int, fmt: str) -> None:
             "-t", str(tst), "-s", f"{w}x{h}", "-f", fmt]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     blob = proc.stdout + proc.stderr
-    ok = proc.returncode != 0 and "Summary results" not in proc.stdout
+    ok = proc.returncode != 0 and "Summary:" not in proc.stdout
     ok = ok and "XPSNR y:" not in proc.stdout
     ok = ok and "AddressSanitizer" not in blob
     if not ok:
@@ -69,7 +69,7 @@ def psnr_without_xpsnr(w: int, h: int) -> None:
             "-r", str(ref), "-s", f"{w}x{h}", "-f", "444p:10",
             "-t", str(tst), "-s", f"{w}x{h}", "-f", "444p:10"]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    ok = proc.returncode == 0 and "Summary results" in proc.stdout and "[ PSNR" in proc.stdout
+    ok = proc.returncode == 0 and "Summary:" in proc.stdout and "[ PSNR" in proc.stdout
     ok = ok and "XPSNR" not in proc.stdout
     if not ok:
         fail(f"psnr-only {w}x{h}: rc={proc.returncode}\n{proc.stdout[-300:]}")

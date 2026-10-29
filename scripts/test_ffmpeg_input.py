@@ -256,7 +256,7 @@ def main() -> int:
             ])
             if mismatch.returncode == 0 or "frame count mismatch" not in mismatch.stderr:
                 fail(f"length mismatch was not rejected: {mismatch.stderr[-300:]}")
-            elif "Summary results" in mismatch.stdout:
+            elif "Summary:" in mismatch.stdout:
                 fail("length mismatch still printed a summary")
             else:
                 print("OK   frame-count mismatch rejected")
@@ -266,7 +266,7 @@ def main() -> int:
                 "-r", str(h264_mp4), "-s", f"{W}x{H}", "-f", "420p:8",
                 "-t", str(h264_dec), "-s", f"{W}x{H}", "-f", "444p:8",
             ])
-            if chroma.returncode == 0 or "disagree" not in chroma.stderr or "Summary results" in chroma.stdout:
+            if chroma.returncode == 0 or "disagree" not in chroma.stderr or "Summary:" in chroma.stdout:
                 fail(f"chroma mismatch was accepted: {chroma.stderr[-300:]}")
             else:
                 print("OK   4:2:0 versus 4:4:4 rejected")
@@ -276,7 +276,7 @@ def main() -> int:
                 "-r", str(h264_dec), "-s", f"{W}x{H}", "-f", "420p:8",
                 "-t", str(h264_dec), "-s", f"{W}x{H}", "-f", "420p:8",
             ])
-            if forced.returncode == 0 or "no video stream" not in forced.stderr or "Summary results" in forced.stdout:
+            if forced.returncode == 0 or "no video stream" not in forced.stderr or "Summary:" in forced.stdout:
                 fail(f"raw file was decoded as compressed: {forced.stderr[-300:]}")
             else:
                 print("OK   --input compressed rejects a raw file")
@@ -290,7 +290,7 @@ def main() -> int:
                 "-r", str(nv), "-s", f"{W}x{H}", "-f", "420p:8",
                 "-t", str(nv), "-s", f"{W}x{H}", "-f", "420p:8",
             ])
-            if bad.returncode == 0 or "nv12" not in bad.stderr or "Summary results" in bad.stdout:
+            if bad.returncode == 0 or "nv12" not in bad.stderr or "Summary:" in bad.stdout:
                 fail(f"nv12 was accepted: {bad.stderr[-300:]}")
             else:
                 print("OK   nv12 rejected by name")
@@ -313,7 +313,7 @@ def main() -> int:
                 "-r", str(deep), "-s", f"{W}x{H}", "-f", "420p:10",
                 "-t", str(deep), "-s", f"{W}x{H}", "-f", "420p:10",
             ])
-            if bad.returncode == 0 or "yuv420p12le" not in bad.stderr or "Summary results" in bad.stdout:
+            if bad.returncode == 0 or "yuv420p12le" not in bad.stderr or "Summary:" in bad.stdout:
                 fail(f"12-bit was accepted: {bad.stderr[-400:]}")
             else:
                 print("OK   12-bit rejected without conversion")
@@ -363,7 +363,7 @@ def main() -> int:
             "-t", str(h264), "-s", f"{W}x{H}", "-f", "420p:8",
         ])
         text = bad_gpu.stderr
-        if bad_gpu.returncode == 0 or "Summary results" in bad_gpu.stdout:
+        if bad_gpu.returncode == 0 or "Summary:" in bad_gpu.stdout:
             fail("gpu request scored a non-HEVC file")
         elif "GPU decoding is not compiled" in text or "supports HEVC only" in text or "420p:10" in text:
             print("OK   explicit gpu does not fall back for H.264")

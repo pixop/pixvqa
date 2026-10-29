@@ -30,7 +30,7 @@ def fail(msg):
 
 def assert_not_a_score(done, label):
     text = done.stdout
-    for needle in ("Summary results", "Total frames:", "[ PSNR", "[ MS-SSIM", "[ SSIM"):
+    for needle in ("Summary:", "Total frames:", "[ PSNR", "[ MS-SSIM", "[ SSIM"):
         if needle in text:
             return fail(f"{label}: stdout looks like a score ({needle!r})")
     if done.returncode == 0:
@@ -45,9 +45,9 @@ def test_help():
         return fail(f"help status {done.returncode}")
     if "msssim" not in text or "docs/QCS.md" not in text:
         return fail("help does not list msssim and docs/QCS.md")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    if "five-scale" not in readme:
-        return fail("README does not identify five-scale MS-SSIM")
+    metrics_doc = (ROOT / "docs/METRICS_AND_FORMATS.md").read_text(encoding="utf-8")
+    if "five-scale" not in metrics_doc:
+        return fail("Metrics documentation does not identify five-scale MS-SSIM")
     print("OK   help")
     return 0
 
@@ -69,7 +69,7 @@ def test_prod_style_cli(path_ref: Path, path_test: Path):
         return fail(f"prod-style Input line mismatch: {out}")
     if "0  :[ PSNR" not in out or "[ SSIM" not in out:
         return fail(f"prod-style frame line mismatch: {out}")
-    if "Summary results:" not in out or "Total frames:1" not in out:
+    if "Summary:" not in out or "Total frames:1" not in out:
         return fail(f"prod-style summary mismatch: {out}")
     if "kernel=" in out or "strip=" in out:
         return fail("prod-style leaked kernel/strip into Input line")
@@ -88,7 +88,7 @@ def test_mismatch_size(path_ref: Path, path_test: Path):
         return fail("mismatch-size expected nonzero")
     if "disagree" not in done.stderr:
         return fail(f"mismatch-size stderr={done.stderr!r}")
-    if "Summary results" in done.stdout or "Total frames:" in done.stdout:
+    if "Summary:" in done.stdout or "Total frames:" in done.stdout:
         return fail("mismatch-size printed a score summary")
     print("OK   mismatch-size")
     return 0
@@ -164,7 +164,7 @@ def test_empty_files(path_ref: Path, path_test: Path):
         return fail(f"empty-file: stderr={done.stderr!r}")
     if "SSIM: cpu" not in done.stdout:
         return fail(f"empty-file: missing execution banner\n{done.stdout}")
-    if "Summary results" in done.stdout or "[ SSIM" in done.stdout:
+    if "Summary:" in done.stdout or "[ SSIM" in done.stdout:
         return fail("empty-file: stdout contains a score")
     print("OK   empty-file")
     return 0
@@ -216,7 +216,7 @@ def test_empty_fifo():
             return fail(f"empty-fifo status 0 stdout={stdout!r} stderr={stderr!r}")
         if "no frames read" not in stderr:
             return fail(f"empty-fifo stderr={stderr!r}")
-        for needle in ("Summary results", "Total frames:", "[ SSIM", "[ MS-SSIM"):
+        for needle in ("Summary:", "Total frames:", "[ SSIM", "[ MS-SSIM"):
             if needle in stdout:
                 return fail(f"empty-fifo stdout looks like a score ({needle!r})")
     print("OK   empty-fifo")

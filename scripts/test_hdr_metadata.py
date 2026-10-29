@@ -136,7 +136,7 @@ def expect_reject(done: subprocess.CompletedProcess[str], needle: str, label: st
     if needle not in text:
         fail(f"{label}: missing {needle!r} in {text[-500:]!r}")
         return
-    if "Summary results" in done.stdout or "[ PSNR" in done.stdout:
+    if "Summary:" in done.stdout or "[ PSNR" in done.stdout:
         fail(f"{label}: printed a score")
         return
     print("OK  ", label)
@@ -167,7 +167,7 @@ def main() -> int:
                 fail(f"raw missing block: {block}")
             elif "transfer=pq" in block or "bt2020" in block:
                 fail(f"raw missing assumed HDR: {block}")
-            elif "Summary results" not in plain.stdout:
+            elif "Summary:" not in plain.stdout:
                 fail("raw missing did not score")
             else:
                 print("OK   raw_missing_not_pq")
@@ -240,7 +240,7 @@ def main() -> int:
         expect_reject(pix(sides(ref, dist) + ["--tf", "st2084", "--cs", "bt601l"]),
                       "not a supported", "bt601_pq_rejected")
         both = pix(sides(ref, dist) + ["--tf", "sdr", "--ref-tf", "st2084", "--cs", "bt2020l"])
-        if both.returncode != 0 or "Summary results" not in both.stdout:
+        if both.returncode != 0 or "Summary:" not in both.stdout:
             fail(f"global_and_ref_tf rc={both.returncode} {both.stderr[-400:]}")
         else:
             block = hdr_lines(both.stdout)
@@ -294,7 +294,7 @@ def main() -> int:
             block = hdr_lines(per_side.stdout)
             if "reference: transfer=pq (override)" not in block or "distorted: transfer=hlg (override)" not in block:
                 fail(f"per-side block: {block}")
-            elif "Summary results" not in per_side.stdout:
+            elif "Summary:" not in per_side.stdout:
                 fail("per-side did not score")
             else:
                 print("OK   per_side_pq_and_hlg")
@@ -436,7 +436,7 @@ def main() -> int:
             "--metrics", "psnr,vmaf", "--model", "model/vmaf_v1.0.16_3d0h.json", "-n", "1", "-v", "0",
         ])
         if "no libvmaf" in vmaf.stderr:
-            if vmaf.returncode == 0 or "Summary results" in vmaf.stdout or "[ PSNR" in vmaf.stdout:
+            if vmaf.returncode == 0 or "Summary:" in vmaf.stdout or "[ PSNR" in vmaf.stdout:
                 fail("vmaf_unavailable_still_scored")
             else:
                 print("OK   vmaf_unavailable_no_score")
@@ -450,7 +450,7 @@ def main() -> int:
                 "--tf", "sdr", "--metrics", "vmaf", "--model", "model/vmaf_v1.0.16_3d0h.json",
                 "-n", "1", "-v", "0",
             ])
-            if vmaf_sdr.returncode != 0 or "Summary results" not in vmaf_sdr.stdout:
+            if vmaf_sdr.returncode != 0 or "Summary:" not in vmaf_sdr.stdout:
                 fail(f"vmaf_explicit_sdr rc={vmaf_sdr.returncode} {vmaf_sdr.stderr[-400:]}")
             elif "transfer=sdr (override)" not in vmaf_sdr.stdout:
                 fail("vmaf_explicit_sdr did not record the override")

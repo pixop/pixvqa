@@ -99,7 +99,7 @@ def main() -> int:
         empty = tmp / "empty.yuv"
         empty.write_bytes(b"")
         emp = run(["-r", str(empty), "-t", str(empty), "-s", f"{W}x{H}", "-f", "420p:10", "--metrics", "psnr", "-v", "0"])
-        if emp.returncode == 0 or "Summary results" in emp.stdout or "Total frames:" in emp.stdout:
+        if emp.returncode == 0 or "Summary:" in emp.stdout or "Total frames:" in emp.stdout:
             rc |= fail("empty file looked like a score")
         else:
             print("OK   empty-file-no-summary")

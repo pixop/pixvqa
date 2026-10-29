@@ -250,7 +250,7 @@ def main() -> int:
         ])
         if missing.returncode == 0 or "unspecified" not in (missing.stderr + missing.stdout):
             fail(f"missing transfer was accepted: {missing.stderr[-300:]}")
-        elif "Summary results" in missing.stdout:
+        elif "Summary:" in missing.stdout:
             fail("missing transfer printed a score")
         else:
             print("OK   missing transfer rejected")
@@ -258,7 +258,7 @@ def main() -> int:
         for name in ("pu21-xpsnr", "pu21-vmaf"):
             blocked = run(base + ["--metrics", name])
             text = blocked.stderr + blocked.stdout
-            if blocked.returncode == 0 or "Summary results" in blocked.stdout:
+            if blocked.returncode == 0 or "Summary:" in blocked.stdout:
                 fail(f"{name} produced a score")
             elif f"unsupported metric {name}" not in text:
                 fail(f"{name} was not rejected as unsupported: {text[-400:]}")

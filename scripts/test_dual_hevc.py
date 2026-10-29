@@ -213,7 +213,7 @@ def main() -> int:
         other = pix(["--metrics", "psnr", "--decode", "cpu", *sides(mpeg, mpeg)])
         if other.returncode == 0 or "-f asks for" not in other.stderr:
             fail(f"8-bit mpeg4 declared as 10-bit rc={other.returncode} {other.stderr}")
-        elif "Summary results" in other.stdout:
+        elif "Summary:" in other.stdout:
             fail("bit-depth mismatch produced a score")
         else:
             print("OK   8-bit stream is not treated as 10-bit")

@@ -277,7 +277,7 @@ def main() -> int:
                 "-r", str(broken), "-s", f"{W}x{H}", "-f", "420p:8",
                 "-t", str(broken), "-s", f"{W}x{H}", "-f", "420p:8",
             ])
-            if bad.returncode == 0 or "Summary results" in bad.stdout:
+            if bad.returncode == 0 or "Summary:" in bad.stdout:
                 fail("truncated AV1 was scored")
             else:
                 print("OK   truncated AV1 is not scored")
@@ -343,7 +343,7 @@ def main() -> int:
                 "-r", str(vvc), "-s", f"{vvc_w}x{vvc_h}", "-f", "420p:10",
                 "-t", str(vvc), "-s", f"{vvc_w}x{vvc_h}", "-f", "420p:10",
             ])
-            if refused.returncode == 0 or "Summary results" in refused.stdout or "backend=software" in refused.stderr:
+            if refused.returncode == 0 or "Summary:" in refused.stdout or "backend=software" in refused.stderr:
                 fail(f"gpu vvc was not rejected: {refused.stderr[-300:]}")
             elif "not compiled" in refused.stderr or "vvc" in refused.stderr.lower():
                 print("OK   gpu rejects VVC")
@@ -373,7 +373,7 @@ def main() -> int:
                     "-r", str(vvc), "--input", "compressed", "-s", f"{vvc_w}x{vvc_h}", "-f", "420p:10",
                     "-t", str(vvc), "--input", "compressed", "-s", f"{vvc_w}x{vvc_h}", "-f", "420p:10",
                 ])
-                if refused.returncode == 0 or "Summary results" in refused.stdout or "backend=software" in refused.stderr:
+                if refused.returncode == 0 or "Summary:" in refused.stdout or "backend=software" in refused.stderr:
                     fail(f"full binary gpu vvc fallback: {refused.stderr[-300:]}")
                 else:
                     print("OK   full binary gpu rejects VVC")

@@ -2274,7 +2274,7 @@ int main(int argc, char** argv) {
     const auto t1 = std::chrono::steady_clock::now();
     const double sec = std::chrono::duration<double>(t1 - t0).count();
 
-    std::printf("\n\nSummary results:\n----------------\n\n");
+    std::printf("\n\nSummary:\n\n");
     if (opt.enable_psnr) {
       auto summary = psnr_from_mean_mse(sum_mse_y / nframes, sum_mse_u / nframes,
                                         sum_mse_v / nframes, opt.format.chroma, opt.peak);

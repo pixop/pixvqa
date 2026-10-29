@@ -90,7 +90,7 @@ def score_lines(text: str) -> str:
 
 def expect_reject(done: subprocess.CompletedProcess[str], needle: str, label: str) -> None:
     text = done.stderr + done.stdout
-    if done.returncode == 0 or needle not in text or "Summary results" in done.stdout:
+    if done.returncode == 0 or needle not in text or "Summary:" in done.stdout:
         fail(f"{label}: rc={done.returncode} missing {needle!r}\n{text[-500:]}")
         return
     ok(label)

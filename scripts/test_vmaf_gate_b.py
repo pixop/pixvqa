@@ -182,7 +182,7 @@ def decode_identity_failures(
 
 def parse_cuda_metrics(out: str, expect_xpsnr: bool) -> dict:
     """Parse per-frame and summary metric blocks from -v 1 output."""
-    summary_idx = out.find("Summary results:")
+    summary_idx = out.find("Summary:")
     body = out if summary_idx < 0 else out[:summary_idx]
     summary = "" if summary_idx < 0 else out[summary_idx:]
 

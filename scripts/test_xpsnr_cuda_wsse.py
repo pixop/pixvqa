@@ -73,7 +73,7 @@ def compare_pair(name: str, w: int, h: int, chroma: str, bits: int, fps: str, n:
     if scores_of(cpu.stdout) != scores_of(gpu.stdout):
         fail(f"{name}: score text mismatch\n{scores_of(cpu.stdout)}\n{scores_of(gpu.stdout)}")
         return
-    if "Summary results" not in gpu.stdout:
+    if "Summary:" not in gpu.stdout:
         fail(f"{name}: missing summary")
         return
     print(f"OK   {name} frames={len(cw)} wsse0={cw[0][1:] if cw else None}")
@@ -82,7 +82,7 @@ def compare_pair(name: str, w: int, h: int, chroma: str, bits: int, fps: str, n:
 def expect_reject(name: str, args: list[str], bin_path: Path) -> None:
     proc = run(bin_path, args)
     blob = proc.stdout + proc.stderr
-    ok = proc.returncode != 0 and "Summary results" not in proc.stdout and "XPSNR y:" not in proc.stdout
+    ok = proc.returncode != 0 and "Summary:" not in proc.stdout and "XPSNR y:" not in proc.stdout
     ok = ok and "AddressSanitizer" not in blob
     if not ok:
         fail(f"{name}: rc={proc.returncode}\n{proc.stdout[-200:]}\n{proc.stderr[-300:]}")

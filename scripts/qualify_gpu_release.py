@@ -109,7 +109,7 @@ def write_yuv(path: Path, w: int, h: int, chroma: str, bits: int, frames: list[t
 
 def require_reject(label: str, proc: subprocess.CompletedProcess[str], needle: str) -> None:
     text = proc.stderr + proc.stdout
-    if proc.returncode == 0 or "Summary results" in proc.stdout or needle not in text:
+    if proc.returncode == 0 or "Summary:" in proc.stdout or needle not in text:
         fail(f"{label} rc={proc.returncode} missing {needle!r}\n{text[-400:]}")
     elif "backend=software" in text:
         fail(f"{label} fell back to software\n{text[-400:]}")

@@ -9,7 +9,7 @@ BIN = str(Path(__file__).resolve().parents[1] / "build/cpu/pixvqa")
 fails = 0
 
 
-def check(name, args, expect_rc, stderr_has=None, stdout_lacks="Summary results"):
+def check(name, args, expect_rc, stderr_has=None, stdout_lacks="Summary:"):
     global fails
     p = subprocess.run([BIN, *args], capture_output=True, text=True)
     ok = p.returncode == expect_rc

@@ -96,7 +96,7 @@ def main() -> int:
     # The cached file is 4K; the size flag is what the reader uses, so this would
     # mis-parse pixels if it ran. Rejection must happen before any read.
     rej = run(CUDA, odd)
-    if rej.returncode == 0 or "Summary results" in rej.stdout or "XPSNR y:" in rej.stdout:
+    if rej.returncode == 0 or "Summary:" in rej.stdout or "XPSNR y:" in rej.stdout:
         print(f"FAIL odd geometry rc={rej.returncode}", file=sys.stderr)
         fails += 1
     else:
