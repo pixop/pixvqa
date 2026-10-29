@@ -22,6 +22,19 @@ if grep -Fq 'not found' <<< "$report"; then
   echo "STOP: $bin has an unresolved runtime library without LD_LIBRARY_PATH." >&2
   exit 1
 fi
+if [[ "$expect_decode" != none && -n "${FFMPEG_PREFIX:-}" ]]; then
+  for spec in 'libavformat.so.62' 'libavcodec.so.62' 'libavutil.so.60'; do
+    if ! readelf -d "$bin" | grep -Fq "Shared library: [$spec]"; then
+      echo "STOP: $bin is not linked against expected FFmpeg library $spec." >&2
+      exit 1
+    fi
+    resolved="$(sed -n "s|^[[:space:]]*$spec => \\([^[:space:]]*\\).*|\\1|p" <<< "$report")"
+    if [[ "$(readlink -f "${resolved:-/dev/null}")" != "$(readlink -f "$FFMPEG_PREFIX/lib/$spec")" ]]; then
+      echo "STOP: $spec does not resolve to $FFMPEG_PREFIX/lib ($resolved)." >&2
+      exit 1
+    fi
+  done
+fi
 
 version="$(env -i PATH="/usr/bin:/bin" HOME="${HOME:-/tmp}" "$bin" --version)"
 printf '%s\n' "$version"
