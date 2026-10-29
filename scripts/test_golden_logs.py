@@ -106,8 +106,8 @@ def main() -> int:
 
         missing = run(["-r", "/no/such_ref.yuv", "-t", "/no/such_test.yuv",
                        "-s", f"{W}x{H}", "-f", "420p:10", "--metrics", "psnr", "-v", "1"])
-        if missing.returncode == 0 or "failed to open Input YUV file" not in missing.stdout:
-            rc |= fail(f"missing file stdout={missing.stdout!r}")
+        if missing.returncode != 2 or "cannot open reference file '/no/such_ref.yuv'" not in missing.stderr:
+            rc |= fail(f"missing file rc={missing.returncode} stderr={missing.stderr!r}")
         else:
             print("OK   missing-file")
 

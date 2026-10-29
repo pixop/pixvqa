@@ -39,7 +39,7 @@ def main():
         empty.write_bytes(b"")
         check("empty", ["--metrics", "xpsnr", "--fps", "60", "-r", str(empty), *base, "-t", str(empty), *base], 1, "no frames")
         missing = t / "nope.yuv"
-        check("missing", ["--metrics", "xpsnr", "--fps", "60", "-r", str(missing), *base, "-t", str(missing), *base], 1, "failed to open")
+        check("missing", ["--metrics", "xpsnr", "--fps", "60", "-r", str(missing), *base, "-t", str(missing), *base], 2, "cannot open reference file")
         check("bd12", ["--metrics", "xpsnr", "--fps", "60", "-r", str(ref), "-s", "64x64", "-f", "420p:12", "-t", str(tst)], 2, "unsupported")
         check("badfps", ["--metrics", "xpsnr", "--fps", "nope", "-r", str(ref), *base, "-t", str(tst)], 2, "invalid --fps")
         check("nofps", ["--metrics", "xpsnr", "-r", str(ref), *base, "-t", str(tst)], 2, "requires --fps")

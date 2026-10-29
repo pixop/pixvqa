@@ -109,11 +109,23 @@ def test_missing():
     err = assert_not_a_score(done, "missing")
     if err:
         return err
-    # Missing inputs print on stdout and do not look like a score.
-    text = done.stdout + done.stderr
-    if "failed to open Input YUV file" not in text and "failed to open" not in text:
+    if "cannot open reference file '/no/such_ref.yuv': No such file or directory" not in done.stderr:
         return fail(f"missing: stdout={done.stdout!r} stderr={done.stderr!r}")
     print("OK   missing")
+    return 0
+
+
+def test_missing_compressed(path_test: Path):
+    done = run([
+        "--metrics", "psnr", "-r", "/no/such_ref.av1", "-t", str(path_test), "-v", "0"])
+    err = assert_not_a_score(done, "missing-compressed")
+    if err:
+        return err
+    if "cannot open reference file '/no/such_ref.av1': No such file or directory" not in done.stderr:
+        return fail(f"missing-compressed: stderr={done.stderr!r}")
+    if "raw YUV and requires" in done.stderr:
+        return fail(f"missing-compressed fell back to raw: {done.stderr!r}")
+    print("OK   missing-compressed")
     return 0
 
 
@@ -218,6 +230,7 @@ def main():
         rc = 0
         rc |= test_help()
         rc |= test_missing()
+        rc |= test_missing_compressed(test)
         rc |= test_short(ref, test)
         rc |= test_empty_files(ref, test)
         rc |= test_one_frame(ref, test)
