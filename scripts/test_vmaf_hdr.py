@@ -185,6 +185,16 @@ def expect_fail(label, args, needle):
     return ok
 
 
+def expect_ok(label, args, needles=()):
+    pix = run([str(PIX), *args])
+    text = pix.stderr + pix.stdout
+    ok = pix.returncode == 0 and all(needle in text for needle in needles)
+    print(f"{'OK  ' if ok else 'FAIL'} {label} rc={pix.returncode}")
+    if not ok:
+        print(text[-400:])
+    return ok
+
+
 def main() -> int:
     if not PIX.is_file() or not CLI.is_file():
         raise SystemExit(f"missing binary pix={PIX} cli={CLI}")
@@ -229,10 +239,17 @@ def main() -> int:
         hdr_model = str(ROOT / "model" / "hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json")
         sdr_model = str(ROOT / "model" / "vmaf_v1.0.16_3d0h.json")
         checks = [
-            expect_fail("missing-color", ["--metrics", "vmaf", "--model", hdr_model, *base], "explicit PQ transfer"),
-            expect_fail("partial-color", ["--metrics", "vmaf", "--model", hdr_model, "--hdr-transfer", "pq", *base], "explicit complete colorimetry"),
-            expect_fail("hlg", ["--metrics", "vmaf", "--model", hdr_model, "--hdr-transfer", "hlg", "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc", "--hdr-range", "limited", *base], "unsupported and unvalidated"),
-            expect_fail("full-range", ["--metrics", "vmaf", "--model", hdr_model, "--hdr-transfer", "pq", "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc", "--hdr-range", "full", *base], "full-range PQ"),
+            expect_ok("missing-color", ["--metrics", "vmaf", "--model", hdr_model, *base]),
+            expect_ok("partial-color", ["--metrics", "vmaf", "--model", hdr_model,
+                                        "--hdr-transfer", "pq", *base]),
+            expect_ok("hlg", ["--metrics", "vmaf", "--model", hdr_model,
+                              "--hdr-transfer", "hlg", "--hdr-primaries", "bt2020",
+                              "--hdr-matrix", "bt2020nc", "--hdr-range", "limited", *base],
+                      ("explicit transfer is hlg",)),
+            expect_ok("full-range", ["--metrics", "vmaf", "--model", hdr_model,
+                                     "--hdr-transfer", "pq", "--hdr-primaries", "bt2020",
+                                     "--hdr-matrix", "bt2020nc", "--hdr-range", "full", *base],
+                      ("explicit range is full",)),
             expect_fail("sdr-model-pq", ["--metrics", "vmaf", "--model", sdr_model, "--hdr-transfer", "pq", *base], "rejects explicit HDR"),
             expect_gpu_matches_cpu(pairs["1080"][2], pairs["1080"][2]),
         ]

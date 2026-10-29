@@ -161,6 +161,19 @@ pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
+The bundled HDR VMAF v1.1.8 models assume limited-range 10-bit 4:2:0 PQ with
+BT.2020 primaries and the BT.2020 non-constant-luminance matrix. PixVQA applies
+that model configuration automatically; ensure both inputs really have those
+characteristics. Contradictory metadata or HDR CLI options produce a warning and
+do not convert the samples.
+
+```bash
+pixvqa --metrics vmaf \
+  --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json \
+  -r reference10.yuv -s 1920x1080 -f 420p:10 \
+  -t distorted10.yuv -s 1920x1080 -f 420p:10
+```
+
 **PU21 Metrics for HDR Video (PQ and HLG)**
 
 PU21 metrics account for HDR transfer functions, unlike conventional metrics that operate on encoded sample values. For PQ and HLG, PixVQA defaults to BT.2020 primaries, BT.2020nc matrix, and limited range when these are unspecified. HLG defaults to a 1000 cd/m² display peak; PQ requires no display peak. See the [PU21 guide](docs/PU21.md) for details.
@@ -239,7 +252,11 @@ The two inputs are decoded independently and paired in presentation order. Times
 | PU21-SSIM | ✅ | ✅ | ✅ | ✅ |
 | PU21-MS-SSIM | ✅ | ✅ | ✅ | ✅ |
 
-HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020. PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation. VMAF still runs on CPU libvmaf when a GPU is requested. CUDA PSNR, SSIM, and MS-SSIM use FP64.
+Bundled HDR VMAF v1.1.8 assumes limited-range 10-bit 4:2:0 PQ/BT.2020 with the
+BT.2020 non-constant-luminance matrix; users must ensure the input matches.
+PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation.
+VMAF still runs on CPU libvmaf when a GPU is requested. CUDA PSNR, SSIM, and
+MS-SSIM use FP64.
 
 NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC. `--metric-device gpu` has no CPU substitute for a metric that cannot run on the GPU. `--metric-device auto` uses the CPU except one profile: 10-bit, at least 3840×2160, GPU decoding, no VMAF, on a CUDA build. `--threads auto` uses half of the processors visible to this process, at most 8 and at least 1, for metric workers. Software decoding keeps its own pool of 8 threads on each compressed input.
 
