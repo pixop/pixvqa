@@ -587,6 +587,8 @@ def _regression_cases() -> list:
         ("regression-ffmpeg", "test_ffmpeg_input.py", "swdec", {}, 240, ["codec:regression"]),
         ("regression-dual-hevc", "test_dual_hevc.py", "swdec", {}, 180, ["codec:hevc"]),
         ("regression-vmaf", "test_vmaf_smoke.py", "swdec", {}, 240, ["metric:vmaf"]),
+        ("regression-vmaf-hdr-auto", "test_vmaf_hdr_auto_params.py", "swdec", {}, 240,
+         ["metric:vmaf", "hdr:auto-params"]),
         ("regression-av1-vvc", "test_av1_vvc.py", "swdec", {}, 240, ["codec:av1", "codec:vvc"]),
         ("regression-detect", "test_detect_format.py", "swdec", {}, 300, ["codec:hevc", "codec:av1", "metadata"]),
     ]

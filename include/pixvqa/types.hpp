@@ -212,8 +212,8 @@ struct Options {
   int strip_height = 0;  // 0 = library default; the public CLI does not set this
   double peak = 1023.0;  // 10-bit
   // Color overrides. They do not enter PSNR, SSIM, MS-SSIM, or XPSNR.
-  // HDR VMAF uses an explicit complete description of each input. SDR VMAF
-  // leaves picture color unset. When set, these replace stream metadata.
+  // Bundled HDR VMAF has model-specific picture labels; PU21 and custom HDR
+  // VMAF models continue to use this independently resolved configuration.
   std::string color_space = "bt709l";
   std::string transfer = "sdr";
   bool color_space_set = false;

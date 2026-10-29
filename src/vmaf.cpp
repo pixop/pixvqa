@@ -489,6 +489,12 @@ VmafModelFileInfo vmaf_inspect_model_file(const std::string& path) {
   return info;
 }
 
+bool vmaf_is_bundled_hdr_model_file(const std::string& path) {
+  const std::string resolved = vmaf_resolve_model_path(path);
+  const ModelInfo* info = find_by_sha256(vmaf_file_sha256(resolved));
+  return info && info->hdr;
+}
+
 bool vmaf_min_size_for_sha256(const std::string& sha256, int& min_w, int& min_h) {
   const ModelInfo* info = find_by_sha256(sha256);
   if (!info) return false;

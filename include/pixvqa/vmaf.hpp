@@ -71,6 +71,11 @@ struct VmafModelFileInfo {
 
 VmafModelFileInfo vmaf_inspect_model_file(const std::string& path);
 
+// True only when the file content matches a bundled HDR VMAF v1.1.8 model.
+// This intentionally identifies the model by SHA-256, not by its filename or
+// conversion_target, so third-party HDR models retain explicit color handling.
+bool vmaf_is_bundled_hdr_model_file(const std::string& path);
+
 // Look up SpEED/cambi minimum luma size for a model JSON identified by SHA-256.
 // Returns false when the digest is not one of the eight known v1.0.16 files.
 bool vmaf_min_size_for_sha256(const std::string& sha256, int& min_w, int& min_h);

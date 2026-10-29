@@ -998,6 +998,42 @@ std::string vmaf_hdr_color_spec(const char* role, const HdrSide& side, std::stri
   return {};
 }
 
+void warn_bundled_hdr_vmaf_conflicts(const char* role, const HdrSide& metadata,
+                                     const HdrSide& configured) {
+  const auto warn = [&](const char* source, const char* field, const char* value) {
+    std::fprintf(
+        stderr,
+        "pixvqa: warning: HDR VMAF expects PQ / BT.2020 / BT.2020nc / limited. "
+        "%s input %s %s is %s. Continuing without conversion.\n",
+        role, source, field, value);
+  };
+  const auto metadata_value = [&](HdrSource source, bool matches, const char* field,
+                                  const char* value, bool specified) {
+    if (source == HdrSource::Stream && specified && !matches) warn("metadata", field, value);
+  };
+  metadata_value(metadata.transfer_source, metadata.transfer == HdrTransfer::Pq, "transfer",
+                 hdr_transfer_name(metadata.transfer), metadata.transfer != HdrTransfer::Unspecified);
+  metadata_value(metadata.primaries_source, metadata.primaries == HdrPrimaries::Bt2020, "primaries",
+                 hdr_primaries_name(metadata.primaries),
+                 metadata.primaries != HdrPrimaries::Unspecified);
+  metadata_value(metadata.matrix_source, metadata.matrix == HdrMatrix::Bt2020Ncl, "matrix",
+                 hdr_matrix_name(metadata.matrix), metadata.matrix != HdrMatrix::Unspecified);
+  metadata_value(metadata.range_source, metadata.range == HdrRange::Limited, "range",
+                 hdr_range_name(metadata.range), metadata.range != HdrRange::Unspecified);
+
+  const auto explicit_value = [&](HdrSource source, bool matches, const char* field, const char* value) {
+    if (source == HdrSource::Override && !matches) warn("explicit", field, value);
+  };
+  explicit_value(configured.transfer_source, configured.transfer == HdrTransfer::Pq, "transfer",
+                 hdr_transfer_name(configured.transfer));
+  explicit_value(configured.primaries_source, configured.primaries == HdrPrimaries::Bt2020, "primaries",
+                 hdr_primaries_name(configured.primaries));
+  explicit_value(configured.matrix_source, configured.matrix == HdrMatrix::Bt2020Ncl, "matrix",
+                 hdr_matrix_name(configured.matrix));
+  explicit_value(configured.range_source, configured.range == HdrRange::Limited, "range",
+                 hdr_range_name(configured.range));
+}
+
 int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Options& opt, bool emit,
                HdrEffective* ref_out, HdrEffective* dist_out, std::string* vmaf_color_ref,
                std::string* vmaf_color_dist) {
@@ -1110,15 +1146,31 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   if (resolve_prepared_side(dist, opt, false, dist_eff) != 0) return 2;
 #ifdef PIXVQA_HAS_VMAF
   bool hdr_model = false;
+  bool bundled_hdr_model = false;
   if (opt.enable_vmaf && !opt.vmaf_model_path.empty()) {
     try {
-      hdr_model = vmaf_inspect_model_file(vmaf_resolve_model_path(opt.vmaf_model_path)).has_conversion;
+      const std::string model_path = vmaf_resolve_model_path(opt.vmaf_model_path);
+      hdr_model = vmaf_inspect_model_file(model_path).has_conversion;
+      bundled_hdr_model = vmaf_is_bundled_hdr_model_file(model_path);
     } catch (const std::exception& ex) {
       std::fprintf(stderr, "pixvqa: %s\n", ex.what());
       return 2;
     }
   }
-  if (opt.enable_vmaf && hdr_model) {
+  if (opt.enable_vmaf && bundled_hdr_model) {
+    if (opt.format.chroma != ChromaFormat::YUV420 || opt.format.bit_depth != 10) {
+      std::fprintf(stderr, "pixvqa: HDR VMAF supports limited-range YUV420p10 only\n");
+      return 2;
+    }
+    // These model-specific labels are passed only to libvmaf. ref_eff and
+    // dist_eff retain the independently resolved configuration used by PU21.
+    if (!emit) {
+      warn_bundled_hdr_vmaf_conflicts("Reference", ref_stream, ref);
+      warn_bundled_hdr_vmaf_conflicts("Distorted", dist_stream, dist);
+    }
+    if (vmaf_color_ref) *vmaf_color_ref = "limited:bt2020:pq:bt2020nc";
+    if (vmaf_color_dist) *vmaf_color_dist = "limited:bt2020:pq:bt2020nc";
+  } else if (opt.enable_vmaf && hdr_model) {
     if (opt.format.chroma != ChromaFormat::YUV420 || opt.format.bit_depth != 10) {
       std::fprintf(stderr, "pixvqa: HDR VMAF supports limited-range YUV420p10 only\n");
       return 2;
