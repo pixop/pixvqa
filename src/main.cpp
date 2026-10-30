@@ -162,6 +162,7 @@ void usage(const char* argv0) {
       "  --model PATH        VMAF model JSON. Required for vmaf. No default.\n"
       "  --vmaf-model PATH   Alias for --model. The two must agree.\n"
       "  CVVDP is standalone. It requires --cvvdp-interpretation and --cvvdp-display.\n"
+      "  Raw CVVDP input is limited-range YUV420p10le PQ: -s, -f 420p:10, and --fps.\n"
       "  See docs/COLORVIDEOVDP.md for its optional Python environment.\n"
       "\n"
       "Execution\n"
@@ -626,6 +627,78 @@ void mark_cvvdp_incompatible(CvvdpOptions& cvvdp, const std::string& option) {
   if (cvvdp.incompatible_option.empty()) cvvdp.incompatible_option = option;
 }
 
+bool path_ends_with_yuv(const std::string& path) {
+  const char* ext = ".yuv";
+  const size_t n = std::strlen(ext);
+  if (path.size() < n) return false;
+  for (size_t i = 0; i < n; ++i) {
+    const unsigned char a = static_cast<unsigned char>(path[path.size() - n + i]);
+    const unsigned char b = static_cast<unsigned char>(ext[i]);
+    if (std::tolower(a) != std::tolower(b)) return false;
+  }
+  return true;
+}
+
+void inherit_side_geometry(SideSpec& ref, SideSpec& test) {
+  if (!ref.has_size && test.has_size) {
+    ref.format.width = test.format.width;
+    ref.format.height = test.format.height;
+    ref.has_size = true;
+  }
+  if (!test.has_size && ref.has_size) {
+    test.format.width = ref.format.width;
+    test.format.height = ref.format.height;
+    test.has_size = true;
+  }
+  if (!ref.has_fmt && test.has_fmt) {
+    ref.format.chroma = test.format.chroma;
+    ref.format.bit_depth = test.format.bit_depth;
+    ref.has_fmt = true;
+  }
+  if (!test.has_fmt && ref.has_fmt) {
+    test.format.chroma = ref.format.chroma;
+    test.format.bit_depth = ref.format.bit_depth;
+    test.has_fmt = true;
+  }
+}
+
+bool cvvdp_raw_requested(const SideSpec& ref, const SideSpec& test, const Options& opt) {
+  return ref.has_size || test.has_size || ref.has_fmt || test.has_fmt || opt.fps_set ||
+         path_ends_with_yuv(opt.ref_path) || path_ends_with_yuv(opt.test_path);
+}
+
+bool prepare_cvvdp_raw(const SideSpec& ref, const SideSpec& test, const Options& opt,
+                       const CvvdpOptions& cvvdp) {
+  if (!ref.has_size || !test.has_size || !ref.has_fmt || !test.has_fmt) {
+    std::fprintf(stderr, "pixvqa: cvvdp raw YUV requires -s and -f\n");
+    return false;
+  }
+  if (!formats_equal(ref.format, test.format)) {
+    std::fprintf(stderr, "pixvqa: cvvdp reference and test -s/-f disagree\n");
+    return false;
+  }
+  if (ref.format.chroma != ChromaFormat::YUV420 || ref.format.bit_depth != 10) {
+    std::fprintf(stderr,
+                 "pixvqa: cvvdp raw input supports only planar YUV420p10le (-f 420p:10)\n");
+    return false;
+  }
+  if (ref.format.width % 2 != 0 || ref.format.height % 2 != 0) {
+    std::fprintf(stderr, "pixvqa: cvvdp raw YUV420 requires positive even width and height\n");
+    return false;
+  }
+  if (!opt.fps_set) {
+    std::fprintf(stderr, "pixvqa: cvvdp raw YUV requires --fps\n");
+    return false;
+  }
+  if (cvvdp.interpretation != "pq") {
+    std::fprintf(stderr,
+                 "pixvqa: cvvdp raw YUV supports only --cvvdp-interpretation pq; "
+                 "SDR raw YUV is unsupported\n");
+    return false;
+  }
+  return true;
+}
+
 bool assign_cvvdp_value(std::string& field, const char* flag, const std::string& value) {
   if (!field.empty() && field != value) {
     std::fprintf(stderr, "pixvqa: conflicting %s values (%s vs %s)\n", flag, field.c_str(),
@@ -636,7 +709,7 @@ bool assign_cvvdp_value(std::string& field, const char* flag, const std::string&
   return true;
 }
 
-bool run_cvvdp(const CvvdpOptions& cvvdp, const Options& opt) {
+bool run_cvvdp(const CvvdpOptions& cvvdp, const Options& opt, const SideSpec& ref, bool raw) {
   if (cvvdp.interpretation != "sdr" && cvvdp.interpretation != "pq") {
     std::fprintf(stderr,
                  "pixvqa: cvvdp requires --cvvdp-interpretation sdr or pq; it is never inferred\n");
@@ -670,6 +743,16 @@ bool run_cvvdp(const CvvdpOptions& cvvdp, const Options& opt) {
   if (!cvvdp.cvvdp_bin.empty()) {
     args.emplace_back("--cvvdp-bin");
     args.push_back(cvvdp.cvvdp_bin);
+  }
+  if (raw) {
+    args.emplace_back("--raw-width");
+    args.push_back(std::to_string(ref.format.width));
+    args.emplace_back("--raw-height");
+    args.push_back(std::to_string(ref.format.height));
+    args.emplace_back("--raw-fps-num");
+    args.push_back(std::to_string(opt.fps_num));
+    args.emplace_back("--raw-fps-den");
+    args.push_back(std::to_string(opt.fps_den));
   }
 
   int pipefd[2];
@@ -1677,7 +1760,7 @@ int main(int argc, char** argv) {
     if (a == "--version") {
       print_version_and_exit(argv[0]);
     }
-    if (a == "-s" || a == "-f" || a == "--input" || a == "--decode" || a == "--fps" ||
+    if (a == "--input" || a == "--decode" ||
         a == "--threads" || a == "-v" || a == "--qcs" || a == "--qcs-range" ||
         a == "--model" || a == "--vmaf-model" || a == "--cs" || a == "--tf" ||
         a == "--ref-tf" || a == "--dist-tf" || a == "--ref-cs" || a == "--dist-cs" ||
@@ -1920,8 +2003,8 @@ int main(int argc, char** argv) {
   if (cvvdp.selected) {
     if (!cvvdp.incompatible_option.empty()) {
       std::fprintf(stderr,
-                   "pixvqa: %s is incompatible with standalone cvvdp; use only -r, -t, --frames, "
-                   "--metric-device, and --cvvdp-* options\n",
+                   "pixvqa: %s is incompatible with standalone cvvdp; use only -r, -t, -s, -f, "
+                   "--fps, --frames, --metric-device, and --cvvdp-* options\n",
                    cvvdp.incompatible_option.c_str());
       return 2;
     }
@@ -1934,7 +2017,10 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "pixvqa: cvvdp requires -r <reference> and -t <distorted>\n");
       return 2;
     }
-    return run_cvvdp(cvvdp, opt) ? 0 : 1;
+    inherit_side_geometry(ref_side, test_side);
+    const bool raw = cvvdp_raw_requested(ref_side, test_side, opt);
+    if (raw && !prepare_cvvdp_raw(ref_side, test_side, opt, cvvdp)) return 2;
+    return run_cvvdp(cvvdp, opt, ref_side, raw) ? 0 : 1;
   }
   if (cvvdp.options_seen) {
     std::fprintf(stderr, "pixvqa: --cvvdp-* options require --metrics cvvdp\n");
@@ -1968,27 +2054,7 @@ int main(int argc, char** argv) {
 #endif
   }
 
-  // Inherit unset side geometry/format from the other side.
-  if (!ref_side.has_size && test_side.has_size) {
-    ref_side.format.width = test_side.format.width;
-    ref_side.format.height = test_side.format.height;
-    ref_side.has_size = true;
-  }
-  if (!test_side.has_size && ref_side.has_size) {
-    test_side.format.width = ref_side.format.width;
-    test_side.format.height = ref_side.format.height;
-    test_side.has_size = true;
-  }
-  if (!ref_side.has_fmt && test_side.has_fmt) {
-    ref_side.format.chroma = test_side.format.chroma;
-    ref_side.format.bit_depth = test_side.format.bit_depth;
-    ref_side.has_fmt = true;
-  }
-  if (!test_side.has_fmt && ref_side.has_fmt) {
-    test_side.format.chroma = ref_side.format.chroma;
-    test_side.format.bit_depth = ref_side.format.bit_depth;
-    test_side.has_fmt = true;
-  }
+  inherit_side_geometry(ref_side, test_side);
 
   print_banner();
   if (!opt.ref_path.empty()) std::printf("%s\n", opt.ref_path.c_str());

@@ -37,8 +37,8 @@ CVVDP executable. `--frames` becomes CVVDP's `--nframes`.
 
 CVVDP accepts only `--metrics cvvdp`, never a mixed native/CVVDP metric list.
 It accepts `--metric-device cpu` or `gpu`; `auto` selects the adapter's CUDA
-default. Native decoder, raw-YUV, HDR override, VMAF-model, QCS, thread, and
-verbosity options are incompatible.
+default. Native decoder, HDR override, VMAF-model, QCS, thread, and verbosity
+options are incompatible. `-s`, `-f`, and `--fps` are accepted for raw input.
 
 If `--cvvdp-output-json` is set, that exact file and its sibling CSV are
 preserved on both success and backend failure. Without it, PixVQA creates a
@@ -65,8 +65,45 @@ installed commit. JOD is not a QCS,
 VMAF, PSNR, or SSIM score; larger JOD means a smaller visible difference, and
 an identical pair is near 10 JOD.
 
-This first integration supports only files accepted and validated by the
-official CVVDP CLI. Raw YUV is deliberately unsupported. Future YUV420p8/p10
-support needs an official-CVVDP-compatible raw-video invocation, explicit
-width/height/pixel-format/frame-rate transfer, colorimetry and range metadata,
-paired-frame-count validation, and parity validation against decoded fixtures.
+## Raw YUV420p10le PQ
+
+This phase accepts one raw layout: planar YUV 4:2:0, stored as little-endian
+`uint16` with the 10-bit code in the low bits (`0..1023`). The samples are
+limited-range BT.2020 non-constant-luminance YCbCr with a PQ interpretation.
+PixVQA does not convert them. The official `YUVReader` expands limited-range
+codes itself: luma uses `(code - 64) / 876` and chroma uses `(code - 512) / 896`,
+then clips. Full-range samples are therefore not represented correctly. Codes
+outside the 10-bit range are rejected before ColorVideoVDP starts. Legal-range
+limits (luma 64–940, chroma 64–960) are not enforced; the official reader clips
+the expanded result.
+
+```bash
+pixvqa --metrics cvvdp \
+  -r reference.yuv \
+  -t reconstructed.yuv \
+  -s 1920x1080 -f 420p:10 --fps 60 \
+  --cvvdp-interpretation pq \
+  --cvvdp-display standard_hdr_pq
+```
+
+`-s`, `-f`, and `--fps` use the normal PixVQA rules, including one shared size
+and format for both inputs. `--fps` may be an integer or a rational. The
+official filename stores frame rate to three decimal places, so `60000/1001`
+becomes `59.94`. Both files must exist, share that geometry, contain a positive
+whole number of frames, and contain at least `--frames` frames when that option
+is set.
+
+The adapter creates a private temporary directory and symlinks each original
+file to a metadata-bearing name such as
+`reference_1920x1080_10b_420_2020_60fps.yuv`. It does not rename, modify, or
+copy the YUV. The name is checked with a strict parser that rejects missing
+fields, and with `pycvvdp.video_source_yuv.decode_video_props()` when that
+function can be imported. The official `cvvdp` CLI then receives those symlink
+paths and selects its raw reader because the names end in `.yuv`. The symlinks
+and directory are removed after success and after failure. A user-specified
+`--cvvdp-output-json` file is not part of that cleanup.
+
+SDR raw YUV is not supported. In ColorVideoVDP 0.5.7 the raw reader's non-2020
+matrix is the BT.601 matrix (`1.402`, `-0.344136`, `-0.714136`, `1.772`), not
+the BT.709 matrix used for compressed inputs. 8-bit, 4:2:2, 4:4:4, and
+big-endian storage are rejected.

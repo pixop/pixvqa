@@ -71,9 +71,8 @@ pixvqa --metrics vmaf \
 
 CVVDP is installed separately from PixVQA and only runs as `--metrics cvvdp`.
 It requires explicit sample interpretation and an official display model; PixVQA
-does not infer HDR parameters for it. It does not support raw YUV in this first
-integration; inputs must be formats accepted and validated by the official
-CVVDP CLI.
+does not infer HDR parameters for it. Raw input in this phase is limited-range
+planar YUV420p10le PQ, passed with `-s`, `-f 420p:10`, and `--fps`.
 
 ```bash
 pixvqa --metrics cvvdp \
@@ -82,6 +81,15 @@ pixvqa --metrics cvvdp \
   --cvvdp-interpretation pq \
   --cvvdp-display standard_hdr_pq \
   --cvvdp-output-json result.cvvdp.json
+```
+
+```bash
+pixvqa --metrics cvvdp \
+  -r reference.yuv \
+  -t reconstructed.yuv \
+  -s 1920x1080 -f 420p:10 --fps 60 \
+  --cvvdp-interpretation pq \
+  --cvvdp-display standard_hdr_pq
 ```
 
 See [COLORVIDEOVDP.md](COLORVIDEOVDP.md) for isolated installation, supported
