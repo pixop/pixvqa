@@ -71,3 +71,6 @@ reports/*.txt
 /tests/fixtures/vvc/local/
 
 /reports/release/
+
+# Python packaging metadata
+*.egg-info/
