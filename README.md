@@ -6,11 +6,23 @@
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![FFmpeg](https://img.shields.io/badge/FFmpeg-n8.1.3-blue)](https://ffmpeg.org/) [![libvmaf](https://img.shields.io/badge/libvmaf-74f930d-blue)](https://github.com/Netflix/vmaf) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares a reference sequence with a distorted sequence and prints text scores for the selected metrics. The default lists each frame and then a summary. There is no JSON mode. It reads raw planar YUV and, when built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports.
+PixVQA compares a reference sequence with a distorted sequence and prints text scores for the selected metrics. The default lists each frame and then a summary. Native metrics have no JSON mode. It reads raw planar YUV and, when built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports.
 
 ## Features
 
-PixVQA supports PSNR, XPSNR, SSIM, MS-SSIM, VMAF, and PU21-PSNR/SSIM/MS-SSIM, with optional temporal Quality Consistency Score (QCS). It accepts raw YUV and, with an FFmpeg-enabled build, compressed video. CPU implementations are available for every metric; optional CUDA acceleration is available for selected metrics and NVDEC decoding of supported HEVC/AV1 streams.
+PixVQA supports PSNR, XPSNR, SSIM, MS-SSIM, VMAF, PU21-PSNR/SSIM/MS-SSIM, and ColorVideoVDP, with optional temporal Quality Consistency Score (QCS). It accepts raw YUV and, with an FFmpeg-enabled build, compressed video. CPU implementations are available for every native metric; optional CUDA acceleration is available for selected metrics and NVDEC decoding of supported HEVC/AV1 streams.
+
+ColorVideoVDP is an optional Python/PyTorch backend, not a built-in native metric, and it is not installed with PixVQA. It outputs JOD scores: higher is better, and identical content scores 10. Compressed inputs such as MP4 are supported for SDR and HDR. Raw input is limited-range BT.2020/PQ YUV420p10le.
+
+```bash
+./bin/pixvqa --metrics cvvdp \
+  -r reference.mp4 \
+  -t distorted.mp4 \
+  --cvvdp-interpretation pq \
+  --cvvdp-display standard_hdr_pq
+```
+
+Installation, configuration, and detailed usage are in [ColorVideoVDP](docs/COLORVIDEOVDP.md).
 
 See [supported metrics, SDR/HDR recommendations, pixel formats, and CPU/GPU capabilities](docs/METRICS_AND_FORMATS.md).
 
@@ -42,7 +54,7 @@ CPU-only builds use raw YUV inputs. For dependency locations, `make cpu`, `make 
 
 **Getting started:** [Installation & builds](docs/GETTING_STARTED.md) · [Manual installation](docs/INSTALL.md) · [Make build guide](docs/BUILD_MAKE.md) · [Installation validation](docs/INSTALL_VALIDATION.md)
 
-**Using PixVQA:** [CLI examples & options](docs/CLI_USAGE.md) · [Supported metrics & formats](docs/METRICS_AND_FORMATS.md)
+**Using PixVQA:** [CLI examples & options](docs/CLI_USAGE.md) · [Supported metrics & formats](docs/METRICS_AND_FORMATS.md) · [ColorVideoVDP](docs/COLORVIDEOVDP.md)
 
 **Technical guides:** [PU21 / HDR](docs/PU21.md) · [QCS](docs/QCS.md) · [CI](docs/CI.md)
 

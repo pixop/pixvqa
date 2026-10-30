@@ -67,6 +67,34 @@ pixvqa --metrics vmaf \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
 
+**ColorVideoVDP (optional external backend)**
+
+CVVDP is installed separately from PixVQA and only runs as `--metrics cvvdp`.
+It requires explicit sample interpretation and an official display model; PixVQA
+does not infer HDR parameters for it. Raw input in this phase is limited-range
+planar YUV420p10le PQ, passed with `-s`, `-f 420p:10`, and `--fps`.
+
+```bash
+pixvqa --metrics cvvdp \
+  -r reference.mkv \
+  -t distorted.mkv \
+  --cvvdp-interpretation pq \
+  --cvvdp-display standard_hdr_pq \
+  --cvvdp-output-json result.cvvdp.json
+```
+
+```bash
+pixvqa --metrics cvvdp \
+  -r reference.yuv \
+  -t reconstructed.yuv \
+  -s 1920x1080 -f 420p:10 --fps 60 \
+  --cvvdp-interpretation pq \
+  --cvvdp-display standard_hdr_pq
+```
+
+See [COLORVIDEOVDP.md](COLORVIDEOVDP.md) for isolated installation, supported
+displays, the JSON result record, and incompatible native options.
+
 **PU21 Metrics for HDR Video (PQ and HLG)**
 
 PU21 metrics account for HDR transfer functions, unlike conventional metrics that operate on encoded sample values. For PQ and HLG, PixVQA defaults to BT.2020 primaries, BT.2020nc matrix, and limited range when these are unspecified. HLG defaults to a 1000 cd/m² display peak; PQ requires no display peak. See the [PU21 guide](PU21.md) for details.
@@ -109,6 +137,11 @@ pixvqa --metrics psnr --decode gpu \
 | `--input` | `auto`, `raw`, or `compressed`. Default `auto`. `raw` does not probe |
 | `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available. Decimals truncate toward zero |
 | `--model` | VMAF model JSON. No default |
+| `--cvvdp-interpretation` | Required for CVVDP: `sdr` or `pq`; never inferred |
+| `--cvvdp-display` | Required official CVVDP display model |
+| `--cvvdp-python` | Optional interpreter path for the isolated adapter |
+| `--cvvdp-bin` | Optional official CVVDP executable path |
+| `--cvvdp-output-json` | Persistent CVVDP machine-readable run record |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
 | `--qcs` | Enable QCS for selected supported per-frame metrics |
