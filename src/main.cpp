@@ -32,6 +32,9 @@
 #include <limits>
 #include <string>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 using namespace pixvqa;
@@ -52,6 +55,31 @@ struct SideSpec {
   int nominal_num = 0;
   int nominal_den = 1;
   InputKind input = InputKind::Auto;
+};
+
+struct CvvdpOptions {
+  bool selected = false;
+  bool options_seen = false;
+  std::string incompatible_option;
+  std::string interpretation;
+  std::string display;
+  std::string python;
+  std::string cvvdp_bin;
+  std::string output_json;
+  bool output_json_set = false;
+};
+
+struct TemporaryCvvdpDirectory {
+  std::string path;
+
+  ~TemporaryCvvdpDirectory() {
+    if (path.empty()) return;
+    const std::string json = path + "/result.json";
+    const std::string csv = path + "/result.csv";
+    unlink(json.c_str());
+    unlink(csv.c_str());
+    rmdir(path.c_str());
+  }
 };
 
 const char* chroma_token(ChromaFormat c) {
@@ -130,14 +158,19 @@ void usage(const char* argv0) {
       "\n"
       "Metrics\n"
       "  --metrics LIST      psnr, xpsnr, ssim, msssim, vmaf,\n"
-      "                      pu21-psnr, pu21-ssim, pu21-msssim.\n"
+      "                      pu21-psnr, pu21-ssim, pu21-msssim, cvvdp.\n"
       "  --model PATH        VMAF model JSON. Required for vmaf. No default.\n"
       "  --vmaf-model PATH   Alias for --model. The two must agree.\n"
+      "  CVVDP is standalone. It requires --cvvdp-interpretation and --cvvdp-display.\n"
+      "  See docs/COLORVIDEOVDP.md for its optional Python environment.\n"
       "\n"
       "Execution\n"
       "  --metric-device auto|cpu|gpu\n"
       "                      Default auto. gpu has no CPU substitute. VMAF stays on CPU.\n"
       "  --threads auto|N    Default auto. N is a positive integer for metric workers.\n"
+      "  --cvvdp-python PATH Interpreter for the optional CVVDP adapter (or PIXVQA_CVVDP_PYTHON).\n"
+      "  --cvvdp-bin PATH    Official cvvdp executable for the adapter.\n"
+      "  --cvvdp-output-json PATH  Persistent CVVDP JSON run record.\n"
       "\n"
       "QCS\n"
       "  --qcs               One value per selected metric. See docs/QCS.md.\n"
@@ -546,6 +579,148 @@ bool parse_metrics_list(Options& opt, const std::string& list) {
     }
   }
   return flush(cur);
+}
+
+bool parse_cvvdp_metrics(CvvdpOptions& cvvdp, const std::string& list) {
+  std::string cur;
+  int count = 0;
+  for (char c : list) {
+    if (c == ',') {
+      trim_ascii_space(cur);
+      if (cur != "cvvdp") {
+        std::fprintf(stderr,
+                     "pixvqa: cvvdp is standalone; do not mix it with native metrics\n");
+        return false;
+      }
+      ++count;
+      cur.clear();
+    } else {
+      cur.push_back(c);
+    }
+  }
+  trim_ascii_space(cur);
+  if (cur != "cvvdp" || count != 0) {
+    std::fprintf(stderr, "pixvqa: cvvdp is standalone; use exactly --metrics cvvdp\n");
+    return false;
+  }
+  cvvdp.selected = true;
+  return true;
+}
+
+bool metrics_list_mentions_cvvdp(const std::string& list) {
+  std::string cur;
+  for (char c : list) {
+    if (c == ',') {
+      trim_ascii_space(cur);
+      if (cur == "cvvdp") return true;
+      cur.clear();
+    } else {
+      cur.push_back(c);
+    }
+  }
+  trim_ascii_space(cur);
+  return cur == "cvvdp";
+}
+
+void mark_cvvdp_incompatible(CvvdpOptions& cvvdp, const std::string& option) {
+  if (cvvdp.incompatible_option.empty()) cvvdp.incompatible_option = option;
+}
+
+bool assign_cvvdp_value(std::string& field, const char* flag, const std::string& value) {
+  if (!field.empty() && field != value) {
+    std::fprintf(stderr, "pixvqa: conflicting %s values (%s vs %s)\n", flag, field.c_str(),
+                 value.c_str());
+    return false;
+  }
+  field = value;
+  return true;
+}
+
+bool run_cvvdp(const CvvdpOptions& cvvdp, const Options& opt) {
+  if (cvvdp.interpretation != "sdr" && cvvdp.interpretation != "pq") {
+    std::fprintf(stderr,
+                 "pixvqa: cvvdp requires --cvvdp-interpretation sdr or pq; it is never inferred\n");
+    return false;
+  }
+  if (cvvdp.display.empty()) {
+    std::fprintf(stderr, "pixvqa: cvvdp requires --cvvdp-display <official-display-model>\n");
+    return false;
+  }
+  const char* configured = pix_getenv("PIXVQA_CVVDP_PYTHON");
+  const std::string python = !cvvdp.python.empty() ? cvvdp.python
+                             : (configured && configured[0] ? configured : "python3");
+  TemporaryCvvdpDirectory temporary;
+  if (!cvvdp.output_json_set) {
+    char path[] = "/tmp/pixvqa-cvvdp-XXXXXX";
+    if (!mkdtemp(path)) {
+      std::fprintf(stderr, "pixvqa: could not create CVVDP temporary directory: %s\n",
+                   std::strerror(errno));
+      return false;
+    }
+    temporary.path = path;
+  }
+  const std::string output_json =
+      cvvdp.output_json_set ? cvvdp.output_json : temporary.path + "/result.json";
+  std::vector<std::string> args = {
+      python, "-m", "pixvqa_cvvdp", "--ref", opt.ref_path, "--test", opt.test_path,
+      "--interpretation", cvvdp.interpretation, "--display", cvvdp.display,
+      "--nframes", std::to_string(opt.max_frames), "--device",
+      opt.metric_device == DeviceChoice::Cpu ? "cpu" : "cuda", "--output-json", output_json};
+  if (!cvvdp.output_json_set) args.emplace_back("--transient-output");
+  if (!cvvdp.cvvdp_bin.empty()) {
+    args.emplace_back("--cvvdp-bin");
+    args.push_back(cvvdp.cvvdp_bin);
+  }
+
+  int pipefd[2];
+  if (pipe(pipefd) != 0) {
+    std::fprintf(stderr, "pixvqa: could not create CVVDP pipe: %s\n", std::strerror(errno));
+    return false;
+  }
+  const pid_t pid = fork();
+  if (pid < 0) {
+    std::fprintf(stderr, "pixvqa: could not start CVVDP backend: %s\n", std::strerror(errno));
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return false;
+  }
+  if (pid == 0) {
+    close(pipefd[0]);
+    dup2(pipefd[1], STDOUT_FILENO);
+    dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[1]);
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (std::string& arg : args) argv.push_back(const_cast<char*>(arg.c_str()));
+    argv.push_back(nullptr);
+    execvp(argv[0], argv.data());
+    std::fprintf(stderr, "pixvqa: could not execute CVVDP interpreter '%s': %s\n", argv[0],
+                 std::strerror(errno));
+    _exit(127);
+  }
+  close(pipefd[1]);
+  std::string output;
+  char buffer[4096];
+  ssize_t n = 0;
+  while ((n = read(pipefd[0], buffer, sizeof(buffer))) > 0) output.append(buffer, static_cast<size_t>(n));
+  close(pipefd[0]);
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0) {
+    std::fprintf(stderr, "pixvqa: CVVDP backend wait failed: %s\n", std::strerror(errno));
+    return false;
+  }
+  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+    std::fwrite(output.data(), 1, output.size(), stdout);
+    if (output.empty() || output.back() != '\n') std::fputc('\n', stdout);
+    return true;
+  }
+  std::fprintf(stderr, "%s", output.c_str());
+  if (WIFEXITED(status)) {
+    std::fprintf(stderr, "pixvqa: CVVDP backend exited %d\n", WEXITSTATUS(status));
+  } else {
+    std::fprintf(stderr, "pixvqa: CVVDP backend terminated unexpectedly\n");
+  }
+  return false;
 }
 
 bool parse_device_choice(const std::string& v, DeviceChoice& out) {
@@ -1477,6 +1652,7 @@ int adopt_frame_rate(Options& opt, const SideSpec& ref, const SideSpec& test) {
 
 int main(int argc, char** argv) {
   Options opt;
+  CvvdpOptions cvvdp;
   SideSpec ref_side, test_side;
   SideSpec* bind = nullptr;
 
@@ -1501,9 +1677,22 @@ int main(int argc, char** argv) {
     if (a == "--version") {
       print_version_and_exit(argv[0]);
     }
+    if (a == "-s" || a == "-f" || a == "--input" || a == "--decode" || a == "--fps" ||
+        a == "--threads" || a == "-v" || a == "--qcs" || a == "--qcs-range" ||
+        a == "--model" || a == "--vmaf-model" || a == "--cs" || a == "--tf" ||
+        a == "--ref-tf" || a == "--dist-tf" || a == "--ref-cs" || a == "--dist-cs" ||
+        a == "--hlg-peak" || a == "--seek" || a.compare(0, 6, "--hdr-") == 0 ||
+        a.compare(0, 10, "--ref-hdr-") == 0 || a.compare(0, 11, "--dist-hdr-") == 0) {
+      mark_cvvdp_incompatible(cvvdp, a);
+    }
 
     if (a == "--metrics") {
-      if (!parse_metrics_list(opt, need("--metrics"))) return 2;
+      const std::string metrics = need("--metrics");
+      if (metrics_list_mentions_cvvdp(metrics)) {
+        if (!parse_cvvdp_metrics(cvvdp, metrics)) return 2;
+      } else if (!parse_metrics_list(opt, metrics)) {
+        return 2;
+      }
     } else if (a == "--metric-device") {
       const auto v = need("--metric-device");
       if (!parse_device_choice(v, opt.metric_device)) {
@@ -1511,6 +1700,30 @@ int main(int argc, char** argv) {
                      v.c_str());
         return 2;
       }
+    } else if (a == "--cvvdp-interpretation") {
+      cvvdp.options_seen = true;
+      if (!assign_cvvdp_value(cvvdp.interpretation, "--cvvdp-interpretation",
+                              need("--cvvdp-interpretation")))
+        return 2;
+      if (cvvdp.interpretation != "sdr" && cvvdp.interpretation != "pq") {
+        std::fprintf(stderr, "pixvqa: --cvvdp-interpretation expects sdr or pq\n");
+        return 2;
+      }
+    } else if (a == "--cvvdp-display") {
+      cvvdp.options_seen = true;
+      if (!assign_cvvdp_value(cvvdp.display, "--cvvdp-display", need("--cvvdp-display"))) return 2;
+    } else if (a == "--cvvdp-python") {
+      cvvdp.options_seen = true;
+      if (!assign_cvvdp_value(cvvdp.python, "--cvvdp-python", need("--cvvdp-python"))) return 2;
+    } else if (a == "--cvvdp-bin") {
+      cvvdp.options_seen = true;
+      if (!assign_cvvdp_value(cvvdp.cvvdp_bin, "--cvvdp-bin", need("--cvvdp-bin"))) return 2;
+    } else if (a == "--cvvdp-output-json") {
+      cvvdp.options_seen = true;
+      if (!assign_cvvdp_value(cvvdp.output_json, "--cvvdp-output-json",
+                              need("--cvvdp-output-json")))
+        return 2;
+      cvvdp.output_json_set = true;
     } else if (a == "--psnr" || a == "--ssim" || a == "--msssim" || a == "--xpsnr" || a == "--vmaf") {
       std::fprintf(stderr, "pixvqa: %s was removed; use --metrics psnr,xpsnr,ssim,msssim,vmaf\n",
                    a.c_str());
@@ -1704,6 +1917,29 @@ int main(int argc, char** argv) {
   opt.test_path = test_side.path;
   opt.ref_input = ref_side.input;
   opt.test_input = test_side.input;
+  if (cvvdp.selected) {
+    if (!cvvdp.incompatible_option.empty()) {
+      std::fprintf(stderr,
+                   "pixvqa: %s is incompatible with standalone cvvdp; use only -r, -t, --frames, "
+                   "--metric-device, and --cvvdp-* options\n",
+                   cvvdp.incompatible_option.c_str());
+      return 2;
+    }
+    if (opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr || opt.enable_vmaf ||
+        pu21_selected(opt)) {
+      std::fprintf(stderr, "pixvqa: cvvdp is standalone; do not mix it with native metrics\n");
+      return 2;
+    }
+    if (opt.ref_path.empty() || opt.test_path.empty()) {
+      std::fprintf(stderr, "pixvqa: cvvdp requires -r <reference> and -t <distorted>\n");
+      return 2;
+    }
+    return run_cvvdp(cvvdp, opt) ? 0 : 1;
+  }
+  if (cvvdp.options_seen) {
+    std::fprintf(stderr, "pixvqa: --cvvdp-* options require --metrics cvvdp\n");
+    return 2;
+  }
   if (opt.transfer_set && opt.hdr.transfer_set) {
     std::fprintf(stderr, "pixvqa: --tf and --hdr-transfer both set\n");
     return 2;
