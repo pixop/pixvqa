@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate a small SDR HEVC Main10 fixture + oracle raw YUV for Gate B.
 
-Outputs under testdata/vmaf_gate_b/ (gitignored media; manifests are kept).
+Outputs under testdata/vmaf_gate_b/. The directory is gitignored.
 Proves B-picture presence via ffprobe pict_type inspection (not encode flags alone).
 """
 from __future__ import annotations

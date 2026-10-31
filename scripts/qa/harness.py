@@ -68,8 +68,10 @@ def find_vvdec() -> Optional[str]:
 
 def find_vmaf_cli(root: Path) -> Optional[Path]:
     env = os.environ.get("VMAF_CLI")
+    prefix = os.environ.get("LIBVMAF_PREFIX")
     candidates = [
         Path(env) if env else None,
+        Path(prefix) / "bin" / "vmaf" if prefix else None,
         root / "deps" / "libvmaf-74f930d" / "bin" / "vmaf",
     ]
     for path in candidates:

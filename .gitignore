@@ -35,6 +35,8 @@ venv/
 .env.*
 *.pem
 credentials.json
+# Machine-specific learned-metric paths; config/learned_metrics.example.toml is tracked.
+/config/*.local.toml
 
 # Local logs / scratch
 *.log
@@ -53,6 +55,10 @@ reports/*.txt
 # Default install prefix is the checkout. These are install outputs, not source.
 /bin/
 /share/
+
+# Generated Gate B HEVC fixtures (scripts/gen_vmaf_hevc_fixture.py), including
+# the manifest, which records machine-local encoder paths.
+/testdata/
 
 # Media is not part of this source tree, except the demonstration clips.
 *.yuv
