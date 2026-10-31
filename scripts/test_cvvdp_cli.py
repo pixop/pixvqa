@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIXVQA = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
+# A developer's config/learned_metrics.local.toml must not fill in options under test.
+os.environ["PIXVQA_LEARNED_CONFIG"] = "none"
 
 
 def run(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -138,6 +140,7 @@ if os.path.basename(test) != "test_16x16_10b_420_2020_60fps.yuv":
     raise SystemExit(os.path.basename(test))
 if not os.path.samefile(ref, os.environ["RAW_REFERENCE"]) or not os.path.samefile(test, os.environ["RAW_TEST"]):
     raise SystemExit("symlink does not preserve the original file")
+print("[INFO] Running on device: " + os.environ.get("FAKE_LOGGED_DEVICE", value("--device")), file=sys.stderr)
 open(result, "w", encoding="utf-8").write("test, reference, cvvdp\\n%s, %s, 9.5\\n" % (test, ref))
 """,
                 encoding="utf-8",
@@ -156,6 +159,20 @@ open(result, "w", encoding="utf-8").write("test, reference, cvvdp\\n%s, %s, 9.5\
             if any(Path(tmp).glob("pixvqa-cvvdp-yuv-*")) or not reference.is_file() or reference.is_symlink():
                 raise SystemExit("temporary symlink leaked or the original was replaced")
             print("OK   yuv-dispatch-cleanup")
+            os.environ["FAKE_LOGGED_DEVICE"] = "cuda"
+            try:
+                run(
+                    str(reference), str(reconstructed), "pq", "standard_hdr_pq", 1, "cpu",
+                    str(Path(tmp) / "wrong-device.json"), str(script), 16, 16, 60, 1, defaulting_decode,
+                )
+            except AdapterError as exc:
+                if "cvvdp reported device 'cuda', not cpu" not in str(exc):
+                    raise
+            else:
+                raise SystemExit("a run on an unrequested device was accepted")
+            finally:
+                os.environ.pop("FAKE_LOGGED_DEVICE", None)
+            print("OK   cvvdp-device-mismatch-rejected")
             try:
                 run(
                     str(reference), str(reconstructed), "pq", "standard_hdr_pq", 1, "cpu",
@@ -186,24 +203,29 @@ def main() -> int:
     base = ["--metrics", "cvvdp", "-r", "reference.mkv", "-t", "distorted.mkv"]
     expect_fail("missing-interpretation", [*base, "--cvvdp-display", "standard_hdr_pq"],
                 "--cvvdp-interpretation")
-    expect_fail("invalid-interpretation", [*base, "--cvvdp-interpretation", "hlg",
+    expect_fail("invalid-interpretation", [*base, "--cvvdp-interpretation", "rec709",
                                             "--cvvdp-display", "standard_hdr_pq"],
-                "expects sdr or pq")
+                "expects sdr, pq, or hlg")
+    # Mixed runs validate native inputs before any backend starts.
     expect_fail("mixed-metrics", ["--metrics", "psnr,cvvdp", "-r", "r", "-t", "d",
                                    "--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq"],
-                "standalone")
+                "cannot open reference")
     expect_fail("mixed-metrics-repeated-native-first", ["--metrics", "psnr", "--metrics", "cvvdp",
                                                          "-r", "r", "-t", "d",
                                                          "--cvvdp-interpretation", "pq",
                                                          "--cvvdp-display", "standard_hdr_pq"],
-                "standalone")
+                "cannot open reference")
     expect_fail("mixed-metrics-repeated-cvvdp-first", ["--metrics", "cvvdp", "--metrics", "psnr",
                                                         "-r", "r", "-t", "d",
                                                         "--cvvdp-interpretation", "pq",
                                                         "--cvvdp-display", "standard_hdr_pq"],
-                "standalone")
-    expect_fail("qcs-incompatible", [*base, "--cvvdp-interpretation", "pq",
-                                      "--cvvdp-display", "standard_hdr_pq", "--qcs"],
+                "cannot open reference")
+    expect_fail("qcs-range-requires-qcs", [*base, "--cvvdp-interpretation", "pq",
+                                           "--cvvdp-display", "standard_hdr_pq",
+                                           "--qcs-range", "cvvdp=7:10"],
+                "--qcs-range requires --qcs")
+    expect_fail("native-option-incompatible", [*base, "--cvvdp-interpretation", "pq",
+                                                "--cvvdp-display", "standard_hdr_pq", "--threads", "2"],
                 "incompatible")
     expect_fail("options-without-cvvdp", ["--metrics", "psnr", "-r", "r", "-t", "d",
                                           "--cvvdp-display", "standard_hdr_pq"],

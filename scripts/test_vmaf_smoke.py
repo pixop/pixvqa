@@ -13,7 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PIXVQA = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
 VMAF_CLI = Path(
-    os.environ.get("VMAF_CLI", ROOT / "deps" / "libvmaf-74f930d" / "bin" / "vmaf")
+    os.environ.get("VMAF_CLI")
+    or Path(os.environ.get("LIBVMAF_PREFIX") or ROOT / "deps" / "libvmaf-74f930d") / "bin" / "vmaf"
 )
 MODEL_PATH = ROOT / "model" / "vmaf_v1.0.16_3d0h.json"
 # 320x240 is large enough for the 3d0h SpEED path; 176x144 is not.

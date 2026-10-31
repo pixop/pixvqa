@@ -38,7 +38,18 @@ DISPLAY_MODELS = {
         "contrast": 1000000,
         "E_ambient": 10,
     },
+    "standard_hdr_hlg": {
+        "interpretation": "hlg",
+        "colorspace": "BT.2020-HLG",
+        "resolution": [3840, 2160],
+        "viewing_distance_meters": 0.7472,
+        "diagonal_size_inches": 30,
+        "max_luminance": 1500,
+        "contrast": 1000000,
+        "E_ambient": 10,
+    },
 }
 
 SDR_DISPLAYS = ("standard_fhd", "standard_4k")
 PQ_DISPLAYS = ("standard_hdr_pq",)
+HLG_DISPLAYS = ("standard_hdr_hlg",)

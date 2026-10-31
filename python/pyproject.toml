@@ -5,8 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pixvqa-cvvdp"
 version = "0.1.0"
-description = "Optional subprocess adapter for ColorVideoVDP"
+description = "Optional subprocess adapters for external video-quality metrics"
 requires-python = ">=3.10"
 
 [tool.setuptools]
-packages = ["pixvqa_cvvdp"]
+packages = ["pixvqa_cvvdp", "pixvqa_cvqahdr"]
+py-modules = ["pixvqa_device"]

@@ -2,6 +2,7 @@
 """Regression checks for bundled HDR VMAF's model-specific color assumptions."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -84,15 +85,20 @@ def expect_fail(label: str, args: list[str], needle: str) -> None:
 
 def encode(ffmpeg: str, raw: Path, output: Path, *, trc: str, primaries: str,
            matrix: str, color_range: str) -> None:
-    color = []
-    for flag, value in (
-        ("-color_trc", trc),
-        ("-color_primaries", primaries),
-        ("-colorspace", matrix),
-        ("-color_range", color_range),
-    ):
-        if value:
-            color += [flag, value]
+    # FFmpeg 8 takes transfer and primaries from the frames, so output options
+    # alone leave them unset; an output matrix or range that differs from the
+    # frames makes the auto-inserted scaler convert the samples. Tag the frames
+    # with setparams and request the same values from the encoder.
+    tags = [(key, flag, value) for key, flag, value in (
+        ("color_trc", "-color_trc", trc),
+        ("color_primaries", "-color_primaries", primaries),
+        ("colorspace", "-colorspace", matrix),
+        ("range", "-color_range", color_range),
+    ) if value]
+    params = [f"{key}={value}" for key, _, value in tags]
+    color = ["-vf", "setparams=" + ":".join(params)] if params else []
+    for _, flag, value in tags:
+        color += [flag, value]
     done = subprocess.run(
         [
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
@@ -105,6 +111,25 @@ def encode(ffmpeg: str, raw: Path, output: Path, *, trc: str, primaries: str,
     )
     if done.returncode != 0:
         fail(f"ffmpeg encode failed:\n{done.stderr}")
+    decoded = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(output), "-f", "rawvideo", "-pix_fmt", "yuv420p10le", "-"],
+        capture_output=True,
+    )
+    if decoded.returncode != 0 or decoded.stdout != raw.read_bytes()[: N * W * H * 3]:
+        fail(f"fixture {output.name} does not decode to the raw source samples")
+    ffprobe = shutil.which("ffprobe", path=str(Path(ffmpeg).parent)) or shutil.which("ffprobe")
+    if not ffprobe or not params:
+        return
+    probe = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=color_transfer,color_primaries,color_space,color_range", "-of", "json", str(output)],
+        capture_output=True, text=True,
+    )
+    stream = (json.loads(probe.stdout or "{}").get("streams") or [{}])[0]
+    for key, value in (("color_transfer", trc), ("color_primaries", primaries),
+                       ("color_space", matrix), ("color_range", color_range)):
+        if value and stream.get(key) != value:
+            fail(f"fixture {output.name} lost {key}={value}: ffprobe reports {stream.get(key)!r}")
 
 
 def compressed_checks(ref: Path, dist: Path, directory: Path) -> None:

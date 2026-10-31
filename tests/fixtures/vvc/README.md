@@ -37,7 +37,21 @@ redistributable, properly licensed stream and pin its checksum and known-good
 reference YUV hash.
 
 A missing `bbb_360p.vvc` is a **failure**, not a skip. CI does not download it.
-`scripts/ci/prepare_vvc_fixture.sh` can build VVenC and VVdeC and write a small
-synthetic stream under `reports/qa/vvc-fixture/`. Pass that stream with
-`PIXVQA_VVC_FIXTURE`, `PIXVQA_VVC_SIZE`, and `PIXVQA_VVC_REFERENCE`. The
-synthetic path does not replace the SHA-256 check on the default fixture.
+`scripts/ci/prepare_vvc_fixture.sh` builds VVenC 1.14.0 and VVdeC 3.2.1, writes
+a deterministic 176x144 10-bit source, encodes four frames with `--threads 1`,
+and decodes that bitstream with VVdeC. The products land in
+`reports/qa/vvc-fixture/`, which is not committed. Load them with:
+
+```bash
+bash scripts/ci/prepare_vvc_fixture.sh
+set -a
+source reports/qa/vvc-fixture/fixture.env
+set +a
+```
+
+`fixture.env` sets `PIXVQA_VVC_FIXTURE`, `PIXVQA_VVC_SIZE` (`176x144`), and
+`PIXVQA_VVC_REFERENCE`. The test compares PixVQA with that VVdeC
+reconstruction. It does not pin the synthetic bitstream hash, and this path
+does not replace the SHA-256 check on `bbb_360p.vvc`. If generation fails, or
+neither the default fixture nor these three variables is present, the VVC case
+fails. It is not skipped.

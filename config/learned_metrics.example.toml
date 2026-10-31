@@ -1,0 +1,37 @@
+# PixVQA learned-metric configuration (cvvdp and cvqa-hdr-nr).
+#
+# Copy to config/learned_metrics.local.toml (ignored by Git) and edit the paths.
+# PixVQA reads it only when cvvdp or cvqa-hdr-nr is selected. Lookup order:
+#   1. --learned-config PATH
+#   2. PIXVQA_LEARNED_CONFIG=PATH  (PIXVQA_LEARNED_CONFIG=none disables lookup)
+#   3. config/learned_metrics.local.toml in the checkout that holds the
+#      executable (bin/pixvqa or build/<kind>/pixvqa)
+#
+# Precedence for every value: command-line option, then environment variable
+# (PIXVQA_CVVDP_PYTHON, PIXVQA_CVQAHDR_PYTHON), then the metric section, then
+# [learned], then the built-in default.
+#
+# Values are quoted strings. "~/" expands to $HOME. Relative paths are relative
+# to this file's directory. A value without "/" is a command looked up on PATH.
+# See docs/LEARNED_METRICS_CONFIG.md.
+
+[learned]
+# One interpreter for both metrics (docs/LEARNED_ENVIRONMENT.md).
+python = "~/pixvqa-learned-env/bin/python"
+# Directory holding the pixvqa_cvvdp and pixvqa_cvqahdr adapter packages.
+# Appended to PYTHONPATH, so an explicit PYTHONPATH still wins.
+adapter_path = "../python"
+# Prepended to PATH for the backends. CVVDP decodes with ffmpeg and ffprobe.
+path = "~/bin"
+
+[cvvdp]
+# Optional. Default: the cvvdp entry point beside the interpreter, then PATH.
+# executable = "~/pixvqa-learned-env/bin/cvvdp"
+# Optional per-metric interpreter; overrides [learned] python.
+# python = "~/pixvqa-learned-env/bin/python"
+
+[cvqa-hdr-nr]
+repository = "~/src/CompressedVQA-HDR"
+checkpoint = "~/models/compressedvqa-hdr/NR_HDR_VQA.pth"
+profile = "~/models/compressedvqa-hdr/NR_HDR_VQA.npy"
+# python = "~/pixvqa-learned-env/bin/python"

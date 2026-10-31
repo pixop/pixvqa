@@ -185,6 +185,16 @@ struct Options {
   double qcs_pu21_psnr_lo = 30.0, qcs_pu21_psnr_hi = 50.0;
   double qcs_pu21_ssim_lo = 0.8, qcs_pu21_ssim_hi = 1.0;
   double qcs_pu21_msssim_lo = 0.8, qcs_pu21_msssim_hi = 1.0;
+  // Learned metrics: QCS integration interval only. Predictions are never
+  // clamped or rescaled. CVVDP integrates its per-frame JOD-equivalent
+  // sequence, NR its calibrated sampled frames.
+  double qcs_cvvdp_lo = 0.0, qcs_cvvdp_hi = 10.0;
+  double qcs_cvqahdr_nr_lo = 0.0, qcs_cvqahdr_nr_hi = 10.0;
+  // --preset hdr selects every metric when --metrics is omitted and applies
+  // HDR10/PQ processing. See docs/CLI_USAGE.md.
+  bool preset_hdr = false;
+  // --metrics pq, hlg, or sdr: the recommended metrics plus that processing.
+  std::string metric_group;
   XpsnrBackend xpsnr_backend = XpsnrBackend::Cpu;
   bool fps_set = false;
   int fps_num = 0;

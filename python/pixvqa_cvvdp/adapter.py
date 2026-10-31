@@ -9,10 +9,14 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
+from pixvqa_device import (
+    DEVICE_CHOICES, DeviceError, auto_notice, device_record, peak_rss_bytes, resolve_device,
+)
 from pixvqa_cvvdp import (
     DISPLAY_MODELS,
     PINNED_COMMIT,
@@ -20,6 +24,7 @@ from pixvqa_cvvdp import (
     PINNED_VERSION,
     PINNED_TORCH_VERSION,
     PINNED_TORCHVISION_VERSION,
+    HLG_DISPLAYS,
     PQ_DISPLAYS,
     SDR_DISPLAYS,
 )
@@ -29,6 +34,70 @@ FFPROBE = os.environ.get("PIXVQA_CVVDP_FFPROBE", "ffprobe")
 
 class AdapterError(RuntimeError):
     """A preflight or official-CVVDP failure."""
+
+
+class PreflightError(AdapterError):
+    """Inputs, display, or the cvvdp executable were rejected before scoring started."""
+
+
+def frames_evaluated(test_meta: dict, nframes: int) -> int | None:
+    """Frames the official run covers: --nframes caps the test stream length."""
+    available = test_meta.get("nb_frames")
+    available = int(available) if isinstance(available, str) and available.isdigit() else None
+    if nframes > 0:
+        return nframes if available is None else min(nframes, available)
+    return available
+
+
+def resolve_cvvdp_binary(cvvdp_bin: str | None) -> str:
+    if cvvdp_bin:
+        if not (os.path.isfile(cvvdp_bin) and os.access(cvvdp_bin, os.X_OK)):
+            raise PreflightError(f"could not execute cvvdp ({cvvdp_bin}): not an executable file")
+        return cvvdp_bin
+    # The entry point installed with this interpreter matches its pycvvdp and torch.
+    for name in ("cvvdp.exe", "cvvdp") if os.name == "nt" else ("cvvdp",):
+        beside = Path(sys.executable).parent / name
+        if beside.is_file() and os.access(beside, os.X_OK):
+            return str(beside)
+    binary = shutil.which("cvvdp")
+    if not binary:
+        raise PreflightError("cvvdp executable not found; see docs/COLORVIDEOVDP.md")
+    return binary
+
+
+def check_device(requested: str, report_auto_fallback: bool) -> str:
+    """Resolve auto here: upstream get_best_device turns an unavailable cuda into cpu."""
+    if requested not in DEVICE_CHOICES:
+        raise PreflightError(f"unsupported device {requested!r}; use auto, cpu, or cuda")
+    if requested == "cpu":
+        return "cpu"
+    try:
+        import torch
+    except Exception as exc:
+        raise PreflightError(f"CVVDP needs torch in this interpreter: {exc}") from exc
+    try:
+        effective = resolve_device(requested, torch)
+    except DeviceError as exc:
+        raise PreflightError(str(exc)) from exc
+    notice = auto_notice(requested, effective)
+    if notice and report_auto_fallback:
+        print(f"pixvqa-cvvdp: {notice}", file=sys.stderr)
+    return effective
+
+
+def logged_device(stderr: str) -> str | None:
+    """Official run_cvvdp logs "[INFO] Running on device: X" unless --quiet."""
+    found = re.findall(r"Running on device: (\S+)", stderr)
+    return found[-1] if found else None
+
+
+def check_temporal_runtime() -> None:
+    """The frame sequence reuses pycvvdp's pooling in this interpreter."""
+    try:
+        import pycvvdp  # noqa: F401
+        import torch  # noqa: F401
+    except Exception as exc:
+        raise PreflightError(f"CVVDP QCS needs pycvvdp and torch in this interpreter: {exc}") from exc
 
 
 def installed_distribution(*names: str) -> dict:
@@ -118,15 +187,22 @@ def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None
                     f"{label} is not explicitly BT.2020 PQ; PQ is not inferred from bit depth, "
                     "resolution, or filename"
                 )
+        elif interpretation == "hlg":
+            if (meta["color_transfer"] != "arib-std-b67" or meta["color_primaries"] != "bt2020"
+                    or meta["color_space"] != "bt2020nc" or meta["color_range"] not in ("tv", "mpeg")):
+                raise AdapterError(
+                    f"{label} is not explicitly limited-range BT.2020 HLG "
+                    "(arib-std-b67, bt2020, bt2020nc, tv); HLG is not inferred from PQ or SDR tags"
+                )
         elif interpretation == "sdr":
             if meta["color_transfer"] not in ("bt709", "iec61966-2-1"):
                 raise AdapterError(f"{label} is not explicitly SDR (bt709 or iec61966-2-1)")
         else:
-            raise AdapterError(f"unsupported interpretation {interpretation!r}; use sdr or pq")
+            raise AdapterError(f"unsupported interpretation {interpretation!r}; use sdr, pq, or hlg")
 
 
 def check_display(interpretation: str, display: str) -> dict:
-    allowed = PQ_DISPLAYS if interpretation == "pq" else SDR_DISPLAYS
+    allowed = {"pq": PQ_DISPLAYS, "hlg": HLG_DISPLAYS}.get(interpretation, SDR_DISPLAYS)
     if display not in allowed:
         raise AdapterError(
             f"display {display!r} is not allowed for {interpretation}; allowed: {', '.join(allowed)}"
@@ -290,13 +366,24 @@ class TemporarySymlinkDir:
 
     def symlink(self, source: str, name: str) -> str:
         destination = os.path.join(self.path, name)
-        os.symlink(os.path.abspath(source), destination)
+        try:
+            os.symlink(os.path.abspath(source), destination)
+        except OSError as symlink_error:
+            # Windows refuses symlinks without Developer Mode; a hard link on
+            # the same volume needs no privilege. The YUV is never copied.
+            try:
+                os.link(os.path.abspath(source), destination)
+            except OSError as link_error:
+                raise AdapterError(
+                    f"could not link {source} under {self.path} (symlink: {symlink_error}; "
+                    f"hard link: {link_error}); set TMPDIR/TEMP to a directory on the same volume"
+                ) from link_error
         self.links.append(destination)
         return destination
 
     def cleanup(self) -> None:
         for link in self.links:
-            if os.path.islink(link):
+            if os.path.lexists(link):
                 os.unlink(link)
         if os.path.isdir(self.path):
             os.rmdir(self.path)
@@ -315,11 +402,16 @@ def parse_result_csv(path: Path) -> float:
     return float(rows[1][header.index("cvvdp")].strip())
 
 
-def raw_metadata(path: str, width: int, height: int, frames: int, num: int, den: int) -> dict:
+def raw_metadata(path: str, width: int, height: int, frames: int, num: int, den: int,
+                 interpretation: str) -> dict:
+    # The YUV filename carries the matrix (2020). The EOTF is the display model's:
+    # standard_hdr_pq applies PQ, standard_hdr_hlg applies HLG. ffprobe spells
+    # limited range "tv"; the raw reader expands limited-range codes.
     return {
         "path": path, "codec": "rawvideo", "pix_fmt": "yuv420p10le", "width": width, "height": height,
-        "color_transfer": "smpte2084", "color_primaries": "bt2020", "color_space": "bt2020nc",
-        "color_range": "limited", "nb_frames": str(frames), "r_frame_rate": f"{num}/{den}",
+        "color_transfer": "arib-std-b67" if interpretation == "hlg" else "smpte2084",
+        "color_primaries": "bt2020", "color_space": "bt2020nc",
+        "color_range": "tv", "nb_frames": str(frames), "r_frame_rate": f"{num}/{den}",
         "storage": "little-endian uint16, 10-bit codes in the low 10 bits",
     }
 
@@ -327,10 +419,40 @@ def raw_metadata(path: str, width: int, height: int, frames: int, num: int, den:
 def run(ref: str, test: str, interpretation: str, display: str, nframes: int, device: str,
         output_json: str, cvvdp_bin: str | None = None, raw_width: int | None = None,
         raw_height: int | None = None, raw_fps_num: int | None = None,
-        raw_fps_den: int | None = None, decode_video_props=None) -> dict:
+        raw_fps_den: int | None = None, decode_video_props=None, check_only: bool = False,
+        temporal: bool = False, gpu_mem_gb: float | None = None) -> dict:
+    prepared = None
+    try:
+        if gpu_mem_gb is not None and gpu_mem_gb <= 0:
+            raise PreflightError("--gpu-mem expects a positive number of GB")
+        # Preflight is intentionally quiet: execution emits the one auto->CPU
+        # notice for this backend, after both preflights have passed.
+        effective = check_device(device, report_auto_fallback=not check_only)
+        try:
+            prepared = prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_width,
+                                      raw_height, raw_fps_num, raw_fps_den, decode_video_props)
+        except PreflightError:
+            raise
+        except AdapterError as exc:
+            raise PreflightError(str(exc)) from exc
+        if check_only:
+            if temporal:
+                check_temporal_runtime()
+            return {"check": "ok", "frames_evaluated": frames_evaluated(prepared["test_meta"], nframes),
+                    "device": effective}
+        prepared["device_requested"] = device
+        prepared["gpu_mem_gb"] = gpu_mem_gb
+        return execute(prepared, interpretation, display, nframes, effective, output_json, temporal)
+    finally:
+        if prepared is not None and prepared["links"] is not None:
+            prepared["links"].cleanup()
+
+
+def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_width, raw_height,
+                   raw_fps_num, raw_fps_den, decode_video_props) -> dict:
     raw_values = (raw_width, raw_height, raw_fps_num, raw_fps_den)
     if any(value is not None for value in raw_values) and any(value is None for value in raw_values):
-        raise AdapterError("raw YUV width, height, and fps must be supplied together")
+        raise PreflightError("raw YUV width, height, and fps must be supplied together")
     links = None
     raw_record = None
     try:
@@ -338,8 +460,8 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             ref_path, test_path = ref, test
             ref_meta, test_meta = probe_video(ref), probe_video(test)
         else:
-            if interpretation != "pq":
-                raise AdapterError(
+            if interpretation not in ("pq", "hlg"):
+                raise PreflightError(
                     "raw YUV SDR is unsupported; the official raw reader applies BT.601 coefficients "
                     "on its BT.709 path"
                 )
@@ -355,11 +477,13 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             test_path = links.symlink(test, yuv_metadata_name("test", raw_width, raw_height, encoded_fps))
             ref_verified = verify_yuv_filename(ref_path, expected, decode_video_props)
             test_verified = verify_yuv_filename(test_path, expected, decode_video_props)
-            ref_meta = raw_metadata(ref, raw_width, raw_height, ref_frames, raw_fps_num, raw_fps_den)
-            test_meta = raw_metadata(test, raw_width, raw_height, test_frames, raw_fps_num, raw_fps_den)
+            ref_meta = raw_metadata(ref, raw_width, raw_height, ref_frames, raw_fps_num, raw_fps_den,
+                                    interpretation)
+            test_meta = raw_metadata(test, raw_width, raw_height, test_frames, raw_fps_num, raw_fps_den,
+                                     interpretation)
             raw_record = {
                 "pix_fmt": "yuv420p10le", "range": "limited", "matrix": "bt2020nc",
-                "transfer": "pq", "width": raw_width, "height": raw_height,
+                "transfer": interpretation, "width": raw_width, "height": raw_height,
                 "fps_requested": raw_fps_num / raw_fps_den, "fps_encoded": encoded_fps,
                 "storage": "little-endian uint16 with 10-bit codes in the low bits (0..1023)",
                 "assumption": "Official YUVReader expands limited-range codes; full-range samples are not converted.",
@@ -370,45 +494,109 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             }
         check_pair(ref_meta, test_meta, interpretation, nframes)
         display_model = check_display(interpretation, display)
-        binary = cvvdp_bin or shutil.which("cvvdp")
-        if not binary:
-            raise AdapterError("cvvdp executable not found; see docs/COLORVIDEOVDP.md")
-        out = Path(output_json)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        csv_path = out.with_suffix(".csv")
-        cmd = [
-            binary, "--test", test_path, "--ref", ref_path, "--display", display, "--device", device,
-            "--metric", "cvvdp", "--temp-padding", "replicate", "--result", str(csv_path),
-        ]
-        if nframes > 0:
-            cmd.extend(["--nframes", str(nframes)])
-        t0 = time.perf_counter()
-        try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        except OSError as exc:
-            raise AdapterError(f"could not execute cvvdp ({binary}): {exc}") from exc
-        runtime = runtime_metadata()
-        record = {
-            "adapter": "pixvqa_cvvdp", "upstream": PINNED_UPSTREAM, "upstream_commit": PINNED_COMMIT,
-            "upstream_version_expected": PINNED_VERSION, "runtime": runtime, "cvvdp_executable": binary,
-            "command": cmd, "interpretation": interpretation, "display": display,
-            "display_model": display_model, "device": device, "nframes_requested": nframes,
-            "reference": ref_meta, "test": test_meta,
-            "exit_code": proc.returncode, "elapsed_seconds": time.perf_counter() - t0,
-            "stdout": proc.stdout, "stderr": proc.stderr,
-        }
-        if raw_record is not None:
-            record["raw_yuv"] = raw_record
-        if proc.returncode != 0:
-            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
-            raise AdapterError(f"cvvdp exited {proc.returncode}; see {out}")
-        if not csv_path.exists():
-            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
-            raise AdapterError(f"cvvdp wrote no result CSV; see {out}")
-        record["jod"] = parse_result_csv(csv_path)
-        record["result_csv"] = str(csv_path)
-        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
-        return record
-    finally:
+        binary = resolve_cvvdp_binary(cvvdp_bin)
+    except BaseException:
         if links is not None:
             links.cleanup()
+        raise
+    return {
+        "links": links, "ref_path": ref_path, "test_path": test_path, "ref_meta": ref_meta,
+        "test_meta": test_meta, "raw_record": raw_record, "display_model": display_model,
+        "binary": binary,
+    }
+
+
+def execute(prepared: dict, interpretation: str, display: str, nframes: int, device: str,
+            output_json: str, temporal: bool = False) -> dict:
+    binary = prepared["binary"]
+    out = Path(output_json)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    csv_path = out.with_suffix(".csv")
+    cmd = [
+        binary, "--test", prepared["test_path"], "--ref", prepared["ref_path"], "--display", display,
+        "--device", device, "--metric", "cvvdp", "--temp-padding", "replicate", "--result", str(csv_path),
+    ]
+    if prepared.get("gpu_mem_gb") is not None:
+        cmd.extend(["--gpu-mem", repr(prepared["gpu_mem_gb"])])
+    if nframes > 0:
+        cmd.extend(["--nframes", str(nframes)])
+    features_dir = None
+    if temporal:
+        # --features only serializes stats['Q_per_ch'] after the JOD is computed.
+        features_dir = Path(tempfile.mkdtemp(prefix="pixvqa-cvvdp-features-"))
+        cmd.extend(["--features", "--output-dir", str(features_dir)])
+    try:
+        return execute_command(prepared, cmd, csv_path, out, interpretation, display, nframes, device,
+                               features_dir)
+    finally:
+        if features_dir is not None:
+            shutil.rmtree(features_dir, ignore_errors=True)
+
+
+def execute_command(prepared: dict, cmd: list, csv_path: Path, out: Path, interpretation: str,
+                    display: str, nframes: int, device: str, features_dir: Path | None) -> dict:
+    try:
+        import torch
+    except ImportError:
+        torch = None
+    binary = prepared["binary"]
+    t0 = time.perf_counter()
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except OSError as exc:
+        raise AdapterError(f"could not execute cvvdp ({binary}): {exc}") from exc
+    elapsed = time.perf_counter() - t0
+    runtime = runtime_metadata()
+    used = logged_device(proc.stderr)
+    record = {
+        "adapter": "pixvqa_cvvdp", "upstream": PINNED_UPSTREAM, "upstream_commit": PINNED_COMMIT,
+        "upstream_version_expected": PINNED_VERSION, "runtime": runtime, "cvvdp_executable": binary,
+        "command": cmd, "interpretation": interpretation, "display": display,
+        "display_model": prepared["display_model"], "device": device,
+        "device_requested": prepared.get("device_requested", device),
+        # Upstream defines --gpu-mem as a decimal-Gigabyte cap. Null means its
+        # normal free-memory heuristic was deliberately left unchanged.
+        "gpu_mem_gb": prepared.get("gpu_mem_gb"),
+        "device_logged_by_cvvdp": used,
+        "device_info": device_record(prepared.get("device_requested", device), device, torch),
+        "nframes_requested": nframes,
+        "frames_evaluated": frames_evaluated(prepared["test_meta"], nframes),
+        "reference": prepared["ref_meta"], "test": prepared["test_meta"],
+        "exit_code": proc.returncode, "elapsed_seconds": elapsed,
+        "performance": {
+            "official_cli_seconds": elapsed,
+            "peak_child_rss_bytes": peak_rss_bytes(children=True),
+            "peak_cuda_allocated_bytes": None,
+            "note": "The official CLI runs in a child process; its CUDA allocator peak is not visible here.",
+        },
+        "stdout": proc.stdout, "stderr": proc.stderr,
+    }
+    if prepared["raw_record"] is not None:
+        record["raw_yuv"] = prepared["raw_record"]
+    if proc.returncode != 0:
+        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        raise AdapterError(f"cvvdp exited {proc.returncode}; see {out}")
+    if used is None or used.split(":", 1)[0] != device:
+        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        raise AdapterError(f"cvvdp reported device {used!r}, not {device}; see {out}")
+    if not csv_path.exists():
+        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        raise AdapterError(f"cvvdp wrote no result CSV; see {out}")
+    record["jod"] = parse_result_csv(csv_path)
+    record["result_csv"] = str(csv_path)
+    if features_dir is not None:
+        from pixvqa_cvvdp.temporal import features_path, frame_sequence
+
+        features = features_path(features_dir, prepared["test_path"])
+        if not features.is_file():
+            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            raise AdapterError(f"cvvdp wrote no --features file {features}; see {out}")
+        try:
+            t_temporal = time.perf_counter()
+            record["temporal"] = frame_sequence(features, display, device, record["jod"])
+            record["performance"]["temporal_pooling_seconds"] = time.perf_counter() - t_temporal
+        except Exception as exc:
+            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            raise AdapterError(f"could not derive the CVVDP frame sequence: {exc}") from exc
+    out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return record

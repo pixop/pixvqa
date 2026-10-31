@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Run --help, --version, and every pixvqa example published in README.md."""
+"""Run --help, --version, and the published pixvqa examples.
+
+README.md and docs/CLI_USAGE.md are both read. `pixvqa` and a path whose final
+component is pixvqa, including `./bin/pixvqa`, are the same command. Installer
+scripts and examples that name files this harness does not create are not
+counted. At least six self-contained examples must remain.
+"""
 from __future__ import annotations
 
 import os
@@ -17,7 +23,21 @@ CPU = ROOT / "build" / "cpu" / "pixvqa"
 CUDA = ROOT / "build" / "cuda" / "pixvqa"
 SW = ROOT / "build" / "swdec" / "pixvqa"
 FULL = ROOT / "build" / "full" / "pixvqa"
-README = (ROOT / "README.md").read_text(encoding="utf-8")
+DOCS = (ROOT / "README.md", ROOT / "docs" / "CLI_USAGE.md")
+# A command token: bare pixvqa, ./bin/pixvqa, or any path ending in /pixvqa.
+INVOCATION = re.compile(r"(^|\n)([ \t]*)((?:\.\./|\./|/)?(?:[\w.-]+/)*)pixvqa\b")
+OUTPUT_FLAGS = {"--cvvdp-output-json", "--cvqahdr-output-json"}
+# Inputs the fixture builder below actually writes. An example that names
+# anything else needs a private checkout, checkpoint, or clip.
+FIXTURES = {
+    "reference.yuv", "distorted.yuv", "reference10.yuv", "distorted10.yuv",
+    "reference.mp4", "distorted.mp4", "reference10.hevc.mp4",
+    "samples/ref_hevc.mp4", "samples/dist_hevc.mp4",
+    "samples/ref_av1.mp4", "samples/dist_av1.mp4",
+    "samples/ref_vvc.mp4", "samples/dist_vvc.mp4",
+    "model/vmaf_v1.0.16_3d0h.json",
+    "model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json",
+}
 FAILS = 0
 
 
@@ -135,25 +155,51 @@ def executable_for(block: str) -> Path:
 
 
 def with_executable(block: str, binary: Path) -> str:
-    """Replace the bare pixvqa command with an absolute path. Do not rely on PATH."""
+    """Replace every pixvqa invocation with an absolute path. Do not rely on PATH."""
     quoted = shlex.quote(str(binary))
-    rewritten, count = re.subn(r"(^|\n)(\s*)pixvqa\b", rf"\1\2{quoted}", block, count=1)
-    if count != 1:
-        raise RuntimeError(f"example does not start with pixvqa:\n{block}")
+    rewritten, count = INVOCATION.subn(lambda m: f"{m.group(1)}{m.group(2)}{quoted}", block)
+    if count < 1:
+        raise RuntimeError(f"example does not invoke pixvqa:\n{block}")
     return rewritten
 
 
+def input_paths(text: str) -> list[str]:
+    tokens = text.split()
+    found = []
+    skip = False
+    for token in tokens:
+        if skip:
+            skip = False
+            continue
+        if token in OUTPUT_FLAGS:
+            skip = True
+            continue
+        if re.search(r"\.(?:mp4|yuv|mkv|json|pth|npy)$", token):
+            found.append(token)
+    return found
+
+
 def examples() -> list[str]:
-    """Bare `pixvqa` examples. Installer snippets use ./bin/pixvqa and are not run here."""
-    blocks = re.findall(r"```bash\n(.*?)```", README, flags=re.S)
+    """Self-contained published commands from the README and the CLI guide.
+
+    README.md has three ./bin/pixvqa demonstrations. The command catalog is
+    docs/CLI_USAGE.md, which says `pixvqa` means `./bin/pixvqa` or PATH.
+    Installer scripts and examples that name external assets stay out: this
+    harness cannot create a private model path or a clip it does not generate.
+    """
     chosen = []
-    for raw in blocks:
-        text = raw.strip()
-        if "bash " in text or text.startswith("export"):
-            continue
-        if not re.match(r"pixvqa\b", text):
-            continue
-        chosen.append(text)
+    for path in DOCS:
+        text = path.read_text(encoding="utf-8")
+        for raw in re.findall(r"```bash\n(.*?)```", text, flags=re.S):
+            block = raw.strip()
+            if not block or "bash " in block or block.startswith("export") or block.startswith("git "):
+                continue
+            if INVOCATION.match(block) is None:
+                continue
+            paths = input_paths(block)
+            if not paths or any(item not in FIXTURES for item in paths):
+                continue
+            chosen.append(block)
     return chosen
 
 
@@ -198,11 +244,19 @@ def main() -> int:
         write_yuv(td / "caller10b.yuv", 320, 240, 10, 2, 40)
         if ffmpeg_bin and Path(ffmpeg_bin).is_file():
             (td / "samples").mkdir()
+            # The README CVVDP example treats reference.mp4 as BT.2020 PQ.
+            # FFmpeg 8 keeps transfer and primaries only when the frames carry them.
             for src, dst, pix, size, codec, extra in (
                 ("reference.yuv", "reference.mp4", "yuv420p", "1920x1080", "libx264",
-                 ["-preset", "veryfast", "-qp", "18"]),
+                 ["-vf", "setparams=color_trc=smpte2084:color_primaries=bt2020:colorspace=bt2020nc:range=tv",
+                  "-preset", "veryfast", "-qp", "18",
+                  "-color_primaries", "bt2020", "-color_trc", "smpte2084",
+                  "-colorspace", "bt2020nc", "-color_range", "tv"]),
                 ("distorted.yuv", "distorted.mp4", "yuv420p", "1920x1080", "libx264",
-                 ["-preset", "veryfast", "-qp", "28"]),
+                 ["-vf", "setparams=color_trc=smpte2084:color_primaries=bt2020:colorspace=bt2020nc:range=tv",
+                  "-preset", "veryfast", "-qp", "28",
+                  "-color_primaries", "bt2020", "-color_trc", "smpte2084",
+                  "-colorspace", "bt2020nc", "-color_range", "tv"]),
                 ("reference10.yuv", "reference10.hevc.mp4", "yuv420p10le", "1920x1080", "libx265",
                  ["-x265-params", "lossless=1", "-tag:v", "hvc1"]),
                 ("caller10.yuv", "samples/ref_hevc.mp4", "yuv420p10le", "320x240", "libx265",

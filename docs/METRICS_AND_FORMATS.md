@@ -10,6 +10,8 @@
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
+| [`cvvdp`](COLORVIDEOVDP.md) | ColorVideoVDP JOD, optional external Python backend. Full-reference |
+| [`cvqa-hdr-nr`](COMPRESSEDVQA_HDR.md) | CompressedVQA-HDR NR, optional external Python backend. No-reference |
 | [`--qcs`](QCS.md) | Quality Consistency Score (QCS): temporal quality reliability descriptor derived from per-frame VQA scores |
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
@@ -31,6 +33,8 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 | PU21-PSNR | ❌ | ✅ | ✅ |
 | PU21-SSIM | ❌ | ✅ | ✅ |
 | PU21-MS-SSIM | ❌ | ✅ | ✅ |
+| CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
 
 **Legend:**
 
@@ -42,7 +46,20 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
 - SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- QCS can be applied to any supported metric using `--qcs`.
+- QCS can be applied to any metric using `--qcs`. CVVDP QCS integrates a per-frame JOD-equivalent sequence taken from the official full-video pass. CompressedVQA-HDR NR QCS uses about one sampled frame per second. Both default to [0, 10], which is used only for QCS and never clamps the reported scores.
+- `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select a fixed set per transfer and fill its colorimetry and display. The set is not the ✅ column: PQ and HLG also include PSNR, XPSNR, SSIM, and MS-SSIM, which stay ⚠️ for HDR perceptual assessment. CVVDP HLG uses the upstream `standard_hdr_hlg` display. CompressedVQA-HDR NR is included for SDR and PQ and excluded for HLG. See [metric groups](CLI_USAGE.md#metric-groups).
+
+## Metric Capabilities
+
+All metrics can be mixed in one `--metrics` list. PixVQA checks every metric's requirements before running any metric.
+
+| Metric | Reference (`-r`) | Raw YUV | Compressed video | `--frames` | QCS | Runs in |
+|---|---|---|---|---|---|---|
+| Native metrics | Required | ✅ | FFmpeg builds (`make swdec`, `make full`) | ✅ | Per frame, default ranges | PixVQA |
+| `cvvdp` | Required | YUV420p10le PQ or HLG, both inputs | ✅ (both inputs) | ✅ | Per-frame JOD-equivalent, default [0, 10] | Python adapter |
+| `cvqa-hdr-nr` | Not used; ignored when it is the only metric | ❌ | ✅ | ❌ | Sampled frames, default [0, 10] | Python adapter |
+
+The `make cpu` and `make cuda` builds have no FFmpeg decoder, so native metrics there accept raw YUV only. Compressed input to a native metric on that build fails with a clear error before any metric runs. `cvvdp` and `cvqa-hdr-nr` decode in their own Python environments and work on compressed video with any build.
 
 ## Supported Video Formats
 
