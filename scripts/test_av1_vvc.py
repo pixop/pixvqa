@@ -123,7 +123,7 @@ def expect_match(label: str, binary: Path, reference: Path, compressed: Path, fm
 
 
 def pu21_value(stdout: str) -> float | None:
-    match = re.search(r"\[ PU21-PSNR:([0-9.]+) \]", stdout)
+    match = re.search(r"\[ PU21-PSNR {5}r:[0-9.]+ g:[0-9.]+ b:[0-9.]+ avg:([0-9.]+) \]", stdout)
     if not match:
         return None
     return float(match.group(1))

@@ -11,9 +11,15 @@ namespace pixvqa {
 // Coefficients: gfxdisp/pu21 matlab/pu21_encoder.m. See licenses/PU21_BSD.txt.
 double pu21_encode(double luminance_cdm2);
 
+// 10 log10(256^2 / mse), or +inf when mse is 0.
+double pu21_psnr_from_mse(double mse);
+
 struct Pu21FrameScore {
   double psnr = 0;  // +inf when the RGB mean square error is 0
-  double mse = 0;
+  double mse = 0;   // pooled over R, G, and B; psnr is derived from this value only
+  // Per-component diagnostics. They do not feed psnr or mse.
+  double psnr_r = 0, psnr_g = 0, psnr_b = 0;
+  double mse_r = 0, mse_g = 0, mse_b = 0;
   double ssim = 0;
   double msssim = 0;
   bool clamped = false;

@@ -298,7 +298,7 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--metrics` | Comma-separated metric names. Native, `cvvdp`, and `cvqa-hdr-nr` can be mixed; repeated options accumulate. `all` selects every metric. `sdr`, `pq`, and `hlg` are [metric groups](#metric-groups) |
 | `--preset hdr` | HDR10/PQ master run. See [HDR master command](#hdr-master-command) |
 | `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
-| `--metric-device`, `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. The two spellings are aliases and must agree when both are given. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
+| `--metric-device`, `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. The two spellings are aliases and must agree when both are given. `auto` runs each native metric on CUDA when the build, a visible device, and the input allow it, else on the CPU; the execution summary shows the device and any fallback reason. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. VMAF always uses CPU libvmaf. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
 | `--threads` | `auto` or a positive integer. Default `auto` |
 | `-s WxH` | Luma size. Required for raw YUV. Checked when set on compressed video |
 | `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10`. Required for raw YUV |

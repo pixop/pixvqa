@@ -295,6 +295,7 @@ __global__ void encode_kernel(const uint16_t* ry, const uint16_t* ru, const uint
                               double* ydist, double* partials, int* clamped) {
   const int n = w * h;
   double local = 0.0;
+  double local_r = 0.0, local_g = 0.0, local_b = 0.0;
   int local_bad = 0;
   for (int i = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x); i < n;
        i += static_cast<int>(blockDim.x * gridDim.x)) {
@@ -328,6 +329,11 @@ __global__ void encode_kernel(const uint16_t* ry, const uint16_t* ru, const uint
       const double dgg = rg - dg;
       const double dbb = rb - db;
       local += drr * drr + dgg * dgg + dbb * dbb;
+      // __dmul_rn is never fused or shared with the pooled sum above, so adding
+      // these terms cannot change how that sum is contracted.
+      local_r += __dmul_rn(drr, drr);
+      local_g += __dmul_rn(dgg, dgg);
+      local_b += __dmul_rn(dbb, dbb);
     }
     if (want_luma) {
       yref[i] = ryv;
@@ -335,8 +341,18 @@ __global__ void encode_kernel(const uint16_t* ry, const uint16_t* ru, const uint
     }
   }
   if (local_bad) atomicExch(clamped, 1);
+  // partials holds four gridDim.x slices: pooled RGB, then R, G, and B.
+  // Only thread 0 reads each reduction, so the shared buffer can be reused.
   const double sum = block_sum_256(local);
-  if (threadIdx.x == 0 && partials) partials[blockIdx.x] = sum;
+  const double sum_r = block_sum_256(local_r);
+  const double sum_g = block_sum_256(local_g);
+  const double sum_b = block_sum_256(local_b);
+  if (threadIdx.x == 0 && partials) {
+    partials[blockIdx.x] = sum;
+    partials[gridDim.x + blockIdx.x] = sum_r;
+    partials[2 * gridDim.x + blockIdx.x] = sum_g;
+    partials[3 * gridDim.x + blockIdx.x] = sum_b;
+  }
 }
 
 __global__ void ssim_h(const double* a, const double* b, int w, int h, double* o0, double* o1, double* o2,
@@ -604,10 +620,11 @@ std::string cuda_score_pu21(const Frame& ref, const Frame& dist, const VideoForm
     grow_f64(c.luma[1], c.luma_cap[1], ny);
   }
   const int blocks = 1024;
-  if (c.partial_cap < blocks) {
+  const int partial_count = 4 * blocks;
+  if (c.partial_cap < partial_count) {
     if (c.partials) PU21_CHECK(cudaFree(c.partials));
-    PU21_CHECK(cudaMalloc(&c.partials, blocks * sizeof(double)));
-    c.partial_cap = blocks;
+    PU21_CHECK(cudaMalloc(&c.partials, partial_count * sizeof(double)));
+    c.partial_cap = partial_count;
   }
   PU21_CHECK(cudaMemsetAsync(c.clamped, 0, sizeof(int), c.stream));
   auto copy = [&](uint16_t* dst, const uint16_t* src, size_t n) {
@@ -626,10 +643,10 @@ std::string cuda_score_pu21(const Frame& ref, const Frame& dist, const VideoForm
       want_luma ? c.luma[1] : nullptr, want_psnr ? c.partials : nullptr, c.clamped);
   check_launch("pu21_encode");
 
-  std::vector<double> host_partials(want_psnr ? blocks : 0);
+  std::vector<double> host_partials(want_psnr ? partial_count : 0);
   if (want_psnr) {
-    PU21_CHECK(cudaMemcpyAsync(host_partials.data(), c.partials, blocks * sizeof(double), cudaMemcpyDeviceToHost,
-                               c.stream));
+    PU21_CHECK(cudaMemcpyAsync(host_partials.data(), c.partials, partial_count * sizeof(double),
+                               cudaMemcpyDeviceToHost, c.stream));
   }
   const double c1 = (0.01 * kPuPeak) * (0.01 * kPuPeak);
   const double c2 = (0.03 * kPuPeak) * (0.03 * kPuPeak);
@@ -700,10 +717,20 @@ std::string cuda_score_pu21(const Frame& ref, const Frame& dist, const VideoForm
   out.clamped = host_clamped != 0;
   if (want_psnr) {
     long double acc = 0.0;
-    for (double part : host_partials) acc += static_cast<long double>(part);
+    for (int i = 0; i < blocks; ++i) acc += static_cast<long double>(host_partials[static_cast<size_t>(i)]);
     out.mse = static_cast<double>(acc / static_cast<long double>(ny * 3));
     if (out.mse == 0.0) out.psnr = std::numeric_limits<double>::infinity();
     else out.psnr = 10.0 * std::log10((kPuPeak * kPuPeak) / out.mse);
+    double* channel_mse[3] = {&out.mse_r, &out.mse_g, &out.mse_b};
+    double* channel_psnr[3] = {&out.psnr_r, &out.psnr_g, &out.psnr_b};
+    for (int ch = 0; ch < 3; ++ch) {
+      long double channel_acc = 0.0;
+      for (int i = 0; i < blocks; ++i) {
+        channel_acc += static_cast<long double>(host_partials[static_cast<size_t>((ch + 1) * blocks + i)]);
+      }
+      *channel_mse[ch] = static_cast<double>(channel_acc / static_cast<long double>(ny));
+      *channel_psnr[ch] = pu21_psnr_from_mse(*channel_mse[ch]);
+    }
   }
   if (want_ssim) {
     const double nwin = static_cast<double>(w - 2 * kRadius) * static_cast<double>(h - 2 * kRadius);
