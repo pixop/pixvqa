@@ -77,6 +77,14 @@ def test_cli_inference() -> None:
             fail("cvvdp-inferred-pq-log", proc.stderr[-500:])
         if "info: cvvdp display standard_hdr_pq" not in proc.stderr:
             fail("cvvdp-inferred-display", proc.stderr[-500:])
+        if "transfer=pq (override)" in proc.stdout:
+            fail("cvvdp-inferred-hdr-not-override", proc.stdout[-800:])
+        if "reference: transfer=pq (inferred)" not in proc.stdout:
+            fail("cvvdp-inferred-ref-hdr", proc.stdout[-800:])
+        if "distorted: transfer=pq (stream)" not in proc.stdout:
+            fail("cvvdp-inferred-dist-hdr", proc.stdout[-800:])
+        if "legacy --cs/--tf defaults" not in proc.stdout:
+            fail("input-summary-legacy-defaults", proc.stdout[-500:])
         ok("cvvdp-inferred-pq")
 
         override = subprocess.run([*base, "--hdr-transfer", "hlg"], capture_output=True, text=True, env=env,
@@ -85,6 +93,8 @@ def test_cli_inference() -> None:
             fail("cvvdp-hdr-transfer-override", override.stderr[-400:])
         if "info: cvvdp display standard_hdr_hlg" not in override.stderr:
             fail("cvvdp-hdr-transfer-display", override.stderr[-400:])
+        if "transfer=hlg (override)" not in override.stdout:
+            fail("cvvdp-hdr-transfer-hdr-override", override.stdout[-600:])
         ok("cvvdp-hdr-transfer-overrides-metadata")
 
         tf_override = subprocess.run([*base, "--tf", "stdb67"], capture_output=True, text=True, env=env,

@@ -130,7 +130,9 @@ enum class FrameRateKind { Missing, Constant, Variable };
 // Split HDR overrides. "auto" is represented by leaving the corresponding set flag false.
 struct HdrCli {
   bool transfer_set = false;
+  bool transfer_inferred = false;
   std::string transfer;
+  bool color_inferred = false;
   bool primaries_set = false;
   std::string primaries;
   bool matrix_set = false;

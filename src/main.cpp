@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <sstream>
 #include <fstream>
 #include <cctype>
 #include <limits>
@@ -133,6 +134,63 @@ const char* chroma_token(ChromaFormat c) {
 const char* transfer_display(const std::string& tf) {
   if (tf == "st2084") return "st2048";
   return tf.c_str();
+}
+
+void print_input_summary(const Options& opt, const HdrSide& ref_meta, const HdrSide& dist_meta) {
+  const int bd = opt.format.bit_depth;
+  const bool legacy_cs_line = opt.color_space_set || opt.ref_color_set || opt.dist_color_set;
+  const bool legacy_tf_line = opt.transfer_set || opt.ref_transfer_set || opt.dist_transfer_set;
+  if (legacy_cs_line || legacy_tf_line) {
+    std::printf("Input: %dx%d %s (%db,%db,%db) %s %s\n", opt.format.width, opt.format.height,
+                chroma_token(opt.format.chroma), bd, bd, bd, opt.color_space.c_str(),
+                transfer_display(opt.transfer));
+  } else {
+    std::printf("Input: %dx%d %s (%db,%db,%db)\n", opt.format.width, opt.format.height,
+                chroma_token(opt.format.chroma), bd, bd, bd);
+  }
+  auto print_side = [&](const char* label, DecodeMode mode, const HdrSide& meta) {
+    if (mode == DecodeMode::Raw) {
+      std::printf("  %s: raw planar YUV (no embedded color metadata)\n", label);
+      return;
+    }
+#ifdef PIXVQA_HAS_FFMPEG
+    std::ostringstream os;
+    os << label << ": container";
+    bool any = false;
+    if (meta.transfer != HdrTransfer::Unspecified) {
+      os << " transfer=" << hdr_transfer_name(meta.transfer);
+      any = true;
+    }
+    if (meta.primaries != HdrPrimaries::Unspecified) {
+      os << (any ? "," : "") << " primaries=" << hdr_primaries_name(meta.primaries);
+      any = true;
+    }
+    if (meta.matrix != HdrMatrix::Unspecified) {
+      os << (any ? "," : "") << " matrix=" << hdr_matrix_name(meta.matrix);
+      any = true;
+    }
+    if (meta.range != HdrRange::Unspecified) {
+      os << (any ? "," : "") << " range=" << hdr_range_name(meta.range);
+      any = true;
+    }
+    if (!any) os << " (no color metadata in container)";
+    std::printf("  %s\n", os.str().c_str());
+#else
+    std::printf("  %s: compressed\n", label);
+#endif
+  };
+  if (!legacy_cs_line && !legacy_tf_line) {
+    print_side("reference", opt.ref_decode, ref_meta);
+    print_side("test", opt.decode, dist_meta);
+    if (!opt.color_space_set && !opt.ref_color_set && !opt.dist_color_set && !opt.transfer_set &&
+        !opt.ref_transfer_set && !opt.dist_transfer_set) {
+      std::printf(
+          "  legacy --cs/--tf defaults: %s %s (bundled color options; see HDR: for PQ/HLG "
+          "processing)\n",
+          opt.color_space.c_str(), transfer_display(opt.transfer));
+    }
+  }
+  std::printf("  %s\n  %s\n\n", opt.ref_path.c_str(), opt.test_path.c_str());
 }
 
 bool known_cs(const std::string& v) {
@@ -951,10 +1009,11 @@ bool finalize_cvvdp_config(Options& opt, SideSpec& ref, SideSpec& test, CvvdpOpt
   cvvdp.display = state.display;
   cvvdp.config_resolved = state.config_resolved;
   const std::string family = transfer_family_token(cvvdp.interpretation);
-  if (!family.empty() && !opt.hdr.transfer_set && !opt.transfer_set && !opt.ref_hdr.transfer_set &&
-      !opt.dist_hdr.transfer_set && !opt.ref_transfer_set && !opt.dist_transfer_set) {
+  if (!family.empty() && !opt.hdr.transfer_set && !opt.hdr.transfer_inferred && !opt.transfer_set &&
+      !opt.ref_hdr.transfer_set && !opt.dist_hdr.transfer_set && !opt.ref_transfer_set &&
+      !opt.dist_transfer_set) {
     opt.hdr.transfer = family;
-    opt.hdr.transfer_set = true;
+    opt.hdr.transfer_inferred = true;
   }
   return validate_cvvdp_options(cvvdp);
 }
@@ -1021,9 +1080,9 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
       {opt.transfer_set, opt.transfer},
       {opt.ref_transfer_set, opt.ref_transfer},
       {opt.dist_transfer_set, opt.dist_transfer},
-      {opt.hdr.transfer_set, opt.hdr.transfer},
-      {opt.ref_hdr.transfer_set, opt.ref_hdr.transfer},
-      {opt.dist_hdr.transfer_set, opt.dist_hdr.transfer},
+      {opt.hdr.transfer_set || opt.hdr.transfer_inferred, opt.hdr.transfer},
+      {opt.ref_hdr.transfer_set || opt.ref_hdr.transfer_inferred, opt.ref_hdr.transfer},
+      {opt.dist_hdr.transfer_set || opt.dist_hdr.transfer_inferred, opt.dist_hdr.transfer},
   };
   for (const auto& item : transfers) {
     if (item.first && transfer_family(item.second) != kind) {
@@ -1053,9 +1112,9 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
                  who.c_str());
     return false;
   }
-  if (kind != "sdr" && !opt.transfer_set && !opt.hdr.transfer_set) {
+  if (kind != "sdr" && !opt.transfer_set && !opt.hdr.transfer_set && !opt.hdr.transfer_inferred) {
     opt.hdr.transfer = kind;
-    opt.hdr.transfer_set = true;
+    opt.hdr.transfer_inferred = true;
   }
   if (kind == "pq" || kind == "hlg") {
     const HdrCli* sides[] = {&opt.hdr, &opt.ref_hdr, &opt.dist_hdr};
@@ -1076,17 +1135,12 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
         return false;
       }
     }
-    if (!opt.hdr.primaries_set && !opt.ref_hdr.primaries_set && !opt.dist_hdr.primaries_set) {
+    if (!opt.hdr.primaries_set && !opt.ref_hdr.primaries_set && !opt.dist_hdr.primaries_set &&
+        !opt.hdr.color_inferred) {
       opt.hdr.primaries = "bt2020";
-      opt.hdr.primaries_set = true;
-    }
-    if (!opt.hdr.matrix_set && !opt.ref_hdr.matrix_set && !opt.dist_hdr.matrix_set) {
       opt.hdr.matrix = "bt2020nc";
-      opt.hdr.matrix_set = true;
-    }
-    if (!opt.hdr.range_set && !opt.ref_hdr.range_set && !opt.dist_hdr.range_set) {
       opt.hdr.range = "limited";
-      opt.hdr.range_set = true;
+      opt.hdr.color_inferred = true;
     }
   }
   if (opt.enable_vmaf && opt.vmaf_model_path.empty() && kind != "hlg") {
@@ -2403,7 +2457,8 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   HdrSide ref = ref_stream;
   HdrSide dist = dist_stream;
   const bool ref_tf = opt.ref_transfer_set || opt.transfer_set || opt.ref_hdr.transfer_set || opt.hdr.transfer_set;
-  const bool dist_tf = opt.dist_transfer_set || opt.transfer_set || opt.dist_hdr.transfer_set || opt.hdr.transfer_set;
+  const bool dist_tf =
+      opt.dist_transfer_set || opt.transfer_set || opt.dist_hdr.transfer_set || opt.hdr.transfer_set;
   const bool ref_cs = opt.ref_color_set || opt.color_space_set;
   const bool dist_cs = opt.dist_color_set || opt.color_space_set;
   const std::string ref_tf_v = opt.ref_hdr.transfer_set
@@ -2417,16 +2472,43 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
                                    : (opt.hdr.transfer_set ? opt.hdr.transfer : opt.transfer));
   const std::string ref_cs_v = opt.ref_color_set ? opt.ref_color_space : opt.color_space;
   const std::string dist_cs_v = opt.dist_color_set ? opt.dist_color_space : opt.color_space;
-  const std::string ref_applied =
-      hdr_apply_override(ref, ref_tf, ref_tf_v, ref_cs, ref_cs_v);
-  if (!ref_applied.empty()) {
-    std::fprintf(stderr, "pixvqa: %s\n", ref_applied.c_str());
-    return 2;
+  if (ref_tf) {
+    const std::string ref_applied = hdr_apply_override(ref, true, ref_tf_v, ref_cs, ref_cs_v);
+    if (!ref_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", ref_applied.c_str());
+      return 2;
+    }
+  } else if (opt.hdr.transfer_inferred) {
+    const std::string ref_applied = hdr_apply_inferred_transfer(ref, opt.hdr.transfer);
+    if (!ref_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", ref_applied.c_str());
+      return 2;
+    }
+  } else if (opt.ref_hdr.transfer_inferred) {
+    const std::string ref_applied = hdr_apply_inferred_transfer(ref, opt.ref_hdr.transfer);
+    if (!ref_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", ref_applied.c_str());
+      return 2;
+    }
   }
-  const std::string dist_applied = hdr_apply_override(dist, dist_tf, dist_tf_v, dist_cs, dist_cs_v);
-  if (!dist_applied.empty()) {
-    std::fprintf(stderr, "pixvqa: %s\n", dist_applied.c_str());
-    return 2;
+  if (dist_tf) {
+    const std::string dist_applied = hdr_apply_override(dist, true, dist_tf_v, dist_cs, dist_cs_v);
+    if (!dist_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", dist_applied.c_str());
+      return 2;
+    }
+  } else if (opt.hdr.transfer_inferred) {
+    const std::string dist_applied = hdr_apply_inferred_transfer(dist, opt.hdr.transfer);
+    if (!dist_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", dist_applied.c_str());
+      return 2;
+    }
+  } else if (opt.dist_hdr.transfer_inferred) {
+    const std::string dist_applied = hdr_apply_inferred_transfer(dist, opt.dist_hdr.transfer);
+    if (!dist_applied.empty()) {
+      std::fprintf(stderr, "pixvqa: %s\n", dist_applied.c_str());
+      return 2;
+    }
   }
   auto apply_split = [](HdrSide& side, const HdrCli& cli) -> std::string {
     if (cli.primaries_set) {
@@ -2449,6 +2531,9 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
       side.range = parsed;
       side.range_source = HdrSource::Override;
       side.range_conflict = false;
+    }
+    if (cli.color_inferred) {
+      return hdr_apply_inferred_color(side, cli.primaries, cli.matrix, cli.range);
     }
     return {};
   };
@@ -2478,6 +2563,21 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
              opt.hdr.matrix, dist_split.matrix_set, dist_split.matrix);
   take_field(opt.dist_hdr.range_set, opt.dist_hdr.range, opt.dist_color_set, opt.hdr.range_set, opt.hdr.range,
              dist_split.range_set, dist_split.range);
+  if (opt.hdr.color_inferred && !opt.ref_color_set && !opt.ref_hdr.primaries_set && !opt.ref_hdr.matrix_set &&
+      !opt.ref_hdr.range_set && !ref_split.primaries_set && !ref_split.matrix_set && !ref_split.range_set) {
+    ref_split.color_inferred = true;
+    ref_split.primaries = opt.hdr.primaries;
+    ref_split.matrix = opt.hdr.matrix;
+    ref_split.range = opt.hdr.range;
+  }
+  if (opt.hdr.color_inferred && !opt.dist_color_set && !opt.dist_hdr.primaries_set && !opt.dist_hdr.matrix_set &&
+      !opt.dist_hdr.range_set && !dist_split.primaries_set && !dist_split.matrix_set &&
+      !dist_split.range_set) {
+    dist_split.color_inferred = true;
+    dist_split.primaries = opt.hdr.primaries;
+    dist_split.matrix = opt.hdr.matrix;
+    dist_split.range = opt.hdr.range;
+  }
   const std::string ref_split_err = apply_split(ref, ref_split);
   if (!ref_split_err.empty()) {
     std::fprintf(stderr, "pixvqa: %s\n", ref_split_err.c_str());
@@ -2640,6 +2740,7 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
     HdrTransfer parsed;
     if (!hdr_parse_transfer(value, parsed)) return bad("expects auto, pq, hlg, sdr, or linear");
     slot->transfer_set = true;
+    slot->transfer_inferred = false;
     slot->transfer = value;
     return 0;
   }
@@ -2647,6 +2748,7 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
     HdrPrimaries parsed;
     if (!hdr_parse_primaries_token(value, parsed)) return bad("expects auto, bt2020, or bt709");
     slot->primaries_set = true;
+    slot->color_inferred = false;
     slot->primaries = value;
     return 0;
   }
@@ -2654,6 +2756,7 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
     HdrMatrix parsed;
     if (!hdr_parse_matrix_token(value, parsed)) return bad("expects auto, bt2020nc, or bt709");
     slot->matrix_set = true;
+    slot->color_inferred = false;
     slot->matrix = value;
     return 0;
   }
@@ -2661,6 +2764,7 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
     HdrRange parsed;
     if (!hdr_parse_range_token(value, parsed)) return bad("expects auto, limited, or full");
     slot->range_set = true;
+    slot->color_inferred = false;
     slot->range = value;
     return 0;
   }
@@ -3517,10 +3621,13 @@ int run_cli(int argc, char** argv) {
     }
 
     std::printf("%s image/video comparison - v%s\n\n", PIXVQA_PRODUCT_NAME, PIXVQA_VERSION);
-    std::printf("Input: %dx%d %s (%db,%db,%db) %s %s\n", opt.format.width, opt.format.height,
-                chroma_token(opt.format.chroma), bd, bd, bd, opt.color_space.c_str(),
-                transfer_display(opt.transfer));
-    std::printf("  %s\n  %s\n\n", opt.ref_path.c_str(), opt.test_path.c_str());
+    HdrSide ref_meta;
+    HdrSide dist_meta;
+#ifdef PIXVQA_HAS_FFMPEG
+    if (opt.ref_decode != DecodeMode::Raw) ref_meta = ref_dec.stream_hdr();
+    if (opt.decode != DecodeMode::Raw) dist_meta = test_dec.stream_hdr();
+#endif
+    print_input_summary(opt, ref_meta, dist_meta);
     std::fflush(stdout);
 
     Frame ref_fr, test_fr;
@@ -3539,12 +3646,6 @@ int run_cli(int argc, char** argv) {
     std::string vmaf_color_ref;
     std::string vmaf_color_dist;
     {
-      HdrSide ref_meta;
-      HdrSide dist_meta;
-#ifdef PIXVQA_HAS_FFMPEG
-      if (opt.ref_decode != DecodeMode::Raw) ref_meta = ref_dec.stream_hdr();
-      if (opt.decode != DecodeMode::Raw) dist_meta = test_dec.stream_hdr();
-#endif
       if (report_hdr(ref_meta, dist_meta, opt, false, nullptr, nullptr, &vmaf_color_ref,
                      &vmaf_color_dist) != 0)
         return 2;

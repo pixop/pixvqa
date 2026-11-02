@@ -20,7 +20,7 @@ enum class HdrTransfer {
 enum class HdrPrimaries { Unspecified, Bt709, Bt2020, Bt601, Other };
 enum class HdrMatrix { Unspecified, Bt709, Bt2020Ncl, Bt601, Other };
 enum class HdrRange { Unspecified, Limited, Full };
-enum class HdrSource { Absent, Stream, Override, Assumption };
+enum class HdrSource { Absent, Stream, Override, Inferred, Assumption };
 enum class HdrChromaLoc { Left, Center, TopLeft, Unspecified };
 enum class HdrChromaUp { Bilinear, Nearest };
 
@@ -66,6 +66,12 @@ void hdr_observe_chroma(HdrSide& side, HdrChromaLoc loc, bool unsupported);
 // Returns a diagnostic when a token is not recognized.
 std::string hdr_apply_override(HdrSide& side, bool transfer_set, const std::string& transfer,
                                bool color_set, const std::string& color_space);
+
+// Metric/CVVDP-resolved values. Stream metadata on a field is left unchanged when it
+// already matches; explicit overrides must be applied before calling these.
+std::string hdr_apply_inferred_transfer(HdrSide& side, const std::string& transfer);
+std::string hdr_apply_inferred_color(HdrSide& side, const std::string& primaries,
+                                     const std::string& matrix, const std::string& range);
 
 // Empty when the pair can continue. A disagreement inside one stream is an
 // error. An explicit unsupported PQ/HLG color system is an error. Reference

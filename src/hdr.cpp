@@ -163,6 +163,8 @@ const char* hdr_source_name(HdrSource v) {
       return "stream";
     case HdrSource::Override:
       return "override";
+    case HdrSource::Inferred:
+      return "inferred";
     case HdrSource::Assumption:
       return "assumption";
   }
@@ -361,6 +363,80 @@ std::string hdr_apply_override(HdrSide& side, bool transfer_set, const std::stri
     side.range_conflict = false;
   }
   return {};
+}
+
+namespace {
+
+bool hdr_stream_field_matches(HdrSource source, bool matches) {
+  return source == HdrSource::Stream && matches;
+}
+
+std::string hdr_apply_inferred_field(HdrTransfer parsed, HdrTransfer& field, HdrSource& field_source,
+                                     bool& field_conflict) {
+  if (field_source == HdrSource::Override) return {};
+  if (hdr_stream_field_matches(field_source, field == parsed)) return {};
+  field = parsed;
+  field_source = HdrSource::Inferred;
+  field_conflict = false;
+  return {};
+}
+
+std::string hdr_apply_inferred_field(HdrPrimaries parsed, HdrPrimaries& field, HdrSource& field_source,
+                                     bool& field_conflict) {
+  if (field_source == HdrSource::Override) return {};
+  if (hdr_stream_field_matches(field_source, field == parsed)) return {};
+  field = parsed;
+  field_source = HdrSource::Inferred;
+  field_conflict = false;
+  return {};
+}
+
+std::string hdr_apply_inferred_field(HdrMatrix parsed, HdrMatrix& field, HdrSource& field_source,
+                                     bool& field_conflict) {
+  if (field_source == HdrSource::Override) return {};
+  if (hdr_stream_field_matches(field_source, field == parsed)) return {};
+  field = parsed;
+  field_source = HdrSource::Inferred;
+  field_conflict = false;
+  return {};
+}
+
+std::string hdr_apply_inferred_field(HdrRange parsed, HdrRange& field, HdrSource& field_source,
+                                     bool& field_conflict) {
+  if (field_source == HdrSource::Override) return {};
+  if (hdr_stream_field_matches(field_source, field == parsed)) return {};
+  field = parsed;
+  field_source = HdrSource::Inferred;
+  field_conflict = false;
+  return {};
+}
+
+}  // namespace
+
+std::string hdr_apply_inferred_transfer(HdrSide& side, const std::string& transfer) {
+  HdrTransfer parsed;
+  if (!hdr_parse_transfer(transfer, parsed)) return "unsupported transfer " + transfer;
+  return hdr_apply_inferred_field(parsed, side.transfer, side.transfer_source, side.transfer_conflict);
+}
+
+std::string hdr_apply_inferred_color(HdrSide& side, const std::string& primaries,
+                                     const std::string& matrix, const std::string& range) {
+  HdrPrimaries prim_parsed;
+  HdrMatrix matrix_parsed;
+  HdrRange range_parsed;
+  if (!hdr_parse_primaries_token(primaries, prim_parsed)) {
+    return "unsupported hdr primaries " + primaries;
+  }
+  if (!hdr_parse_matrix_token(matrix, matrix_parsed)) {
+    return "unsupported hdr matrix " + matrix;
+  }
+  if (!hdr_parse_range_token(range, range_parsed)) return "unsupported hdr range " + range;
+  std::string err = hdr_apply_inferred_field(prim_parsed, side.primaries, side.primaries_source,
+                                             side.primaries_conflict);
+  if (!err.empty()) return err;
+  err = hdr_apply_inferred_field(matrix_parsed, side.matrix, side.matrix_source, side.matrix_conflict);
+  if (!err.empty()) return err;
+  return hdr_apply_inferred_field(range_parsed, side.range, side.range_source, side.range_conflict);
 }
 
 std::string hdr_reject_reason(const HdrSide& reference, const HdrSide& distorted, bool hlg_peak_set,
