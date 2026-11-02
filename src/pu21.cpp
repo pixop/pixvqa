@@ -178,6 +178,11 @@ double pu21_encode(double luminance_cdm2) {
   return value > 0.0 ? value : 0.0;
 }
 
+double pu21_psnr_from_mse(double mse) {
+  if (mse == 0.0) return std::numeric_limits<double>::infinity();
+  return 10.0 * std::log10((kPuPeak * kPuPeak) / mse);
+}
+
 void pu21_reconstructed_chroma(const Frame& frame, const VideoFormat& fmt, HdrChromaLoc loc,
                                HdrChromaUp up, int x, int y, double& cb_code, double& cr_code) {
   double cx = 0, cy = 0;
@@ -209,11 +214,24 @@ std::string pu21_score_frame(const Frame& ref, const Frame& dist, const VideoFor
       acc += static_cast<long double>(dr * dr + dg * dg + db * db);
     }
     out.mse = static_cast<double>(acc / static_cast<long double>(n * 3));
-    if (out.mse == 0.0) {
-      out.psnr = std::numeric_limits<double>::infinity();
-    } else {
-      out.psnr = 10.0 * std::log10((kPuPeak * kPuPeak) / out.mse);
+    out.psnr = pu21_psnr_from_mse(out.mse);
+    // Separate pass: sharing the squares with the pooled loop lets the compiler
+    // contract that sum differently, which changes the pooled value in the last bits.
+    long double acc_r = 0.0, acc_g = 0.0, acc_b = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+      const double dr = a.r[i] - b.r[i];
+      const double dg = a.g[i] - b.g[i];
+      const double db = a.b[i] - b.b[i];
+      acc_r += static_cast<long double>(dr * dr);
+      acc_g += static_cast<long double>(dg * dg);
+      acc_b += static_cast<long double>(db * db);
     }
+    out.mse_r = static_cast<double>(acc_r / static_cast<long double>(n));
+    out.mse_g = static_cast<double>(acc_g / static_cast<long double>(n));
+    out.mse_b = static_cast<double>(acc_b / static_cast<long double>(n));
+    out.psnr_r = pu21_psnr_from_mse(out.mse_r);
+    out.psnr_g = pu21_psnr_from_mse(out.mse_g);
+    out.psnr_b = pu21_psnr_from_mse(out.mse_b);
   }
   if (want_ssim) {
     out.ssim = ssim_mean_doubles(a.y.data(), fmt.width, b.y.data(), fmt.width, fmt.width, fmt.height,

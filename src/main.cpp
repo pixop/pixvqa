@@ -194,7 +194,7 @@ void usage(const char* argv0) {
       "\n"
       "Execution\n"
       "  --metric-device, --device auto|cpu|gpu\n"
-      "                      Default auto. gpu has no CPU substitute. VMAF stays on CPU.\n"
+      "                      Default auto: per metric GPU if supported, else CPU. VMAF on CPU.\n"
       "  --threads auto|N    Default auto. N is a positive integer for metric workers.\n"
       "  --cvvdp-python, --cvvdp-bin, --cvvdp-output-json PATH; --cvvdp-gpu-mem GB\n"
       "                      CVVDP Python (or PIXVQA_CVVDP_PYTHON), cvvdp, JSON, CUDA cap (GB).\n"
@@ -288,18 +288,33 @@ void print_psnr(const PlaneScore& psnr, const PlaneScore& mse) {
               fmt_mse(mse.v).c_str(), fmt_mse(mse.avg).c_str());
 }
 
-void print_pu21_value(const char* name, double value) {
-  if (!std::isfinite(value)) {
-    std::printf("[ %s:999.99 ] ", name);
-    return;
-  }
-  std::printf("[ %s:%.6f ] ", name, value);
+std::string fmt_pu21_psnr(double v) {
+  if (!std::isfinite(v)) return "999.99";
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.6f", v);
+  return buf;
+}
+
+// avg is the pooled RGB value: PSNR of the mean square error over all three
+// components, not the mean of the component PSNR values.
+void print_pu21_psnr(const Pu21FrameScore& s) {
+  std::printf("[ PU21-PSNR     r:%s g:%s b:%s avg:%s ] ",
+              fmt_pu21_psnr(s.psnr_r).c_str(), fmt_pu21_psnr(s.psnr_g).c_str(), fmt_pu21_psnr(s.psnr_b).c_str(),
+              fmt_pu21_psnr(s.psnr).c_str());
+}
+
+// PU21 structural scores operate on PU21-encoded display luminance only.
+// Their avg field mirrors y for the standard plane-oriented log format; no
+// chroma plane is evaluated.
+void print_pu21_luma_metric(const char* name, double value) {
+  const std::string shown = fmt_pu21_psnr(value);
+  std::printf("[ %-13s y:%s u:n/a v:n/a avg:%s ] ", name, shown.c_str(), shown.c_str());
 }
 
 void print_pu21_scores(const Options& opt, const Pu21FrameScore& score) {
-  if (opt.enable_pu21_psnr) print_pu21_value("PU21-PSNR", score.psnr);
-  if (opt.enable_pu21_ssim) print_pu21_value("PU21-SSIM", score.ssim);
-  if (opt.enable_pu21_msssim) print_pu21_value("PU21-MS-SSIM", score.msssim);
+  if (opt.enable_pu21_psnr) print_pu21_psnr(score);
+  if (opt.enable_pu21_ssim) print_pu21_luma_metric("PU21-SSIM", score.ssim);
+  if (opt.enable_pu21_msssim) print_pu21_luma_metric("PU21-MS-SSIM", score.msssim);
 }
 
 void print_metric(const char* name, const PlaneScore& s) {
@@ -1924,9 +1939,6 @@ int resolve_execution(Options& opt) {
   const bool msssim_ok = gpu_depth_ok;
   const bool xpsnr_ok = gpu_depth_ok;
   const bool pu21_ok = gpu_depth_ok;
-  const bool resident_profile = cuda && opt.decode == DecodeMode::Nvdec && !opt.enable_vmaf &&
-                                opt.format.bit_depth == 10 && opt.format.width >= 3840 &&
-                                opt.format.height >= 2160;
 
   auto refuse_gpu = [](const char* metric, const char* why) {
     std::fprintf(stderr, "pixvqa: --metric-device gpu cannot run %s (%s); no CPU substitute\n",
@@ -1940,6 +1952,11 @@ int resolve_execution(Options& opt) {
   opt.xpsnr_backend = XpsnrBackend::Cpu;
   opt.vmaf_cpu_notice = false;
   opt.vmaf_backend = VmafBackend::Cpu;
+  opt.psnr_cpu_reason.clear();
+  opt.ssim_cpu_reason.clear();
+  opt.msssim_cpu_reason.clear();
+  opt.xpsnr_cpu_reason.clear();
+  opt.pu21_cpu_reason.clear();
 
   if (opt.metric_device == DeviceChoice::Cpu) {
     // Every selected metric stays on the CPU.
@@ -1985,12 +2002,47 @@ int resolve_execution(Options& opt) {
       if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
     }
     opt.vmaf_cpu_notice = opt.enable_vmaf;
-  } else if (resident_profile) {
-    opt.psnr_gpu = opt.enable_psnr;
-    opt.ssim_gpu = opt.enable_ssim;
-    opt.msssim_gpu = opt.enable_msssim;
-    if (opt.enable_xpsnr) opt.xpsnr_backend = XpsnrBackend::Cuda;
-    if (pu21_selected(opt) && pu21_ok) opt.pu21_gpu = true;
+  } else {
+    // Auto prefers CUDA for each selected metric whose CUDA path accepts this
+    // input, and keeps the rest on the CPU with a reason. VMAF has no CUDA path
+    // and stays on libvmaf without a warning. Inputs that both paths reject
+    // (planes under 11x11 for SSIM, XPSNR below 1 fps) are not routed here.
+    const bool want_gpu = opt.enable_psnr || opt.enable_ssim || opt.enable_msssim || opt.enable_xpsnr ||
+                          pu21_selected(opt);
+    std::string unavailable;
+    if (want_gpu) {
+      if (!cuda) {
+        unavailable = "this build has no GPU metrics";
+      } else if (!gpu_depth_ok) {
+        unavailable = "GPU metrics support 8-bit and 10-bit only";
+      } else {
+#ifdef PIXVQA_HAS_CUDA
+        std::string why;
+        if (!cuda_device_ready(&why)) unavailable = "no usable CUDA device: " + why;
+#endif
+      }
+    }
+    auto choose = [&](bool enabled, const char* input_reason, bool& gpu, std::string& reason) {
+      if (!enabled) return;
+      if (!unavailable.empty()) {
+        reason = unavailable;
+      } else if (input_reason) {
+        reason = input_reason;
+      } else {
+        gpu = true;
+      }
+    };
+    const VideoFormat& f = opt.format;
+    const bool pu21_geometry = f.chroma == ChromaFormat::YUV444 ||
+                               (f.width % 2 == 0 && (f.chroma != ChromaFormat::YUV420 || f.height % 2 == 0));
+    choose(opt.enable_psnr, nullptr, opt.psnr_gpu, opt.psnr_cpu_reason);
+    choose(opt.enable_ssim, nullptr, opt.ssim_gpu, opt.ssim_cpu_reason);
+    choose(opt.enable_msssim, nullptr, opt.msssim_gpu, opt.msssim_cpu_reason);
+    bool xpsnr_gpu = false;
+    choose(opt.enable_xpsnr, nullptr, xpsnr_gpu, opt.xpsnr_cpu_reason);
+    if (xpsnr_gpu) opt.xpsnr_backend = XpsnrBackend::Cuda;
+    choose(pu21_selected(opt), pu21_geometry ? nullptr : "GPU PU21 needs even chroma geometry", opt.pu21_gpu,
+           opt.pu21_cpu_reason);
   }
 
   opt.use_cuda = opt.psnr_gpu || opt.ssim_gpu || opt.msssim_gpu || opt.pu21_gpu ||
@@ -2059,26 +2111,25 @@ void print_execution_summary(const Options& opt) {
   if (ref_nv || test_nv) {
     std::printf("  decoder threads: 1%s (fixed)\n", (ref_nv && test_nv) ? " per input" : "");
   }
-  auto line = [](const char* name, bool gpu, const char* extra) {
-    if (gpu) {
-      std::printf("  %s: gpu%s%s\n", name, extra ? " " : "", extra ? extra : "");
-    } else {
-      std::printf("  %s: cpu%s%s\n", name, extra ? " " : "", extra ? extra : "");
-    }
+  auto line = [](const char* name, bool gpu, const char* extra, const std::string& cpu_reason) {
+    std::printf("  %s: %s%s%s", name, gpu ? "gpu" : "cpu", extra ? " " : "", extra ? extra : "");
+    if (!cpu_reason.empty()) std::printf(" (auto: %s)", cpu_reason.c_str());
+    std::printf("\n");
   };
-  if (opt.enable_psnr) line("PSNR", opt.psnr_gpu, opt.psnr_gpu ? "fp64" : nullptr);
-  if (opt.enable_xpsnr) line("XPSNR", opt.xpsnr_backend == XpsnrBackend::Cuda, nullptr);
+  if (opt.enable_psnr) line("PSNR", opt.psnr_gpu, opt.psnr_gpu ? "fp64" : nullptr, opt.psnr_cpu_reason);
+  if (opt.enable_xpsnr) line("XPSNR", opt.xpsnr_backend == XpsnrBackend::Cuda, nullptr, opt.xpsnr_cpu_reason);
   if (opt.enable_ssim) {
-    line("SSIM", opt.ssim_gpu, opt.ssim_gpu ? "fp64" : cpu_impl_label(opt.kernel == SsimKernelMode::Avx2));
+    line("SSIM", opt.ssim_gpu, opt.ssim_gpu ? "fp64" : cpu_impl_label(opt.kernel == SsimKernelMode::Avx2),
+         opt.ssim_cpu_reason);
   }
   if (opt.enable_msssim) {
-    line("MS-SSIM", opt.msssim_gpu,
-         opt.msssim_gpu ? "fp64" : cpu_impl_label(msssim_cpu_is_avx2()));
+    line("MS-SSIM", opt.msssim_gpu, opt.msssim_gpu ? "fp64" : cpu_impl_label(msssim_cpu_is_avx2()),
+         opt.msssim_cpu_reason);
   }
-  if (opt.enable_vmaf) line("VMAF", false, "libvmaf");
-  if (opt.enable_pu21_psnr) line("PU21-PSNR", opt.pu21_gpu, nullptr);
-  if (opt.enable_pu21_ssim) line("PU21-SSIM", opt.pu21_gpu, nullptr);
-  if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", opt.pu21_gpu, nullptr);
+  if (opt.enable_vmaf) line("VMAF", false, "libvmaf", std::string());
+  if (opt.enable_pu21_psnr) line("PU21-PSNR", opt.pu21_gpu, nullptr, opt.pu21_cpu_reason);
+  if (opt.enable_pu21_ssim) line("PU21-SSIM", opt.pu21_gpu, nullptr, opt.pu21_cpu_reason);
+  if (opt.enable_pu21_msssim) line("PU21-MS-SSIM", opt.pu21_gpu, nullptr, opt.pu21_cpu_reason);
   std::printf("\n");
 }
 
@@ -3362,6 +3413,7 @@ int run_cli(int argc, char** argv) {
     HdrEffective dist_hdr_eff;
     bool pu21_clamp_noted = false;
     double sum_pu_mse = 0.0;
+    double sum_pu_mse_r = 0.0, sum_pu_mse_g = 0.0, sum_pu_mse_b = 0.0;
     double sum_pu_ssim = 0.0;
     double sum_pu_msssim = 0.0;
 
@@ -3509,7 +3561,12 @@ int run_cli(int argc, char** argv) {
                        "pixvqa: PU21 clamped samples outside [0.005, 10000] cd/m2\n");
           pu21_clamp_noted = true;
         }
-        if (opt.enable_pu21_psnr) sum_pu_mse += pu21.mse;
+        if (opt.enable_pu21_psnr) {
+          sum_pu_mse += pu21.mse;
+          sum_pu_mse_r += pu21.mse_r;
+          sum_pu_mse_g += pu21.mse_g;
+          sum_pu_mse_b += pu21.mse_b;
+        }
         if (opt.enable_pu21_ssim) sum_pu_ssim += pu21.ssim;
         if (opt.enable_pu21_msssim) sum_pu_msssim += pu21.msssim;
       }
@@ -3675,6 +3732,12 @@ int run_cli(int argc, char** argv) {
         summary.mse = sum_pu_mse / nframes;
         summary.psnr = summary.mse == 0.0 ? std::numeric_limits<double>::infinity()
                                           : 10.0 * std::log10((256.0 * 256.0) / summary.mse);
+        summary.mse_r = sum_pu_mse_r / nframes;
+        summary.mse_g = sum_pu_mse_g / nframes;
+        summary.mse_b = sum_pu_mse_b / nframes;
+        summary.psnr_r = pu21_psnr_from_mse(summary.mse_r);
+        summary.psnr_g = pu21_psnr_from_mse(summary.mse_g);
+        summary.psnr_b = pu21_psnr_from_mse(summary.mse_b);
       }
       summary.ssim = sum_pu_ssim / nframes;
       summary.msssim = sum_pu_msssim / nframes;

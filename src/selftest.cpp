@@ -642,6 +642,44 @@ int main() {
       expect_near("pu21_psnr_grey", diff.psnr, expect_psnr, 1e-8);
       expect_near("pu21_ssim_grey", diff.ssim, expect_ssim, 1e-10);
       expect_near("pu21_msssim_grey", diff.msssim, expect_msssim, 1e-10);
+      expect_near("pu21_psnr_grey_r", diff.psnr_r, expect_psnr, 1e-8);
+    }
+    {
+      Frame tint;
+      tint.allocate(fmt444);
+      std::fill(tint.y.storage.begin(), tint.y.storage.end(), 560);
+      std::fill(tint.u.storage.begin(), tint.u.storage.end(), 470);
+      std::fill(tint.v.storage.begin(), tint.v.storage.end(), 590);
+      double ty = 0, tcb = 0, tcr = 0, tr = 0, tg = 0, tb = 0;
+      hdr_codes_to_nominal(10, HdrRange::Limited, 560, 470, 590, ty, tcb, tcr);
+      hdr_display_rgb(pq_eff, ty, tcb, tcr, tr, tg, tb);
+      const double er = pu21_encode(r0) - pu21_encode(tr);
+      const double eg = pu21_encode(g0) - pu21_encode(tg);
+      const double eb = pu21_encode(b0) - pu21_encode(tb);
+      Pu21FrameScore chan;
+      const std::string chan_err =
+          pu21_score_frame(grey_a, tint, fmt444, pq_eff, pq_eff, true, false, false, 1, chan);
+      const double pooled = (er * er + eg * eg + eb * eb) / 3.0;
+      const double mean_component_psnr = (pu21_psnr_from_mse(er * er) + pu21_psnr_from_mse(eg * eg) +
+                                          pu21_psnr_from_mse(eb * eb)) / 3.0;
+      if (!chan_err.empty()) {
+        std::fprintf(stderr, "FAIL pu21_rgb_components %s\n", chan_err.c_str());
+        ++g_fail;
+      } else {
+        expect_near("pu21_mse_r", chan.mse_r, er * er, 1e-9);
+        expect_near("pu21_mse_g", chan.mse_g, eg * eg, 1e-9);
+        expect_near("pu21_mse_b", chan.mse_b, eb * eb, 1e-9);
+        expect_near("pu21_psnr_r", chan.psnr_r, pu21_psnr_from_mse(er * er), 1e-8);
+        expect_near("pu21_psnr_g", chan.psnr_g, pu21_psnr_from_mse(eg * eg), 1e-8);
+        expect_near("pu21_psnr_b", chan.psnr_b, pu21_psnr_from_mse(eb * eb), 1e-8);
+        expect_near("pu21_psnr_pooled_rgb", chan.psnr, pu21_psnr_from_mse(pooled), 1e-8);
+        if (std::fabs(chan.psnr - mean_component_psnr) < 1e-3) {
+          fail("pu21_psnr_pooled_not_component_mean");
+        } else {
+          std::printf("OK   pu21_psnr_pooled_not_component_mean: %.6f vs %.6f\n", chan.psnr,
+                      mean_component_psnr);
+        }
+      }
     }
     HdrEffective hlg_score;
     knobs = HdrKnobs{};

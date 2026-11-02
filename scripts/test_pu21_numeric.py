@@ -139,7 +139,32 @@ def check_documented_commands() -> None:
                 print(f"OK   documented {state}: {label}")
 
 
+PU21_PSNR_RE = re.compile(
+    r"\[ PU21-PSNR {5}r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]")
+PU21_LUMA_RE = {
+    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+}
+
+
+def pu21_psnr_fields(text: str) -> dict[str, float] | None:
+    """First PU21-PSNR group in text: component and pooled PSNR."""
+    match = PU21_PSNR_RE.search(text)
+    if not match:
+        return None
+    keys = ("psnr_r", "psnr_g", "psnr_b", "psnr_avg")
+    return {key: float(value) for key, value in zip(keys, match.groups())}
+
+
 def score(text: str, name: str) -> float | None:
+    if name == "PU21-PSNR":
+        fields = pu21_psnr_fields(text)
+        return None if fields is None else fields["psnr_avg"]
+    if name in PU21_LUMA_RE:
+        match = PU21_LUMA_RE[name].search(text)
+        if not match or match.group(1) != match.group(2):
+            return None
+        return float(match.group(1))
     match = re.search(rf"\[ {re.escape(name)}:([0-9.]+) \]", text)
     if not match:
         return None
@@ -267,11 +292,13 @@ def main() -> int:
             else:
                 print(f"OK   {name} unsupported")
 
-        gpu = run(base + ["--metrics", "pu21-psnr", "--metric-device", "gpu"])
-        if gpu.returncode == 0 or "GPU" not in gpu.stderr:
-            fail(f"gpu pu21 was accepted: {gpu.stderr[-300:]}")
-        else:
-            print("OK   gpu pu21 refused")
+        version = run(["--version"])
+        if "build: cuda" not in version.stdout:
+            gpu = run(base + ["--metrics", "pu21-psnr", "--metric-device", "gpu"])
+            if gpu.returncode == 0 or "GPU" not in gpu.stderr:
+                fail(f"gpu pu21 was accepted: {gpu.stderr[-300:]}")
+            else:
+                print("OK   gpu pu21 refused")
 
         help_hdr = run(["--help-hdr"])
         help_flat = re.sub(r"\s+", " ", help_hdr.stdout)
@@ -515,6 +542,39 @@ def check_hlg_black_ootf(run) -> None:
                     fail(f"{label}: score still matches the proportional OOTF")
 
 
+def check_rgb_components(run, args: list[str], ref_codes: tuple[int, int, int],
+                         dist_codes: tuple[int, int, int]) -> None:
+    """R, G, B PU21-PSNR from per-component MSE; avg from the pooled RGB MSE."""
+    kr, kg, kb = coef("bt2020")
+
+    def light(codes: tuple[int, int, int]) -> tuple[float, float, float]:
+        nonlinear = rgb_ncl(kr, kg, kb, nominal(codes[0], False, False), nominal(codes[1], True, False),
+                            nominal(codes[2], True, False))
+        return display_pq(nonlinear, None)
+
+    ref_pu = [pu21(c) for c in light(ref_codes)]
+    dist_pu = [pu21(c) for c in light(dist_codes)]
+    mse = [(a - b) ** 2 for a, b in zip(ref_pu, dist_pu)]
+    db = [10.0 * math.log10((256.0 * 256.0) / m) for m in mse]
+    pooled = sum(mse) / 3.0
+    pooled_db = 10.0 * math.log10((256.0 * 256.0) / pooled)
+    done = run(args)
+    fields = pu21_psnr_fields(done.stdout)
+    if done.returncode != 0 or fields is None:
+        fail(f"rgb components: rc={done.returncode} {done.stdout[-300:]} {done.stderr[-300:]}")
+        return
+    for i, name in enumerate("rgb"):
+        expect_close(f"pu21-psnr {name}", fields[f"psnr_{name}"], db[i], 1e-4)
+    expect_close("pu21-psnr avg (pooled RGB MSE)", fields["psnr_avg"], pooled_db, 1e-4)
+    mean_db = sum(db) / 3.0
+    if abs(mean_db - pooled_db) < 1e-3:
+        fail("rgb fixture cannot tell the pooled PSNR from the mean of component PSNR values")
+    elif abs(fields["psnr_avg"] - mean_db) < 1e-3:
+        fail(f"avg {fields['psnr_avg']} equals the mean of component PSNR values {mean_db}")
+    else:
+        print(f"OK   avg is pooled RGB, not the component mean ({pooled_db:.6f} vs {mean_db:.6f})")
+
+
 def check_overrides(run) -> None:
     """Every implemented HDR knob against an independent PU21-PSNR calculation."""
     with tempfile.TemporaryDirectory(prefix="pixvqa_pu21_over_") as td:
@@ -579,6 +639,9 @@ def check_overrides(run) -> None:
             expect_close(label, got, exp, 1e-4)
             if got is not None:
                 got_scores[label] = got
+        check_rgb_components(run, base + ["--hdr-transfer", "pq", "--hdr-primaries", "bt2020",
+                                          "--hdr-matrix", "bt2020nc", "--hdr-range", "limited"],
+                             (520, 420, 640), (560, 470, 600))
         if "range_limited" in got_scores and "range_full" in got_scores:
             delta = abs(got_scores["range_limited"] - got_scores["range_full"])
             if delta < 1e-3:

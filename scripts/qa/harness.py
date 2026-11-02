@@ -96,7 +96,9 @@ def run_cmd(cmd: list, timeout: float = 60, env: Optional[dict] = None) -> subpr
 def scored(text: str) -> bool:
     if re.search(r"\[ (?:PSNR|SSIM|MS-SSIM|XPSNR)\s+y:-?\d", text):
         return True
-    if re.search(r"\[ PU21-[A-Z0-9-]+:-?\d", text):
+    if re.search(r"\[ PU21-PSNR\s+r:-?\d", text):
+        return True
+    if re.search(r"\[ PU21-(?:SSIM|MS-SSIM)\s+y:-?\d", text):
         return True
     if re.search(r"\[ VMAF [a-z]+:-?\d", text):
         return True

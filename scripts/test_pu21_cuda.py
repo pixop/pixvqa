@@ -15,7 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
 GPU = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "full" / "pixvqa"))
-NAMES = ("PU21-PSNR", "PU21-SSIM", "PU21-MS-SSIM")
+RGB_FIELDS = tuple(f"PU21-PSNR {part}" for part in ("r", "g", "b", "avg"))
+NAMES = (*RGB_FIELDS, "PU21-SSIM", "PU21-MS-SSIM")
+RGB_RE = re.compile(r"\[ PU21-PSNR {5}r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]")
+LUMA_RE = {
+    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+}
 FAILS = 0
 WORST = {name: 0.0 for name in NAMES}
 
@@ -43,10 +49,21 @@ def write_frame(path: Path, w: int, h: int, chroma: str, bits: int, frames: list
 
 
 def values(text: str, name: str) -> list[float]:
-    return [float(item) for item in re.findall(rf"\[ {re.escape(name)}:([0-9.]+) \]", text)]
+    if name in RGB_FIELDS:
+        index = RGB_FIELDS.index(name)
+        return [float(groups[index]) for groups in RGB_RE.findall(text)]
+    pairs = LUMA_RE[name].findall(text)
+    for y, avg in pairs:
+        if y != avg:
+            fail(f"{name}: y={y} differs from avg={avg}")
+    return [float(y) for y, _ in pairs]
 
 
 def qcs(text: str, name: str) -> list[float]:
+    if name in RGB_FIELDS:
+        if name != "PU21-PSNR avg":
+            return []
+        name = "PU21-PSNR"
     return [float(item) for item in re.findall(rf"\[ {re.escape(name)}-QCS:([0-9.]+) \]", text)]
 
 

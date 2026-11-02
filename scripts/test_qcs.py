@@ -131,7 +131,11 @@ HDR = [
     "--hdr-range", "limited",
 ]
 VMAF_LINE = re.compile(r"\[ VMAF:([0-9.eE+-]+) \]")
-PU_LINE = re.compile(r"\[ (PU21-PSNR|PU21-SSIM|PU21-MS-SSIM):([0-9.eE+-]+) \]")
+PU_LUMA_LINE = {
+    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
+    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
+}
+PU_PSNR_LINE = re.compile(r"\[ PU21-PSNR {5}r:[0-9.]+ g:[0-9.]+ b:[0-9.]+ avg:([0-9.eE+-]+) \]")
 
 
 def qcs_from_trace(proc, qcs_name: str, kind: str, lo: float, hi: float, label: str) -> list[float]:
@@ -270,8 +274,14 @@ def check_vmaf_and_pu21() -> None:
         if got_pu.get("PU21-MS-SSIM-QCS", (None, "", ""))[1:] != ("0.8", "1.0"):
             fail(f"pu21-msssim range {got_pu.get('PU21-MS-SSIM-QCS')}")
         printed_pu = {}
-        for name, value in PU_LINE.findall(pu.stdout):
-            printed_pu.setdefault(name, []).append(float(value))
+        for name, line in PU_LUMA_LINE.items():
+            pairs = line.findall(pu.stdout)
+            for y, avg in pairs:
+                if y != avg:
+                    fail(f"{name} output y={y} differs from avg={avg}")
+            printed_pu[name] = [float(y) for y, _ in pairs]
+        # QCS uses the pooled RGB value, printed as avg.
+        printed_pu["PU21-PSNR"] = [float(value) for value in PU_PSNR_LINE.findall(pu.stdout)]
         # Summary lines repeat the names. Frame lines come first, four of them.
         if pu_psnr:
             scores_match_trace(printed_pu.get("PU21-PSNR", [])[:len(pu_psnr)], pu_psnr, "pu21_psnr")

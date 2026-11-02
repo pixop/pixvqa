@@ -13,10 +13,10 @@ covers device selection, CPU-vs-CUDA agreement, speed, and platform support.
 |---|---|---|
 | `cpu` | CPU | CPU. CUDA is never initialized for the model |
 | `gpu` | CUDA build required; no CPU substitute (VMAF stays on CPU) | CUDA required. Without a CUDA device visible to PyTorch, preflight fails and no metric runs |
-| `auto` (default) | CPU, except the resident UHD profile ([CLI_USAGE.md](CLI_USAGE.md)) | CUDA when `torch.cuda.is_available()`, else CPU with a `no CUDA device is visible to PyTorch; auto selected cpu` notice on stderr |
+| `auto` (default) | CUDA per metric when the build, a visible device, and the input allow it, else CPU with the reason in the execution summary; VMAF stays on CPU ([METRICS_AND_FORMATS.md](METRICS_AND_FORMATS.md)) | CUDA when `torch.cuda.is_available()`, else CPU with a `no CUDA device is visible to PyTorch; auto selected cpu` notice on stderr |
 
-So `auto` is decided per metric, and in a mixed run native metrics can run on
-the CPU while learned metrics run on CUDA. Use `--device cpu` for an all-CPU
+So `auto` is decided per metric. Native CUDA uses the CUDA runtime, and the learned
+metrics use PyTorch, so one can fall back to the CPU while the other runs on CUDA. Use `--device cpu` for an all-CPU
 run. MPS is never selected.
 
 Each learned backend reports the device it used:

@@ -217,6 +217,13 @@ struct Options {
   bool msssim_gpu = false;
   bool vmaf_cpu_notice = false;
   bool use_cuda = false;
+  // Why --metric-device auto kept a CUDA-capable metric on the CPU. Empty when
+  // the metric runs on the GPU, was not selected, or the device was not auto.
+  std::string psnr_cpu_reason;
+  std::string ssim_cpu_reason;
+  std::string msssim_cpu_reason;
+  std::string xpsnr_cpu_reason;
+  std::string pu21_cpu_reason;
   bool cuda_prec_set = false;
   CudaPrecision cuda_prec = CudaPrecision::Fp64;
   int strip_height = 0;  // 0 = library default; the public CLI does not set this

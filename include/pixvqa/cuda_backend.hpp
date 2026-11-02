@@ -10,6 +10,11 @@ namespace pixvqa {
 
 void cuda_print_device_info();
 
+// Non-throwing probe used by --device auto: true when a CUDA device with the
+// compute capability required by init is visible. Does not create the metric
+// context. On false, why (if non-null) receives a short reason.
+bool cuda_device_ready(std::string* why);
+
 // Optional XPSNR request on the same upload as PSNR / MS-SSIM.
 // On return the three WSSE integers are filled. Scoring stays on the host.
 // Null leaves XPSNR off. There is no CPU fallback if the device call fails.

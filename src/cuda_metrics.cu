@@ -1178,6 +1178,31 @@ struct PlaneIn {
 
 void cuda_shutdown() { cuda_shutdown_impl(); }
 
+bool cuda_device_ready(std::string* why) {
+  auto fail = [why](const std::string& reason) {
+    if (why) *why = reason;
+    return false;
+  };
+  int ndev = 0;
+  cudaError_t e = cudaGetDeviceCount(&ndev);
+  if (e != cudaSuccess) {
+    (void)cudaGetLastError();
+    return fail(cudaGetErrorString(e));
+  }
+  if (ndev <= 0) return fail("no CUDA device");
+  cudaDeviceProp prop{};
+  e = cudaGetDeviceProperties(&prop, 0);
+  if (e != cudaSuccess) {
+    (void)cudaGetLastError();
+    return fail(cudaGetErrorString(e));
+  }
+  if (prop.major < 8 || (prop.major == 8 && prop.minor < 9)) {
+    return fail("compute capability " + std::to_string(prop.major) + "." + std::to_string(prop.minor) +
+                " (this CUDA build requires >= 8.9)");
+  }
+  return true;
+}
+
 void cuda_print_device_info() {
   init_once();
   const auto& c = ctx();

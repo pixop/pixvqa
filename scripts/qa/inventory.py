@@ -141,8 +141,8 @@ CONSTRAINTS = [
     {
         "id": "auto-metric-profile",
         "file": "src/main.cpp",
-        "needle": "opt.format.width >= 3840",
-        "rule": "--metric-device auto uses the CPU except one profile: 10-bit, at least 3840x2160, GPU decoding, no VMAF, CUDA build.",
+        "needle": "Auto prefers CUDA for each selected metric",
+        "rule": "--metric-device auto runs PSNR, SSIM, MS-SSIM, XPSNR, and PU21 on CUDA when the build has CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. Otherwise the metric runs on the CPU and the execution summary gives the reason. VMAF stays on CPU libvmaf without a warning.",
     },
     {
         "id": "hdr-order",
@@ -238,7 +238,7 @@ def build_inventory(root: Path) -> dict:
         "metric_backends": {
             "cpu": "Every selected metric.",
             "gpu": "PSNR, SSIM, MS-SSIM, XPSNR, and PU21 when the layout is supported. VMAF stays on CPU libvmaf and warns, including when it is the only GPU request.",
-            "auto": "CPU, except the single 4K HEVC GPU-decode profile.",
+            "auto": "CUDA per metric when the build, a visible device of compute capability 8.9 or later, and the input layout allow it; otherwise CPU with the reason in the execution summary. VMAF stays on CPU libvmaf without a warning.",
         },
         "codecs": CODECS,
         "pixel_formats": ["420p:8", "420p:10", "422p:8", "422p:10", "444p:8", "444p:10"],
