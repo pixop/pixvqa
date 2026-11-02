@@ -101,6 +101,23 @@ def check_temporal_runtime() -> None:
         raise PreflightError(f"CVVDP QCS needs pycvvdp and torch in this interpreter: {exc}") from exc
 
 
+def check_mixed_api_runtime() -> None:
+    """Mixed raw/compressed inputs use predict_video_source in this interpreter."""
+    try:
+        import pycvvdp  # noqa: F401
+        import torch  # noqa: F401
+    except Exception as exc:
+        raise PreflightError(
+            f"Mixed raw/compressed CVVDP needs pycvvdp and torch in this interpreter: {exc}"
+        ) from exc
+
+
+def is_mixed_raw_compressed(raw_record: dict | None) -> bool:
+    if not raw_record:
+        return False
+    return bool(raw_record.get("reference_is_raw")) != bool(raw_record.get("test_is_raw"))
+
+
 def installed_distribution(*names: str) -> dict:
     for name in names:
         try:
@@ -495,6 +512,8 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             raise
         except AdapterError as exc:
             raise PreflightError(str(exc)) from exc
+        if is_mixed_raw_compressed(prepared.get("raw_record")):
+            check_mixed_api_runtime()
         if check_only:
             if temporal:
                 check_temporal_runtime()
@@ -596,10 +615,29 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
     }
 
 
+def make_features_dir() -> Path:
+    return Path(tempfile.mkdtemp(prefix="pixvqa-cvvdp-features-"))
+
+
 def execute(prepared: dict, interpretation: str, display: str, nframes: int, device: str,
             output_json: str, temporal: bool = False) -> dict:
-    binary = prepared["binary"]
     out = Path(output_json)
+    if is_mixed_raw_compressed(prepared.get("raw_record")):
+        from pixvqa_cvvdp.python_api import run_mixed_predict
+
+        features_dir = make_features_dir() if temporal else None
+        try:
+            record = run_mixed_predict(
+                prepared, interpretation, display, nframes, device, output_json,
+                features_dir=features_dir,
+                gpu_mem_gb=prepared.get("gpu_mem_gb"),
+            )
+            return _finalize_record(record, prepared, display, device, nframes, out, features_dir)
+        finally:
+            if features_dir is not None:
+                shutil.rmtree(features_dir, ignore_errors=True)
+
+    binary = prepared["binary"]
     out.parent.mkdir(parents=True, exist_ok=True)
     csv_path = out.with_suffix(".csv")
     cmd = [
@@ -610,10 +648,8 @@ def execute(prepared: dict, interpretation: str, display: str, nframes: int, dev
         cmd.extend(["--gpu-mem", repr(prepared["gpu_mem_gb"])])
     if nframes > 0:
         cmd.extend(["--nframes", str(nframes)])
-    features_dir = None
-    if temporal:
-        # --features only serializes stats['Q_per_ch'] after the JOD is computed.
-        features_dir = Path(tempfile.mkdtemp(prefix="pixvqa-cvvdp-features-"))
+    features_dir = make_features_dir() if temporal else None
+    if features_dir is not None:
         cmd.extend(["--features", "--output-dir", str(features_dir)])
     try:
         return execute_command(prepared, cmd, csv_path, out, interpretation, display, nframes, device,
@@ -621,6 +657,25 @@ def execute(prepared: dict, interpretation: str, display: str, nframes: int, dev
     finally:
         if features_dir is not None:
             shutil.rmtree(features_dir, ignore_errors=True)
+
+
+def _finalize_record(record, prepared, display, device, nframes, out, features_dir):
+    if features_dir is not None:
+        from pixvqa_cvvdp.temporal import features_path, frame_sequence
+
+        features = features_path(features_dir, prepared["test_path"])
+        if not features.is_file():
+            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            raise AdapterError(f"CVVDP wrote no features file {features}; see {out}")
+        try:
+            t_temporal = time.perf_counter()
+            record["temporal"] = frame_sequence(features, display, device, record["jod"])
+            record["performance"]["temporal_pooling_seconds"] = time.perf_counter() - t_temporal
+        except Exception as exc:
+            out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            raise AdapterError(f"could not derive the CVVDP frame sequence: {exc}") from exc
+    out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return record
 
 
 def execute_command(prepared: dict, cmd: list, csv_path: Path, out: Path, interpretation: str,

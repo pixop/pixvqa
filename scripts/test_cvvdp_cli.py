@@ -339,11 +339,61 @@ def test_mixed_input_prepare() -> None:
     print("OK   cvvdp-four-input-prepare")
 
 
+def test_mixed_routing() -> None:
+    sys.path.insert(0, str(ROOT / "python"))
+    from unittest.mock import patch
+
+    import pixvqa_cvvdp.adapter as adapter
+    from pixvqa_cvvdp.adapter import is_mixed_raw_compressed
+
+    if not is_mixed_raw_compressed({"reference_is_raw": True, "test_is_raw": False}):
+        raise SystemExit("is_mixed_raw_compressed ref-raw")
+    if is_mixed_raw_compressed({"reference_is_raw": True, "test_is_raw": True}):
+        raise SystemExit("is_mixed_raw_compressed both raw")
+    if is_mixed_raw_compressed(None):
+        raise SystemExit("is_mixed_raw_compressed none")
+
+    prepared = {
+        "binary": "/bin/false",
+        "test_path": "/tmp/dist.mp4",
+        "ref_path": "/tmp/ref.yuv",
+        "ref_meta": {},
+        "test_meta": {},
+        "display_model": {},
+        "raw_record": {"reference_is_raw": True, "test_is_raw": False, "fps_requested": 60.0},
+        "links": None,
+    }
+    mixed_calls: list[dict] = []
+
+    def fake_mixed(*_args, **_kwargs):
+        mixed_calls.append({"ok": True})
+        return {
+            "jod": 7.5,
+            "performance": {},
+            "stdout": "",
+            "stderr": "",
+        }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        with patch("pixvqa_cvvdp.python_api.run_mixed_predict", side_effect=fake_mixed):
+            with patch.object(adapter.subprocess, "run", side_effect=AssertionError("CLI must not run")):
+                record = adapter.execute(
+                    prepared, "pq", "standard_hdr_pq", 2, "cpu", str(out), temporal=False,
+                )
+        if not mixed_calls or record.get("jod") != 7.5:
+            raise SystemExit(f"mixed routing failed: {mixed_calls} {record}")
+        if not out.is_file():
+            raise SystemExit("mixed routing did not write JSON")
+    print("OK   cvvdp-mixed-python-routing")
+
+
 def main() -> int:
     test_official_csv()
     test_csv_parse_failure_record()
     test_raw_yuv()
     test_mixed_input_prepare()
+    test_mixed_routing()
     if not PIXVQA.is_file():
         print(f"missing pixvqa: {PIXVQA}", file=sys.stderr)
         return 2
