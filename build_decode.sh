@@ -120,15 +120,19 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     -DPIXVQA_HAS_CUDA=1 -DPIXVQA_HAS_FFMPEG=1 -DPIXVQA_HAS_NVDEC=1 \
     -c src/decode.cpp -o "$FULL/decode.o"
   echo "CXX hdr/pu21/ssim/msssim (CUDA link)"
-  for src in hdr.cpp pu21.cpp ssim_ref.cpp msssim.cpp metric_resolve.cpp; do
+  for src in hdr.cpp pu21.cpp ssim_ref.cpp msssim.cpp; do
     $DEC_CXX -O3 -Wall -Wextra -std=c++17 -Iinclude -pthread -march=native \
       -DPIXVQA_HAS_CUDA=1 -c "src/$src" -o "build/cuda/${src%.cpp}.o"
   done
+  echo "CXX src/metric_resolve.cpp (CUDA + FFmpeg metadata)"
+  $DEC_CXX -O3 -Wall -Wextra -std=c++17 -Iinclude -I"$FFMPEG_PREFIX/include" -I"$CUDA_HOME/include" -I"$CUDA_HOME/targets/x86_64-linux/include" -pthread -march=native \
+    -DPIXVQA_HAS_CUDA=1 -DPIXVQA_HAS_FFMPEG=1 -DPIXVQA_HAS_NVDEC=1 \
+    -c src/metric_resolve.cpp -o "$FULL/metric_resolve.o"
   echo "LINK $FULL/pixvqa"
   FULL_CXXFLAGS="-O3 -Wall -Wextra -std=c++17 -Iinclude -I$FFMPEG_PREFIX/include -I$CUDA_HOME/include -I$CUDA_HOME/targets/x86_64-linux/include -pthread -march=native -DPIXVQA_HAS_CUDA=1 -DPIXVQA_HAS_FFMPEG=1 -DPIXVQA_HAS_NVDEC=1"
   FULL_OBJS=(build/cuda/yuv_io.o build/cuda/psnr.o build/cuda/ssim_ref.o
              build/cuda/msssim.o build/cuda/thread_pool.o build/cuda/xpsnr.o build/cuda/hdr.o
-             build/cuda/pu21.o build/cuda/metric_resolve.o
+             build/cuda/pu21.o "$FULL/metric_resolve.o"
              build/cuda/ssim_simd.o build/cuda/msssim_avx2.o
              build/cuda/cuda_metrics.o build/cuda/cuda_pu21.o "$FULL/decode.o")
   if [[ -z "${PIXVQA_LIBCUDA_DIR:-}" ]]; then

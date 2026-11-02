@@ -225,6 +225,14 @@ def main() -> int:
                             "cuda-xpsnr-jobs",
                             [python, "scripts/test_xpsnr_cuda_jobs.py"],
                         )
+                    stage(
+                        "metric-resolve-ffmpeg",
+                        [python, "scripts/test_metric_resolve_ffmpeg_build.py"],
+                        {
+                            "PIXVQA_DECODE_BIN": str(ROOT / "build/swdec/pixvqa"),
+                            "PIXVQA_FULL_BIN": str(ROOT / "build/full/pixvqa"),
+                        },
+                    )
 
     finally:
         report["finished"] = datetime.now(timezone.utc).isoformat()
@@ -263,6 +271,7 @@ def main() -> int:
                 "cuda-xpsnr-wsse",
                 "prepare-uhd-fixtures",
                 "cuda-xpsnr-jobs",
+                "metric-resolve-ffmpeg",
             ])
 
         completed_stages = {
