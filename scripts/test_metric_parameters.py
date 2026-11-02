@@ -148,8 +148,65 @@ def test_cli_inference() -> None:
             timeout=60,
         )
         if mixed.returncode != 0 or "info: cvvdp interpretation hlg" not in mixed.stderr:
-            fail("mixed-native-cvvdp-hdr-transfer", mixed.stderr[-500:])
+            fail("mixed-native-cvvdp-hdr-transfer", mixed.stderr[-500:] + mixed.stdout[-500:])
+        if "info: cvvdp display standard_hdr_hlg" not in mixed.stderr:
+            fail("mixed-native-cvvdp-display", mixed.stderr[-400:])
+        if "[ CVVDP jod:" not in mixed.stdout or "interpretation:hlg" not in mixed.stdout:
+            fail("mixed-native-cvvdp-summary", mixed.stdout[-400:])
+        if "display:standard_hdr_hlg" not in mixed.stdout:
+            fail("mixed-native-cvvdp-summary-display", mixed.stdout[-400:])
         ok("mixed-native-cvvdp-accepts-hdr-transfer")
+
+
+def cvvdp_mock_main_py() -> str:
+    return '''import json
+import sys
+
+args = sys.argv[1:]
+
+def value(flag):
+    try:
+        return args[args.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
+
+if "--check" in args:
+    print("pixvqa-check ok")
+    raise SystemExit(0)
+
+interpretation = value("--interpretation") or "pq"
+display = value("--display") or "standard_hdr_pq"
+device = value("--device") or "auto"
+jod = 1.0
+transient = "--transient-output" in args
+out_json = value("--output-json")
+output_json = None if transient else out_json
+
+if value("--protocol") == "lines":
+    lines = [
+        "pixvqa-protocol 1",
+        "pixvqa-value metric cvvdp",
+        f"pixvqa-value jod {jod!r}",
+        "pixvqa-value frames_evaluated 2",
+        f"pixvqa-value display {display}",
+        f"pixvqa-value interpretation {interpretation}",
+        f"pixvqa-value device {device}",
+        f"pixvqa-value output_json {output_json if output_json else 'none'}",
+        "pixvqa-end",
+    ]
+    print("\\n".join(lines))
+    raise SystemExit(0)
+
+payload = {
+    "metric": "cvvdp",
+    "jod": jod,
+    "display": display,
+    "interpretation": interpretation,
+    "device": device,
+    "output_json": output_json,
+}
+print(json.dumps(payload, separators=(",", ":")))
+'''
 
 
 def cvvdp_mock_env(tmp_path: Path) -> dict[str, str]:
@@ -159,13 +216,7 @@ def cvvdp_mock_env(tmp_path: Path) -> dict[str, str]:
     mock = tmp_path / "mock" / "pixvqa_cvvdp"
     mock.mkdir(parents=True)
     (mock / "__init__.py").write_text("", encoding="utf-8")
-    (mock / "__main__.py").write_text(
-        "import sys\n"
-        "if '--check' in sys.argv:\n"
-        "  print('pixvqa-check ok'); raise SystemExit(0)\n"
-        "print('{\"jod\":1}\\n')\n",
-        encoding="utf-8",
-    )
+    (mock / "__main__.py").write_text(cvvdp_mock_main_py(), encoding="utf-8")
     return env
 
 
