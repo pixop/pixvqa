@@ -225,7 +225,7 @@ case "$VARIANT" in
 esac
 
 LIB_SRCS="$ROOT/src/yuv_io.cpp $ROOT/src/psnr.cpp $ROOT/src/ssim_ref.cpp $ROOT/src/msssim.cpp \
-$ROOT/src/thread_pool.cpp $ROOT/src/xpsnr.cpp $ROOT/src/hdr.cpp $ROOT/src/pu21.cpp"
+$ROOT/src/thread_pool.cpp $ROOT/src/xpsnr.cpp $ROOT/src/hdr.cpp $ROOT/src/pu21.cpp $ROOT/src/metric_resolve.cpp"
 case "$VARIANT" in
   swdec|full) LIB_SRCS+=" $ROOT/src/decode.cpp" ;;
 esac

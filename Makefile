@@ -202,6 +202,7 @@ build/full/decode.o: $(ROOT)/src/decode.cpp build/full/config.mk | build/full
 
 FULL_LINK_OBJS = build/full/main.o build/full/decode.o \
 	build/cuda/yuv_io.o build/cuda/psnr.o build/cuda/thread_pool.o build/cuda/xpsnr.o \
+	build/cuda/metric_resolve.o \
 	$(FULL_CUDA_EXTRA_OBJS) $(CUDA_SIMD_OBJ) $(CUDA_NV_OBJ) \
 	$(filter build/cuda/vmaf.o,$(CUDA_LIB_OBJS))
 
