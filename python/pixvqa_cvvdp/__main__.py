@@ -71,6 +71,10 @@ def main(argv=None) -> int:
     parser.add_argument("--raw-height", type=int)
     parser.add_argument("--raw-fps-num", type=int)
     parser.add_argument("--raw-fps-den", type=int)
+    parser.add_argument("--raw-ref", action="store_true",
+                        help="Reference is planar YUV420p10le; compressed test stays on disk.")
+    parser.add_argument("--raw-test", action="store_true",
+                        help="Test is planar YUV420p10le; compressed reference stays on disk.")
     parser.add_argument("--transient-output", action="store_true",
                         help="Internal: the caller will remove the output record after this run.")
     parser.add_argument("--check", action="store_true",
@@ -87,6 +91,8 @@ def main(argv=None) -> int:
                 args.ref, args.test, args.interpretation, args.display, args.nframes, args.device,
                 args.output_json, args.cvvdp_bin, args.raw_width, args.raw_height, args.raw_fps_num,
                 args.raw_fps_den, check_only=args.check, temporal=args.temporal, gpu_mem_gb=args.gpu_mem,
+                raw_ref=True if args.raw_ref else None,
+                raw_test=True if args.raw_test else None,
             )
     except PreflightError as exc:
         print(f"pixvqa-cvvdp: {exc}", file=sys.stderr)

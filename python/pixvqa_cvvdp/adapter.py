@@ -420,7 +420,8 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
         output_json: str, cvvdp_bin: str | None = None, raw_width: int | None = None,
         raw_height: int | None = None, raw_fps_num: int | None = None,
         raw_fps_den: int | None = None, decode_video_props=None, check_only: bool = False,
-        temporal: bool = False, gpu_mem_gb: float | None = None) -> dict:
+        temporal: bool = False, gpu_mem_gb: float | None = None, raw_ref: bool | None = None,
+        raw_test: bool | None = None) -> dict:
     prepared = None
     try:
         if gpu_mem_gb is not None and gpu_mem_gb <= 0:
@@ -430,7 +431,8 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
         effective = check_device(device, report_auto_fallback=not check_only)
         try:
             prepared = prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_width,
-                                      raw_height, raw_fps_num, raw_fps_den, decode_video_props)
+                                      raw_height, raw_fps_num, raw_fps_den, decode_video_props,
+                                      raw_ref=raw_ref, raw_test=raw_test)
         except PreflightError:
             raise
         except AdapterError as exc:
@@ -448,8 +450,19 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             prepared["links"].cleanup()
 
 
+def _raw_side(role: str, path: str, width: int, height: int, encoded_fps: float, num: int, den: int,
+              interpretation: str, nframes: int, links: TemporarySymlinkDir, expected: dict,
+              decode_video_props) -> tuple[str, dict, dict, int]:
+    frames = validate_raw_yuv(path, width, height, max(nframes, 0))
+    link_path = links.symlink(path, yuv_metadata_name(role, width, height, encoded_fps))
+    verified = verify_yuv_filename(link_path, expected, decode_video_props)
+    meta = raw_metadata(path, width, height, frames, num, den, interpretation)
+    return link_path, meta, verified, frames
+
+
 def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_width, raw_height,
-                   raw_fps_num, raw_fps_den, decode_video_props) -> dict:
+                   raw_fps_num, raw_fps_den, decode_video_props, raw_ref: bool | None = None,
+                   raw_test: bool | None = None) -> dict:
     raw_values = (raw_width, raw_height, raw_fps_num, raw_fps_den)
     if any(value is not None for value in raw_values) and any(value is None for value in raw_values):
         raise PreflightError("raw YUV width, height, and fps must be supplied together")
@@ -460,38 +473,57 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
             ref_path, test_path = ref, test
             ref_meta, test_meta = probe_video(ref), probe_video(test)
         else:
+            legacy_both = raw_ref is None and raw_test is None
+            ref_is_raw = legacy_both if legacy_both else bool(raw_ref)
+            test_is_raw = legacy_both if legacy_both else bool(raw_test)
+            if not ref_is_raw and not test_is_raw:
+                raise PreflightError("raw YUV geometry was supplied without marking a raw side")
             if interpretation not in ("pq", "hlg"):
                 raise PreflightError(
                     "raw YUV SDR is unsupported; the official raw reader applies BT.601 coefficients "
                     "on its BT.709 path"
                 )
             encoded_fps = encode_fps(raw_fps_num, raw_fps_den)
-            ref_frames = validate_raw_yuv(ref, raw_width, raw_height, max(nframes, 0))
-            test_frames = validate_raw_yuv(test, raw_width, raw_height, max(nframes, 0))
             links = TemporarySymlinkDir()
             expected = {
                 "width": raw_width, "height": raw_height, "bit_depth": 10, "chroma_ss": "420",
                 "color_space": "2020", "fps": encoded_fps,
             }
-            ref_path = links.symlink(ref, yuv_metadata_name("reference", raw_width, raw_height, encoded_fps))
-            test_path = links.symlink(test, yuv_metadata_name("test", raw_width, raw_height, encoded_fps))
-            ref_verified = verify_yuv_filename(ref_path, expected, decode_video_props)
-            test_verified = verify_yuv_filename(test_path, expected, decode_video_props)
-            ref_meta = raw_metadata(ref, raw_width, raw_height, ref_frames, raw_fps_num, raw_fps_den,
-                                    interpretation)
-            test_meta = raw_metadata(test, raw_width, raw_height, test_frames, raw_fps_num, raw_fps_den,
-                                     interpretation)
+            if ref_is_raw:
+                ref_path, ref_meta, ref_verified, ref_frames = _raw_side(
+                    "reference", ref, raw_width, raw_height, encoded_fps, raw_fps_num, raw_fps_den,
+                    interpretation, nframes, links, expected, decode_video_props)
+            else:
+                ref_path, ref_meta = ref, probe_video(ref)
+                ref_verified = None
+                ref_frames = None
+            if test_is_raw:
+                test_path, test_meta, test_verified, test_frames = _raw_side(
+                    "test", test, raw_width, raw_height, encoded_fps, raw_fps_num, raw_fps_den,
+                    interpretation, nframes, links, expected, decode_video_props)
+            else:
+                test_path, test_meta = test, probe_video(test)
+                test_verified = None
+                test_frames = None
             raw_record = {
                 "pix_fmt": "yuv420p10le", "range": "limited", "matrix": "bt2020nc",
                 "transfer": interpretation, "width": raw_width, "height": raw_height,
                 "fps_requested": raw_fps_num / raw_fps_den, "fps_encoded": encoded_fps,
                 "storage": "little-endian uint16 with 10-bit codes in the low bits (0..1023)",
                 "assumption": "Official YUVReader expands limited-range codes; full-range samples are not converted.",
-                "reference_frames": ref_frames, "test_frames": test_frames,
-                "reference_symlink": ref_path, "test_symlink": test_path,
-                "filename_verification": ref_verified["verified_by"],
-                "reference_props": ref_verified["parsed"], "test_props": test_verified["parsed"],
+                "reference_is_raw": ref_is_raw, "test_is_raw": test_is_raw,
             }
+            if ref_is_raw:
+                raw_record["reference_frames"] = ref_frames
+                raw_record["reference_symlink"] = ref_path
+                raw_record["reference_props"] = ref_verified["parsed"]
+                raw_record["filename_verification"] = ref_verified["verified_by"]
+            if test_is_raw:
+                raw_record["test_frames"] = test_frames
+                raw_record["test_symlink"] = test_path
+                raw_record["test_props"] = test_verified["parsed"]
+                if not ref_is_raw:
+                    raw_record["filename_verification"] = test_verified["verified_by"]
         check_pair(ref_meta, test_meta, interpretation, nframes)
         display_model = check_display(interpretation, display)
         binary = resolve_cvvdp_binary(cvvdp_bin)

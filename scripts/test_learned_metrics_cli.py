@@ -733,12 +733,32 @@ def decode_cases(s: Suite) -> None:
         else:
             ok("all-three-compressed")
     raw_ref = s.tmp / "mixed-ref.yuv"
-    write_yuv(raw_ref, 4, 64, size=64, bits=8)
-    proc = s.run(["--metrics", "psnr,cvvdp", "-r", str(raw_ref), "-s", "64x64", "-f", "420p:8", "--fps", "24",
-                  "-t", clips["dist"], *s.cvvdp()], binary=DECODE_BIN)
-    if expect("cvvdp-mixed-input", proc, 2, needles=["both inputs as raw YUV or both as compressed"]) \
-            and not s.backend_log():
-        ok("cvvdp-raw-compressed-mix-rejected")
+    write_yuv(raw_ref, 4, size=64, bits=10)
+    pq_mp4 = s.tmp / "pq-dist.mp4"
+    made = subprocess.run(
+        [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=24",
+         "-frames:v", "4", "-vf",
+         "setparams=color_trc=smpte2084:color_primaries=bt2020:colorspace=bt2020nc:range=tv",
+         "-c:v", "libx264", "-qp", "28", "-pix_fmt", "yuv420p10le",
+         "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+         "-color_range", "tv", str(pq_mp4)],
+        capture_output=True, text=True,
+    )
+    if made.returncode != 0:
+        fail("cvvdp-mixed-fixtures", made.stderr[-200:])
+    else:
+        cvvdp_pq = ["--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq",
+                    "--cvvdp-python", sys.executable, "--fps", "24/1"]
+        proc = s.run(["--metrics", "cvvdp", "-r", str(raw_ref), "-s", "64x64", "-f", "420p:10",
+                      "-t", str(pq_mp4), *cvvdp_pq])
+        if expect("cvvdp-raw-ref-compressed-test", proc, 0, stdout_needles=[f'"jod":{CVVDP_JOD}']) \
+                and "--raw-ref" in " ".join(s.backend_args("cvvdp")):
+            ok("cvvdp-raw-ref-compressed-test")
+        proc = s.run(["--metrics", "cvvdp", "-r", str(pq_mp4), "-t", str(raw_ref),
+                      "-s", "64x64", "-f", "420p:10", *cvvdp_pq])
+        if expect("cvvdp-compressed-ref-raw-test", proc, 0, stdout_needles=[f'"jod":{CVVDP_JOD}']) \
+                and "--raw-test" in " ".join(s.backend_args("cvvdp")):
+            ok("cvvdp-compressed-ref-raw-test")
 
 
 def official_logistic(x: float, b1: float, b2: float, b3: float, b4: float) -> float:

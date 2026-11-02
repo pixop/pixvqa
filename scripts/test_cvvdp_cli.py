@@ -194,9 +194,80 @@ open(result, "w", encoding="utf-8").write("test, reference, cvvdp\\n%s, %s, 9.5\
                 os.environ["TMPDIR"] = previous
 
 
+def test_mixed_input_prepare() -> None:
+    sys.path.insert(0, str(ROOT / "python"))
+    from pixvqa_cvvdp.adapter import encode_fps, prepare_inputs, yuv_metadata_name
+
+    pq_meta = {
+        "path": "/tmp/dist.mp4", "codec": "hevc", "profile": "Main 10", "width": 64, "height": 64,
+        "pix_fmt": "yuv420p10le", "color_transfer": "smpte2084", "color_primaries": "bt2020",
+        "color_space": "bt2020nc", "color_range": "tv", "nb_frames": "4", "duration": "0.16",
+        "r_frame_rate": "24/1",
+    }
+
+    def fake_probe(path: str) -> dict:
+        if path.endswith(".mp4"):
+            return dict(pq_meta, path=path)
+        raise AssertionError(f"unexpected probe {path}")
+
+    import pixvqa_cvvdp.adapter as adapter
+
+    real_probe = adapter.probe_video
+    adapter.probe_video = fake_probe
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["TMPDIR"] = tmp
+            frame = 64 * 64 * 3 * 2
+            raw = Path(tmp) / "ref.yuv"
+            raw.write_bytes(b"\x00" * frame * 2)
+            script = Path(tmp) / "fake-cvvdp"
+            script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            script.chmod(0o755)
+            prepared = prepare_inputs(
+                str(raw), "/tmp/dist.mp4", "pq", "standard_hdr_pq", 2, str(script),
+                64, 64, 24, 1, None, raw_ref=True, raw_test=False,
+            )
+            if not os.path.islink(prepared["ref_path"]) or prepared["test_path"] != "/tmp/dist.mp4":
+                raise SystemExit(f"mixed ref-raw: {prepared['ref_path']} {prepared['test_path']}")
+            name = yuv_metadata_name("reference", 64, 64, encode_fps(24, 1))
+            if os.path.basename(prepared["ref_path"]) != name:
+                raise SystemExit(f"bad symlink name {prepared['ref_path']}")
+            prepared2 = prepare_inputs(
+                "/tmp/ref.mp4", str(raw), "pq", "standard_hdr_pq", 2, str(script),
+                64, 64, 24, 1, None, raw_ref=False, raw_test=True,
+            )
+            if prepared2["ref_path"] != "/tmp/ref.mp4" or not os.path.islink(prepared2["test_path"]):
+                raise SystemExit("mixed test-raw layout wrong")
+            frame_bytes = 64 * 64 * 3 * 2
+            raw_ref2 = Path(tmp) / "ref2.yuv"
+            raw_test2 = Path(tmp) / "test2.yuv"
+            raw_ref2.write_bytes(b"\x01" * frame_bytes * 2)
+            raw_test2.write_bytes(b"\x02" * frame_bytes * 2)
+            prepared_both = prepare_inputs(
+                str(raw_ref2), str(raw_test2), "pq", "standard_hdr_pq", 2, str(script),
+                64, 64, 24, 1, None,
+            )
+            if not os.path.islink(prepared_both["ref_path"]) or not os.path.islink(prepared_both["test_path"]):
+                raise SystemExit("both-raw layout wrong")
+            prepared_cc = prepare_inputs(
+                "/tmp/ref.mp4", "/tmp/dist.mp4", "pq", "standard_hdr_pq", 2, str(script),
+                None, None, None, None, None, raw_ref=False, raw_test=False,
+            )
+            if prepared_cc["ref_path"] != "/tmp/ref.mp4" or prepared_cc["test_path"] != "/tmp/dist.mp4":
+                raise SystemExit("both-compressed should pass paths through")
+            prepared["links"].cleanup()
+            prepared2["links"].cleanup()
+            prepared_both["links"].cleanup()
+    finally:
+        adapter.probe_video = real_probe
+        os.environ.pop("TMPDIR", None)
+    print("OK   cvvdp-four-input-prepare")
+
+
 def main() -> int:
     test_official_csv()
     test_raw_yuv()
+    test_mixed_input_prepare()
     if not PIXVQA.is_file():
         print(f"missing pixvqa: {PIXVQA}", file=sys.stderr)
         return 2

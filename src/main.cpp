@@ -656,7 +656,7 @@ constexpr MetricCaps kMetricCaps[] = {
     {"pu21-psnr", true, MetricExec::Native, true, true, MetricQcs::PerFrame},
     {"pu21-ssim", true, MetricExec::Native, true, true, MetricQcs::PerFrame},
     {"pu21-msssim", true, MetricExec::Native, true, true, MetricQcs::PerFrame},
-    // Raw CVVDP is limited to YUV420p10le PQ pairs; see prepare_cvvdp_raw.
+    // Raw CVVDP is limited to YUV420p10le PQ/HLG pairs; see prepare_cvvdp_learned_inputs.
     {"cvvdp", true, MetricExec::PythonBackend, true, true, MetricQcs::Unsupported},
     {"cvqa-hdr-nr", false, MetricExec::PythonBackend, false, false, MetricQcs::SampledFrames},
 };
@@ -818,41 +818,50 @@ void inherit_side_geometry(SideSpec& ref, SideSpec& test) {
   }
 }
 
-bool cvvdp_raw_requested(const SideSpec& ref, const SideSpec& test, const Options& opt) {
-  return ref.has_size || test.has_size || ref.has_fmt || test.has_fmt || opt.fps_set ||
-         path_ends_with_yuv(opt.ref_path) || path_ends_with_yuv(opt.test_path);
-}
-
-bool prepare_cvvdp_raw(const SideSpec& ref, const SideSpec& test, const Options& opt,
-                       const CvvdpOptions& cvvdp) {
-  if (!ref.has_size || !test.has_size || !ref.has_fmt || !test.has_fmt) {
-    std::fprintf(stderr, "pixvqa: cvvdp raw YUV requires -s and -f\n");
+bool validate_cvvdp_raw_side(const SideSpec& side, const char* role) {
+  if (!side.has_size || !side.has_fmt) {
+    std::fprintf(stderr, "pixvqa: cvvdp raw %s requires -s and -f\n", role);
     return false;
   }
-  if (!formats_equal(ref.format, test.format)) {
-    std::fprintf(stderr, "pixvqa: cvvdp reference and test -s/-f disagree\n");
-    return false;
-  }
-  if (ref.format.chroma != ChromaFormat::YUV420 || ref.format.bit_depth != 10) {
+  if (side.format.chroma != ChromaFormat::YUV420 || side.format.bit_depth != 10) {
     std::fprintf(stderr,
-                 "pixvqa: cvvdp raw input supports only planar YUV420p10le (-f 420p:10)\n");
+                 "pixvqa: cvvdp raw %s supports only planar YUV420p10le (-f 420p:10)\n", role);
     return false;
   }
-  if (ref.format.width % 2 != 0 || ref.format.height % 2 != 0) {
+  if (side.format.width % 2 != 0 || side.format.height % 2 != 0) {
     std::fprintf(stderr, "pixvqa: cvvdp raw YUV420 requires positive even width and height\n");
     return false;
   }
-  if (!opt.fps_set) {
+  return true;
+}
+
+bool adopt_cvvdp_fps(Options& opt, const SideSpec& ref, const SideSpec& test) {
+  if (opt.fps_set) return true;
+  if (!ref.compressed && !test.compressed) {
     std::fprintf(stderr, "pixvqa: cvvdp raw YUV requires --fps\n");
     return false;
   }
-  if (cvvdp.interpretation != "pq" && cvvdp.interpretation != "hlg") {
+  if (ref.compressed && test.compressed) return true;
+  const SideSpec& compressed = ref.compressed ? ref : test;
+  if (compressed.rate != FrameRateKind::Constant) {
     std::fprintf(stderr,
-                 "pixvqa: cvvdp raw YUV supports only --cvvdp-interpretation pq or hlg; "
-                 "SDR raw YUV is unsupported\n");
+                 "pixvqa: cvvdp requires --fps when the compressed side has a non-constant frame "
+                 "rate\n");
     return false;
   }
+  opt.fps_num = compressed.fps_num;
+  opt.fps_den = compressed.fps_den;
+  opt.fps_set = true;
+  std::fprintf(stderr, "pixvqa: cvvdp using frame rate %d/%d from the compressed input\n",
+               opt.fps_num, opt.fps_den);
   return true;
+}
+
+bool cvvdp_side_specs_needed(const Options& opt, const SideSpec& ref, const SideSpec& test) {
+  if (ref.has_size || test.has_size || ref.has_fmt || test.has_fmt || opt.fps_set) return true;
+  if (ref.input == InputKind::Raw || test.input == InputKind::Raw) return true;
+  if (ref.input == InputKind::Compressed || test.input == InputKind::Compressed) return true;
+  return path_ends_with_yuv(opt.ref_path) || path_ends_with_yuv(opt.test_path);
 }
 
 bool assign_cvvdp_value(std::string& field, const char* flag, const std::string& value) {
@@ -1448,7 +1457,8 @@ struct LearnedPlan {
   Options opt;
   CvvdpOptions cvvdp;
   CvqaHdrNrOptions cvqahdr;
-  bool cvvdp_raw = false;
+  bool cvvdp_raw_ref = false;
+  bool cvvdp_raw_test = false;
   int raw_width = 0;
   int raw_height = 0;
   TemporaryCvvdpDirectory cvvdp_temporary;
@@ -1458,6 +1468,45 @@ struct LearnedPlan {
   bool preflight_passed = false;
   bool executed = false;
 };
+
+bool prepare_cvvdp_learned_inputs(LearnedPlan& plan, SideSpec& ref, SideSpec& test) {
+  if (!plan.cvvdp.selected) return true;
+  if (!cvvdp_side_specs_needed(plan.opt, ref, test)) {
+    plan.cvvdp_raw_ref = false;
+    plan.cvvdp_raw_test = false;
+    return true;
+  }
+  inherit_side_geometry(ref, test);
+  const bool ref_raw = !ref.compressed;
+  const bool test_raw = !test.compressed;
+  if (!ref_raw && !test_raw) {
+    plan.cvvdp_raw_ref = false;
+    plan.cvvdp_raw_test = false;
+    return true;
+  }
+  if (plan.cvvdp.interpretation != "pq" && plan.cvvdp.interpretation != "hlg") {
+    std::fprintf(stderr,
+                 "pixvqa: cvvdp raw YUV supports only --cvvdp-interpretation pq or hlg; "
+                 "SDR raw YUV is unsupported\n");
+    return false;
+  }
+  if (!adopt_cvvdp_fps(plan.opt, ref, test)) return false;
+  if (ref_raw && !validate_cvvdp_raw_side(ref, "reference")) return false;
+  if (test_raw && !validate_cvvdp_raw_side(test, "test")) return false;
+  if (ref.has_fmt && test.has_fmt && !formats_equal(ref.format, test.format)) {
+    std::fprintf(stderr, "pixvqa: cvvdp reference and test geometry disagree\n");
+    return false;
+  }
+  if (!ref.has_size || !test.has_size) {
+    std::fprintf(stderr, "pixvqa: cvvdp mixed input requires matching geometry on both sides\n");
+    return false;
+  }
+  plan.cvvdp_raw_ref = ref_raw;
+  plan.cvvdp_raw_test = test_raw;
+  plan.raw_width = ref.format.width;
+  plan.raw_height = ref.format.height;
+  return true;
+}
 
 // Learned backends resolve auto themselves (CUDA when PyTorch sees it, else CPU);
 // gpu maps to cuda, which the adapters refuse rather than run on the CPU.
@@ -1503,7 +1552,7 @@ bool cvvdp_command(LearnedPlan& plan, std::vector<std::string>& args) {
     args.emplace_back("--gpu-mem");
     args.emplace_back(memory);
   }
-  if (plan.cvvdp_raw) {
+  if (plan.cvvdp_raw_ref || plan.cvvdp_raw_test) {
     args.emplace_back("--raw-width");
     args.push_back(std::to_string(plan.raw_width));
     args.emplace_back("--raw-height");
@@ -1512,6 +1561,8 @@ bool cvvdp_command(LearnedPlan& plan, std::vector<std::string>& args) {
     args.push_back(std::to_string(plan.opt.fps_num));
     args.emplace_back("--raw-fps-den");
     args.push_back(std::to_string(plan.opt.fps_den));
+    if (plan.cvvdp_raw_ref && !plan.cvvdp_raw_test) args.emplace_back("--raw-ref");
+    if (plan.cvvdp_raw_test && !plan.cvvdp_raw_ref) args.emplace_back("--raw-test");
   }
   return true;
 }
@@ -1750,20 +1801,8 @@ int run_learned_report(LearnedPlan& plan) {
 // Set when native metrics run together with learned metrics.
 std::unique_ptr<LearnedPlan> g_learned;
 
-bool prepare_learned_with_native(LearnedPlan& plan, const SideSpec& ref, const SideSpec& test) {
-  if (plan.cvvdp.selected) {
-    if (ref.compressed != test.compressed) {
-      std::fprintf(stderr,
-                   "pixvqa: cvvdp needs both inputs as raw YUV or both as compressed video\n");
-      return false;
-    }
-    if (!ref.compressed) {
-      if (!prepare_cvvdp_raw(ref, test, plan.opt, plan.cvvdp)) return false;
-      plan.cvvdp_raw = true;
-      plan.raw_width = ref.format.width;
-      plan.raw_height = ref.format.height;
-    }
-  }
+bool prepare_learned_with_native(LearnedPlan& plan, SideSpec& ref, SideSpec& test) {
+  if (plan.cvvdp.selected && !prepare_cvvdp_learned_inputs(plan, ref, test)) return false;
   if (plan.cvqahdr.selected && !test.compressed) {
     std::fprintf(stderr,
                  "pixvqa: cvqa-hdr-nr supports compressed video only; the test input is raw YUV\n");
@@ -2710,6 +2749,33 @@ int prepare_formats(Options& opt, SideSpec& ref, SideSpec& test) {
   return 0;
 }
 
+// Learned CVVDP only: classify inputs and load geometry when a raw side or mixed pair needs it.
+// Compressed-only pairs skip FFmpeg probing here; the adapter ffprobes both paths.
+int prepare_cvvdp_side_specs(Options& opt, SideSpec& ref, SideSpec& test) {
+  if (classify_side(opt, ref, "reference") != 0) return 2;
+  if (classify_side(opt, test, "test") != 0) return 2;
+  const bool ref_raw = !ref.compressed;
+  const bool test_raw = !test.compressed;
+  if (!ref_raw && !test_raw) return 0;
+  if (ref_raw && adopt_detected_layout(ref, "reference") != 0) return 2;
+  if (test_raw && adopt_detected_layout(test, "test") != 0) return 2;
+  if (ref_raw != test_raw) {
+#ifdef PIXVQA_HAS_FFMPEG
+    SideSpec& compressed = ref.compressed ? ref : test;
+    const char* role = ref.compressed ? "reference" : "test";
+    if (adopt_detected_layout(compressed, role) != 0) return 2;
+#else
+    if (!opt.fps_set) {
+      std::fprintf(stderr,
+                   "pixvqa: cvvdp mixed input requires --fps when this build cannot probe "
+                   "compressed metadata\n");
+      return 2;
+    }
+#endif
+  }
+  return 0;
+}
+
 int adopt_frame_rate(Options& opt, const SideSpec& ref, const SideSpec& test) {
   if (!opt.enable_xpsnr || opt.fps_set) return 0;
   if (!ref.compressed && !test.compressed) {
@@ -3154,16 +3220,13 @@ int run_cli(int argc, char** argv) {
       auto plan = std::make_unique<LearnedPlan>();
       plan->cvvdp = cvvdp;
       plan->cvqahdr = cvqahdr;
-      if (cvvdp.selected) {
-        inherit_side_geometry(ref_side, test_side);
-        if (cvvdp_raw_requested(ref_side, test_side, opt)) {
-          if (!prepare_cvvdp_raw(ref_side, test_side, opt, cvvdp)) return 2;
-          plan->cvvdp_raw = true;
-          plan->raw_width = ref_side.format.width;
-          plan->raw_height = ref_side.format.height;
-        }
-      }
       plan->opt = opt;
+      if (cvvdp.selected) {
+        if (cvvdp_side_specs_needed(opt, ref_side, test_side) &&
+            prepare_cvvdp_side_specs(opt, ref_side, test_side) != 0)
+          return 2;
+        if (!prepare_cvvdp_learned_inputs(*plan, ref_side, test_side)) return 2;
+      }
       if (!(cvvdp.selected && cvqahdr.selected) && !opt.enable_qcs) {
         return run_learned_standalone(*plan);
       }

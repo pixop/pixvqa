@@ -148,10 +148,10 @@ check finishes before any metric runs.
 | Metric | Raw YUV | Compressed video | `--frames` |
 |---|---|---|---|
 | Native | Yes | `make swdec` or `make full` only | Yes |
-| `cvvdp` | Both inputs raw YUV420p10le PQ with `-s`, `-f 420p:10`, `--fps` | Both inputs compressed; decoded by pycvvdp | Yes |
+| `cvvdp` | Raw YUV420p10le PQ/HLG with `-s`, `-f 420p:10`, and `--fps` when both inputs are raw | Compressed video (decoded by pycvvdp) when both are compressed | Raw/compressed and compressed/raw pairs are supported; geometry and frame rate must match | Yes |
 | `cvqa-hdr-nr` | No | Yes; decoded by OpenCV | No |
 
-`cvvdp` rejects one raw input mixed with one compressed input. The `make cpu`
+`cvvdp` accepts raw/compressed, compressed/raw, raw/raw, and compressed/compressed pairs when geometry and frame rate match. The `make cpu`
 and `make cuda` builds have no FFmpeg decoder. Native metrics on compressed
 input therefore need `make swdec` or `make full`. The learned backends decode
 in their own Python environments, so any build can run `cvvdp` and
