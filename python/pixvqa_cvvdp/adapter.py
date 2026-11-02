@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import importlib.metadata
 import json
+import math
 import os
 import re
 import shutil
@@ -216,6 +217,61 @@ def frame_bytes_yuv420p10le(width: int, height: int) -> int:
     return width * height * 3
 
 
+# Sample checks read at most this many frames; file size still validates the whole clip.
+_MAX_RAW_SAMPLE_FRAMES = 8
+
+
+def _validate_le10_sample_bytes(chunk: bytes) -> None:
+    if not chunk or len(chunk) % 2:
+        raise AdapterError(
+            "raw YUV is not little-endian uint16 with 10-bit codes in the low bits (0..1023)"
+        )
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        samples = np.frombuffer(chunk, dtype=np.uint16)
+        if np.any(samples > 1023):
+            raise AdapterError(
+                "raw YUV is not little-endian uint16 with 10-bit codes in the low bits (0..1023)"
+            )
+        return
+    view = memoryview(chunk).cast("H")
+    if any(sample > 1023 for sample in view):
+        raise AdapterError(
+            "raw YUV is not little-endian uint16 with 10-bit codes in the low bits (0..1023)"
+        )
+
+
+def _raw_sample_frame_indices(frames_in_file: int, nframes: int) -> list[int]:
+    if frames_in_file <= 0:
+        return []
+    if nframes > 0:
+        count = min(nframes, frames_in_file, _MAX_RAW_SAMPLE_FRAMES)
+    else:
+        count = min(frames_in_file, 1)
+    indices = list(range(count))
+    last = frames_in_file - 1
+    if last not in indices and frames_in_file > count:
+        indices.append(last)
+    return indices
+
+
+def validate_raw_yuv_sample_bytes(path: str, width: int, height: int, frame_indices: list[int]) -> None:
+    frame_bytes = frame_bytes_yuv420p10le(width, height)
+    with open(path, "rb") as handle:
+        for index in frame_indices:
+            handle.seek(index * frame_bytes)
+            chunk = handle.read(frame_bytes)
+            if len(chunk) != frame_bytes:
+                raise AdapterError(
+                    f"{path} ended early while validating frame {index} "
+                    f"({len(chunk)} bytes, expected {frame_bytes})"
+                )
+            _validate_le10_sample_bytes(chunk)
+
+
 def encode_fps(num: int, den: int) -> float:
     if num <= 0 or den <= 0:
         raise AdapterError("fps must be a positive rational")
@@ -326,19 +382,6 @@ def verify_yuv_filename(path: str, expected: dict, decode_video_props=None) -> d
     return {"parsed": parsed, "upstream": upstream, "verified_by": verified_by}
 
 
-def samples_are_low_10bit(path: str) -> bool:
-    """True when every sample is a little-endian uint16 in 0..1023."""
-    with open(path, "rb") as handle:
-        while True:
-            chunk = handle.read(1 << 20)
-            if not chunk:
-                return True
-            if len(chunk) % 2:
-                return False
-            if any(chunk[index] > 3 for index in range(1, len(chunk), 2)):
-                return False
-
-
 def validate_raw_yuv(path: str, width: int, height: int, nframes: int) -> int:
     if not os.path.isfile(path):
         raise AdapterError(f"raw YUV not found: {path}")
@@ -352,10 +395,9 @@ def validate_raw_yuv(path: str, width: int, height: int, nframes: int) -> int:
     frames = size // frame_bytes
     if nframes > frames:
         raise AdapterError(f"{path} has {frames} frames, fewer than requested {nframes}")
-    if not samples_are_low_10bit(path):
-        raise AdapterError(
-            f"{path} is not little-endian uint16 with 10-bit codes in the low bits (0..1023)"
-        )
+    indices = _raw_sample_frame_indices(frames, nframes)
+    if indices:
+        validate_raw_yuv_sample_bytes(path, width, height, indices)
     return frames
 
 
@@ -393,13 +435,29 @@ def parse_result_csv(path: Path) -> float:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.reader(handle, skipinitialspace=True))
     if len(rows) < 2:
-        raise AdapterError(f"result CSV has no cvvdp score: {path}")
+        raise AdapterError(f"result CSV has no data row: {path}")
     # Official CVVDP 0.5.7 writes "test, reference, cvvdp". Skip the spaces
     # after commas, then strip so a padded header still matches.
     header = [cell.strip() for cell in rows[0]]
     if "cvvdp" not in header:
-        raise AdapterError(f"result CSV has no cvvdp score: {path}")
-    return float(rows[1][header.index("cvvdp")].strip())
+        raise AdapterError(f"result CSV header has no cvvdp column: {path} (header={header!r})")
+    column = header.index("cvvdp")
+    data = rows[1]
+    if len(data) <= column:
+        raise AdapterError(
+            f"result CSV data row has {len(data)} column(s), expected cvvdp at index {column}: "
+            f"{path} (row={data!r})"
+        )
+    text = data[column].strip()
+    if not text:
+        raise AdapterError(f"result CSV cvvdp cell is empty: {path}")
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise AdapterError(f"result CSV cvvdp value is not numeric: {text!r} in {path}") from exc
+    if not math.isfinite(value):
+        raise AdapterError(f"result CSV cvvdp value is not finite: {text!r} in {path}")
+    return value
 
 
 def raw_metadata(path: str, width: int, height: int, frames: int, num: int, den: int,
@@ -614,8 +672,16 @@ def execute_command(prepared: dict, cmd: list, csv_path: Path, out: Path, interp
     if not csv_path.exists():
         out.write_text(json.dumps(record, indent=2), encoding="utf-8")
         raise AdapterError(f"cvvdp wrote no result CSV; see {out}")
-    record["jod"] = parse_result_csv(csv_path)
     record["result_csv"] = str(csv_path)
+    try:
+        record["jod"] = parse_result_csv(csv_path)
+    except AdapterError:
+        try:
+            record["result_csv_text"] = csv_path.read_text(encoding="utf-8")
+        except OSError:
+            record["result_csv_text"] = None
+        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        raise
     if features_dir is not None:
         from pixvqa_cvvdp.temporal import features_path, frame_sequence
 

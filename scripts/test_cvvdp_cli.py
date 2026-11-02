@@ -28,7 +28,7 @@ def expect_fail(name: str, args: list[str], needle: str, env: dict[str, str] | N
 
 def test_official_csv() -> None:
     sys.path.insert(0, str(ROOT / "python"))
-    from pixvqa_cvvdp.adapter import parse_result_csv
+    from pixvqa_cvvdp.adapter import AdapterError, parse_result_csv
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "official.csv"
@@ -38,9 +38,70 @@ def test_official_csv() -> None:
             encoding="utf-8",
         )
         value = parse_result_csv(path)
-    if value != 9.311432838439941:
-        raise SystemExit(f"official-csv: expected 9.311432838439941, got {value!r}")
+        if value != 9.311432838439941:
+            raise SystemExit(f"official-csv: expected 9.311432838439941, got {value!r}")
+        for bad, needle in (
+            ("test, reference, cvvdp\nonly-two-cols\n", "column(s)"),
+            ("test, reference, cvvdp\na, b\n", "column(s)"),
+            ("test, reference\na, b, 1.0\n", "no cvvdp column"),
+            ("test, reference, cvvdp\na, b, \n", "empty"),
+        ):
+            bad_path = Path(tmp) / "bad.csv"
+            bad_path.write_text(bad, encoding="utf-8")
+            try:
+                parse_result_csv(bad_path)
+            except AdapterError as exc:
+                if needle not in str(exc):
+                    raise SystemExit(f"official-csv bad case: {exc}") from exc
+            else:
+                raise SystemExit(f"official-csv accepted malformed CSV: {bad!r}")
     print("OK   official-csv")
+
+
+def test_csv_parse_failure_record() -> None:
+    sys.path.insert(0, str(ROOT / "python"))
+    from pixvqa_cvvdp.adapter import AdapterError, run
+
+    with tempfile.TemporaryDirectory() as tmp:
+        previous = os.environ.get("TMPDIR")
+        os.environ["TMPDIR"] = tmp
+        try:
+            frame = 16 * 16 * 3
+            ref = Path(tmp) / "reference.yuv"
+            test = Path(tmp) / "test.yuv"
+            ref.write_bytes(b"\x00\x00" * (frame // 2))
+            test.write_bytes(b"\x00\x00" * (frame // 2))
+            script = Path(tmp) / "bad-csv-cvvdp"
+            script.write_text(
+                """#!/usr/bin/env python3
+import sys
+result = sys.argv[sys.argv.index("--result") + 1]
+open(result, "w", encoding="utf-8").write("test, reference, cvvdp\\nonly-one-col\\n")
+print("[INFO] Running on device: cpu", file=sys.stderr)
+""",
+                encoding="utf-8",
+            )
+            script.chmod(0o755)
+            out = Path(tmp) / "out.json"
+            try:
+                run(str(ref), str(test), "pq", "standard_hdr_pq", 1, "cpu", str(out), str(script),
+                    16, 16, 60, 1, defaulting_decode)
+            except AdapterError as exc:
+                if "column" not in str(exc):
+                    raise SystemExit(f"csv-failure-record: {exc}") from exc
+            else:
+                raise SystemExit("csv-failure-record: malformed CSV was accepted")
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            if payload.get("exit_code") != 0 or "stdout" not in payload or "stderr" not in payload:
+                raise SystemExit(f"csv-failure-record: incomplete record {payload.keys()}")
+            if "only-one-col" not in payload.get("result_csv_text", ""):
+                raise SystemExit("csv-failure-record: result_csv_text missing")
+        finally:
+            if previous is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = previous
+    print("OK   csv-parse-failure-record")
 
 
 def defaulting_decode(fname: str) -> dict:
@@ -123,6 +184,20 @@ def test_raw_yuv() -> None:
                     raise
             else:
                 raise SystemExit("short frame count was accepted")
+
+            frame_bytes = 16 * 16 * 3
+            good = b"\x00\x00" * (frame_bytes // 2)
+            bad_tail = b"\x00\x04" + b"\x00\x00" * (frame_bytes // 2 - 1)
+            padded = Path(tmp) / "padded.yuv"
+            padded.write_bytes(good + bad_tail + good)
+            validate_raw_yuv(str(padded), 16, 16, 1)
+            try:
+                validate_raw_yuv(str(padded), 16, 16, 2)
+            except AdapterError as exc:
+                if "10-bit" not in str(exc):
+                    raise
+            else:
+                raise SystemExit("invalid sample in frame 2 was accepted with nframes=2")
 
             script = Path(tmp) / "fake-cvvdp"
             script.write_text(
@@ -266,6 +341,7 @@ def test_mixed_input_prepare() -> None:
 
 def main() -> int:
     test_official_csv()
+    test_csv_parse_failure_record()
     test_raw_yuv()
     test_mixed_input_prepare()
     if not PIXVQA.is_file():
