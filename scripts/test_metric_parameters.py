@@ -2,6 +2,7 @@
 """Tests for unified CVVDP / HDR transfer parameter resolution."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -53,6 +54,33 @@ def test_resolver_unit() -> None:
     ok("resolver-defaults-documented")
 
 
+def assert_cvvdp_json(stdout: str, *, interpretation: str, display: str) -> None:
+    try:
+        payload = json.loads(stdout.strip())
+    except json.JSONDecodeError as exc:
+        fail("cvvdp-json", f"{exc}\n{stdout[-400:]}")
+    if payload.get("metric") != "cvvdp":
+        fail("cvvdp-json-metric", stdout[-400:])
+    if payload.get("interpretation") != interpretation:
+        fail("cvvdp-json-interpretation", stdout[-400:])
+    if payload.get("display") != display:
+        fail("cvvdp-json-display", stdout[-400:])
+
+
+def assert_native_hdr_inferred(stdout: str) -> None:
+    if "transfer=pq (override)" in stdout:
+        fail("native-hdr-not-override", stdout[-800:])
+    if "reference: transfer=pq (inferred)" not in stdout:
+        fail("native-hdr-inferred-ref", stdout[-800:])
+    if "distorted: transfer=pq (stream)" not in stdout:
+        fail("native-hdr-inferred-dist", stdout[-800:])
+
+
+def assert_input_summary_legacy_defaults(stdout: str) -> None:
+    if "legacy --cs/--tf defaults" not in stdout:
+        fail("input-summary-legacy-defaults", stdout[-500:])
+
+
 def test_cli_inference() -> None:
     if not DECODE.is_file() or not FFMPEG:
         print("SKIP cli inference (need swdec pixvqa and ffmpeg)")
@@ -77,14 +105,7 @@ def test_cli_inference() -> None:
             fail("cvvdp-inferred-pq-log", proc.stderr[-500:])
         if "info: cvvdp display standard_hdr_pq" not in proc.stderr:
             fail("cvvdp-inferred-display", proc.stderr[-500:])
-        if "transfer=pq (override)" in proc.stdout:
-            fail("cvvdp-inferred-hdr-not-override", proc.stdout[-800:])
-        if "reference: transfer=pq (inferred)" not in proc.stdout:
-            fail("cvvdp-inferred-ref-hdr", proc.stdout[-800:])
-        if "distorted: transfer=pq (stream)" not in proc.stdout:
-            fail("cvvdp-inferred-dist-hdr", proc.stdout[-800:])
-        if "legacy --cs/--tf defaults" not in proc.stdout:
-            fail("input-summary-legacy-defaults", proc.stdout[-500:])
+        assert_cvvdp_json(proc.stdout, interpretation="pq", display="standard_hdr_pq")
         ok("cvvdp-inferred-pq")
 
         override = subprocess.run([*base, "--hdr-transfer", "hlg"], capture_output=True, text=True, env=env,
@@ -93,8 +114,7 @@ def test_cli_inference() -> None:
             fail("cvvdp-hdr-transfer-override", override.stderr[-400:])
         if "info: cvvdp display standard_hdr_hlg" not in override.stderr:
             fail("cvvdp-hdr-transfer-display", override.stderr[-400:])
-        if "transfer=hlg (override)" not in override.stdout:
-            fail("cvvdp-hdr-transfer-hdr-override", override.stdout[-600:])
+        assert_cvvdp_json(override.stdout, interpretation="hlg", display="standard_hdr_hlg")
         ok("cvvdp-hdr-transfer-overrides-metadata")
 
         tf_override = subprocess.run([*base, "--tf", "stdb67"], capture_output=True, text=True, env=env,
@@ -148,23 +168,63 @@ def test_cli_inference() -> None:
             fail("cvvdp-rejects-hdr-primaries", native_reject.stderr[-400:])
         ok("cvvdp-rejects-native-only-hdr-primaries")
 
-        mixed = subprocess.run(
-            [str(DECODE), "--metrics", "psnr,cvvdp", "-r", str(raw), "-t", str(pq),
-             "-s", "64x64", "-f", "420p:10", "--fps", "24/1", "--hdr-transfer", "hlg",
-             "--cvvdp-python", sys.executable],
+        native_base = [
+            str(DECODE),
+            "--metrics",
+            "psnr,cvvdp",
+            "-r",
+            str(raw),
+            "-t",
+            str(pq),
+            "-s",
+            "64x64",
+            "-f",
+            "420p:10",
+            "--fps",
+            "24/1",
+            "-n",
+            "1",
+            "--cvvdp-python",
+            sys.executable,
+        ]
+        native_inferred = subprocess.run(
+            native_base,
             capture_output=True,
             text=True,
             env=env,
             timeout=60,
         )
-        if mixed.returncode != 0 or "info: cvvdp interpretation hlg" not in mixed.stderr:
-            fail("mixed-native-cvvdp-hdr-transfer", mixed.stderr[-500:] + mixed.stdout[-500:])
-        if "info: cvvdp display standard_hdr_hlg" not in mixed.stderr:
-            fail("mixed-native-cvvdp-display", mixed.stderr[-400:])
-        if "[ CVVDP jod:" not in mixed.stdout or "interpretation:hlg" not in mixed.stdout:
-            fail("mixed-native-cvvdp-summary", mixed.stdout[-400:])
-        if "display:standard_hdr_hlg" not in mixed.stdout:
-            fail("mixed-native-cvvdp-summary-display", mixed.stdout[-400:])
+        if native_inferred.returncode != 0:
+            fail(
+                "native-cvvdp-inferred-pq",
+                f"rc={native_inferred.returncode}\n{native_inferred.stderr}\n{native_inferred.stdout}",
+            )
+        if "info: cvvdp interpretation pq" not in native_inferred.stderr:
+            fail("native-cvvdp-inferred-pq-log", native_inferred.stderr[-500:])
+        assert_native_hdr_inferred(native_inferred.stdout)
+        assert_input_summary_legacy_defaults(native_inferred.stdout)
+        if "[ CVVDP jod:" not in native_inferred.stdout or "interpretation:pq" not in native_inferred.stdout:
+            fail("native-cvvdp-inferred-summary", native_inferred.stdout[-400:])
+        ok("native-cvvdp-inferred-pq-hdr-provenance")
+
+        native_override = subprocess.run(
+            [*native_base, "--hdr-transfer", "hlg"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+        if native_override.returncode != 0 or "info: cvvdp interpretation hlg" not in native_override.stderr:
+            fail("native-cvvdp-hdr-transfer", native_override.stderr[-500:] + native_override.stdout[-500:])
+        if "info: cvvdp display standard_hdr_hlg" not in native_override.stderr:
+            fail("native-cvvdp-hdr-transfer-display", native_override.stderr[-400:])
+        if "transfer=hlg (override)" not in native_override.stdout:
+            fail("native-cvvdp-hdr-transfer-override", native_override.stdout[-800:])
+        if "[ CVVDP jod:" not in native_override.stdout or "interpretation:hlg" not in native_override.stdout:
+            fail("native-cvvdp-hdr-transfer-summary", native_override.stdout[-400:])
+        if "display:standard_hdr_hlg" not in native_override.stdout:
+            fail("native-cvvdp-hdr-transfer-summary-display", native_override.stdout[-400:])
+        ok("native-cvvdp-explicit-hdr-transfer-override")
         ok("mixed-native-cvvdp-accepts-hdr-transfer")
 
 
