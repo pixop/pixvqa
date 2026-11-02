@@ -97,12 +97,18 @@ def cases() -> list:
         short = run_cmd([str(path), "-h"])
         version = run_cmd([str(path), "--version"])
         hdr = run_cmd([str(path), "--help-hdr"])
+        advanced = run_cmd([str(path), "--help-advanced"])
         command = f"{path} --help"
         if help_run.returncode != 0 or short.stdout != help_run.stdout:
             return Result("FAIL", "help disagreement", command)
-        for needle in ("--metrics", "--decode", "--metric-device", "--threads", "--qcs", "pu21-psnr"):
+        for needle in ("--metrics", "--decode", "--device", "--qcs", "pu21-psnr", "--help-advanced"):
             if needle not in help_run.stdout:
                 return Result("FAIL", f"help missing {needle}", command)
+        if advanced.returncode != 0:
+            return Result("FAIL", "advanced help failed", f"{path} --help-advanced")
+        for needle in ("--metric-device", "--threads", "--qcs-range", "--vmaf-model"):
+            if needle not in advanced.stdout:
+                return Result("FAIL", f"advanced help missing {needle}", f"{path} --help-advanced")
         if "NVIDIA" in help_run.stdout or "GeForce" in help_run.stdout:
             return Result("FAIL", "help printed a device name", command)
         if version.returncode != 0 or "pixvqa version 0.3.0-dev" not in version.stdout:
@@ -117,7 +123,7 @@ def cases() -> list:
             swv = run_cmd([str(sw), "--version"])
             if swv.returncode != 0 or installation_profile(swv.stdout) != ("cpu", "software"):
                 return Result("FAIL", swv.stdout, f"{sw} --version")
-        return Result("PASS", f"help, version ({profile[0]} / {profile[1]}), and help-hdr", command)
+        return Result("PASS", f"basic/advanced/HDR help and version ({profile[0]} / {profile[1]})", command)
 
     out.append(_case("help-version", "cli", ["smoke"], ["help", "version"], help_version))
 

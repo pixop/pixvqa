@@ -122,3 +122,5 @@ CPU-only builds use raw YUV inputs. For dependency locations, `make cpu`, `make 
 PixVQA is licensed under the [MIT License](LICENSE) (SPDX `MIT`). Copyright (c) 2026 Pixop ApS. [docs/LICENSING.md](docs/LICENSING.md) explains third-party and model licenses. Dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The logo at `docs/brand/pixop-vqa-logo-crop.png` is included with the repository. The MIT license does not grant unrestricted trademark or logo use. See [docs/brand/README.md](docs/brand/README.md).
+
+CLI help: `pixvqa --help` covers common workflows; `pixvqa --help-advanced` covers learned-backend overrides and compatibility flags; `pixvqa --help-hdr` documents HDR color parameters. Existing advanced arguments are still accepted.

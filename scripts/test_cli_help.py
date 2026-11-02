@@ -64,20 +64,38 @@ def check_help(bin_path: Path, kind: str) -> None:
         return
     flat = collapsed(text)
     help_lines = len(text.splitlines())
-    if not 40 <= help_lines <= 60:
-        fail(f"{kind} help length {help_lines}, expected 40-60 lines")
+    if not 30 <= help_lines <= 55:
+        fail(f"{kind} help length {help_lines}, expected 30-55 lines")
         return
     for needle in (
-        "Input", "Metrics", "Execution", "QCS", "HDR", "General",
-        "--metrics", "msssim, vmaf", "pu21-psnr, pu21-ssim, pu21-msssim",
-        "--qcs-range", "--metric-device", "--decode", "--threads",
-        "--model PATH", "--fps", "--frames", "--input",
-        "docs/QCS.md", "docs/PU21.md", "--help-hdr",
-        "[30,50]", "[70,100]",
+        "Input", "Metrics", "Execution", "General", "--metrics", "--qcs",
+        "--device", "--decode", "--model PATH", "--fps", "--frames",
+        "--input", "--cvvdp-display", "--cvvdp-gpu-mem", "--help-advanced",
+        "--help-hdr", "sdr", "pq", "hlg", "docs/PU21.md",
     ):
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
             return
+    for hidden in ("--preset hdr", "--metric-device", "--vmaf-model",
+                   "--cvvdp-python", "--cvqahdr-checkpoint", "--qcs-range"):
+        if hidden in text:
+            fail(f"{kind} basic help exposes advanced option {hidden}")
+            return
+    adv = run(bin_path, ["--help-advanced"])
+    if adv.returncode != 0:
+        fail(f"{kind} advanced help rc {adv.returncode}")
+        return
+    for needle in ("--cvvdp-interpretation", "--cvvdp-display", "--cvvdp-bin",
+                   "--cvvdp-output-json", "--cvqahdr-output-json",
+                   "--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile",
+                   "--learned-config", "--qcs-range", "--threads", "--preset hdr",
+                   "--metric-device", "--vmaf-model", "--seek 0"):
+        if needle not in adv.stdout:
+            fail(f"{kind} advanced help missing {needle}")
+            return
+    if "not an exact alias" not in collapsed(adv.stdout):
+        fail(f"{kind} advanced help misdescribes legacy preset")
+        return
     if "NVIDIA" in text or "GeForce" in text:
         fail(f"{kind} help initialized a device")
         return
@@ -91,8 +109,8 @@ def check_help(bin_path: Path, kind: str) -> None:
         return
     hdr_flat = collapsed(hdr.stdout)
     hdr_lines = len(hdr.stdout.splitlines())
-    if not 20 <= hdr_lines <= 30:
-        fail(f"{kind} --help-hdr length {hdr_lines}, expected 20-30 lines")
+    if not 20 <= hdr_lines <= 35:
+        fail(f"{kind} --help-hdr length {hdr_lines}, expected 20-35 lines")
         return
     for needle in (
         "docs/PU21.md", "--hdr-primaries", "--hdr-matrix", "--hdr-range",
@@ -101,6 +119,7 @@ def check_help(bin_path: Path, kind: str) -> None:
         "1000 cd/m2", "HLG black", "gamma 1.2", "--ref-hdr-transfer",
         "st2084", "stdb67", "--hlg-peak", "bt601",
         "per-input option, shared option, stream metadata",
+        "Group defaults", "standard_hdr_pq", "standard_hdr_hlg",
     ):
         if needle not in hdr.stdout and needle not in hdr_flat:
             fail(f"{kind} --help-hdr missing {needle}")
