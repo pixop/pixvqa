@@ -83,11 +83,16 @@ def test_cli_inference() -> None:
                                     timeout=60)
         if override.returncode != 0 or "info: cvvdp interpretation hlg" not in override.stderr:
             fail("cvvdp-hdr-transfer-override", override.stderr[-400:])
+        if "info: cvvdp display standard_hdr_hlg" not in override.stderr:
+            fail("cvvdp-hdr-transfer-display", override.stderr[-400:])
         ok("cvvdp-hdr-transfer-overrides-metadata")
 
-        tf_override = subprocess.run([*base, "--tf", "hlg"], capture_output=True, text=True, env=env, timeout=60)
+        tf_override = subprocess.run([*base, "--tf", "stdb67"], capture_output=True, text=True, env=env,
+                                     timeout=60)
         if tf_override.returncode != 0 or "info: cvvdp interpretation hlg" not in tf_override.stderr:
             fail("cvvdp-tf-override", tf_override.stderr[-400:])
+        if "info: cvvdp display standard_hdr_hlg" not in tf_override.stderr:
+            fail("cvvdp-tf-override-display", tf_override.stderr[-400:])
         ok("cvvdp-tf-overrides-metadata")
 
         per_side = subprocess.run(
@@ -99,6 +104,8 @@ def test_cli_inference() -> None:
         )
         if per_side.returncode != 0 or "info: cvvdp interpretation hlg" not in per_side.stderr:
             fail("cvvdp-dist-hdr-transfer-override", per_side.stderr[-400:])
+        if "info: cvvdp display standard_hdr_hlg" not in per_side.stderr:
+            fail("cvvdp-dist-hdr-transfer-display", per_side.stderr[-400:])
         ok("cvvdp-dist-hdr-transfer-overrides-metadata")
 
         per_side_conflict = subprocess.run(

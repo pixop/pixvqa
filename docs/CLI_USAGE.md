@@ -317,7 +317,8 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--cvqahdr-profile` | NR calibration profile. Required unless set in the config |
 | `--cvqahdr-output-json` | Persistent CompressedVQA-HDR NR run record |
 | `--learned-config` | Learned-metric TOML config. Default `config/learned_metrics.local.toml` in the executable's checkout. See [learned-metric config](LEARNED_METRICS_CONFIG.md) |
-| `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto` |
+| `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto`. Shared HDR transfer for native metrics, learned CVVDP resolution, and metric groups |
+| `--tf`, `--ref-tf`, `--dist-tf` | Legacy native transfer tokens: `sdr`, `linear`, `st2084` (PQ), `stdb67` (HLG). The unified CVVDP resolver maps these to the same families as `--hdr-transfer pq` / `hlg`. Use `--hdr-transfer pq|hlg` when you want the modern spelling |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
 | `--qcs` | Enable QCS for every selected metric. `cvvdp` uses per-frame JOD-equivalents and `cvqa-hdr-nr` uses sampled frames |
 | `--qcs-range` | `metric=lower:upper`, comma-separated and repeatable, with lower < upper. `cvvdp` and `cvqa-hdr-nr` default to [0, 10]; the interval never clamps reported scores |
