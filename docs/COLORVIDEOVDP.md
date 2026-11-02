@@ -56,7 +56,12 @@ HDR override, VMAF-model, thread, and verbosity options are rejected. When
 native metrics are selected, those options apply only to them. `-s`, `-f`, and
 `--fps` are accepted for raw input.
 
-`--preset hdr` and `--metrics pq` fill `--cvvdp-interpretation pq` and
+When CVVDP is selected without a metric group, PixVQA resolves `--cvvdp-interpretation` and
+`--cvvdp-display` from `--hdr-transfer`, compressed-stream metadata, or (for mixed raw/compressed
+inputs) the compressed side’s tags, assuming the raw side uses the same transfer unless you set
+`--hdr-transfer` explicitly. Groups and `--preset hdr` still apply the documented defaults:
+
+`--metrics pq` fills `--cvvdp-interpretation pq` and
 `--cvvdp-display standard_hdr_pq` when they are omitted, and reject an explicit
 `sdr` or `hlg` interpretation. `--metrics hlg` fills
 `--cvvdp-interpretation hlg` and `--cvvdp-display standard_hdr_hlg`, and

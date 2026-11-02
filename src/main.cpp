@@ -1,5 +1,6 @@
 #include "pixvqa/cpu_dispatch.hpp"
 #include "pixvqa/hdr.hpp"
+#include "pixvqa/metric_resolve.hpp"
 #include "pixvqa/psnr.hpp"
 #include "pixvqa/pu21.hpp"
 #include "pixvqa/qcs.hpp"
@@ -60,9 +61,15 @@ struct SideSpec {
   InputKind input = InputKind::Auto;
 };
 
+int classify_side(const Options& opt, SideSpec& side, const char* role);
+int prepare_cvvdp_side_specs(Options& opt, SideSpec& ref, SideSpec& test);
+
 struct CvvdpOptions {
   bool selected = false;
   bool options_seen = false;
+  bool interpretation_set = false;
+  bool display_set = false;
+  bool config_resolved = false;
   std::string interpretation;
   std::string display;
   std::string python;
@@ -219,8 +226,8 @@ void print_help_advanced() {
       "\n"
       "Learned-metric configuration\n"
       "  --learned-config PATH  Persistent TOML defaults for CVVDP and NR.\n"
-      "  --cvvdp-interpretation sdr|pq|hlg  Explicit CVVDP transfer/display interpretation.\n"
-      "  --cvvdp-display NAME  CVVDP display model (standard_fhd, standard_4k, etc.).\n"
+      "  --cvvdp-interpretation sdr|pq|hlg  Override CVVDP transfer (default: resolved from --hdr-transfer, metric group, or metadata).\n"
+      "  --cvvdp-display NAME  Override CVVDP display model (default: standard_fhd / standard_hdr_pq / standard_hdr_hlg).\n"
       "  --cvvdp-gpu-mem GB   CVVDP CUDA memory budget; also shown in basic help.\n"
       "  --cvvdp-python PATH  Python interpreter for CVVDP.\n"
       "  --cvvdp-bin PATH     CVVDP entry point/executable override.\n"
@@ -888,15 +895,68 @@ bool validate_cvvdp_options(const CvvdpOptions& cvvdp) {
   if (cvvdp.interpretation != "sdr" && cvvdp.interpretation != "pq" &&
       cvvdp.interpretation != "hlg") {
     std::fprintf(stderr,
-                 "pixvqa: cvvdp requires --cvvdp-interpretation sdr, pq, or hlg; "
-                 "it is never inferred\n");
+                 "pixvqa: cvvdp interpretation is unset or invalid; use --hdr-transfer pq|hlg|sdr, "
+                 "--metrics pq|hlg|sdr, or --cvvdp-interpretation with --cvvdp-display\n");
     return false;
   }
   if (cvvdp.display.empty()) {
-    std::fprintf(stderr, "pixvqa: cvvdp requires --cvvdp-display <official-display-model>\n");
+    std::fprintf(stderr,
+                 "pixvqa: cvvdp display model is unset; pass --cvvdp-display or resolve transfer "
+                 "from input metadata\n");
     return false;
   }
   return true;
+}
+
+MetricTransferCli metric_transfer_cli(const Options& opt) {
+  MetricTransferCli cli;
+  cli.preset_hdr = opt.preset_hdr;
+  cli.metric_group = opt.metric_group;
+  cli.hdr_transfer_set = opt.hdr.transfer_set;
+  cli.hdr_transfer = opt.hdr.transfer;
+  cli.transfer_set = opt.transfer_set;
+  cli.transfer = opt.transfer;
+  cli.ref_hdr_transfer_set = opt.ref_hdr.transfer_set;
+  cli.ref_hdr_transfer = opt.ref_hdr.transfer;
+  cli.dist_hdr_transfer_set = opt.dist_hdr.transfer_set;
+  cli.dist_hdr_transfer = opt.dist_hdr.transfer;
+  cli.ref_transfer_set = opt.ref_transfer_set;
+  cli.ref_transfer = opt.ref_transfer;
+  cli.dist_transfer_set = opt.dist_transfer_set;
+  cli.dist_transfer = opt.dist_transfer;
+  return cli;
+}
+
+bool finalize_cvvdp_config(Options& opt, SideSpec& ref, SideSpec& test, CvvdpOptions& cvvdp) {
+  if (!cvvdp.selected || cvvdp.config_resolved) return true;
+  if (!opt.test_path.empty() && classify_side(opt, test, "test") != 0) return false;
+  if (!opt.ref_path.empty() && classify_side(opt, ref, "reference") != 0) return false;
+  if (cvvdp_side_specs_needed(opt, ref, test) && prepare_cvvdp_side_specs(opt, ref, test) != 0)
+    return false;
+  CvvdpResolveState state;
+  state.selected = cvvdp.selected;
+  state.interpretation_set = cvvdp.interpretation_set;
+  state.interpretation = cvvdp.interpretation;
+  state.display_set = cvvdp.display_set;
+  state.display = cvvdp.display;
+  state.config_resolved = cvvdp.config_resolved;
+  std::string err;
+  const MetricSideProbe reference{ref.path, ref.compressed};
+  const MetricSideProbe dist{test.path, test.compressed};
+  if (!resolve_cvvdp_parameters(metric_transfer_cli(opt), reference, dist, state, err)) {
+    std::fprintf(stderr, "pixvqa: %s\n", err.c_str());
+    return false;
+  }
+  cvvdp.interpretation = state.interpretation;
+  cvvdp.display = state.display;
+  cvvdp.config_resolved = state.config_resolved;
+  const std::string family = transfer_family_token(cvvdp.interpretation);
+  if (!family.empty() && !opt.hdr.transfer_set && !opt.transfer_set && !opt.ref_hdr.transfer_set &&
+      !opt.dist_hdr.transfer_set && !opt.ref_transfer_set && !opt.dist_transfer_set) {
+    opt.hdr.transfer = family;
+    opt.hdr.transfer_set = true;
+  }
+  return validate_cvvdp_options(cvvdp);
 }
 
 bool validate_cvqahdr_options(const CvqaHdrNrOptions& cvqahdr) {
@@ -2895,9 +2955,11 @@ int run_cli(int argc, char** argv) {
         std::fprintf(stderr, "pixvqa: --cvvdp-interpretation expects sdr, pq, or hlg\n");
         return 2;
       }
+      cvvdp.interpretation_set = true;
     } else if (a == "--cvvdp-display") {
       cvvdp.options_seen = true;
       if (!assign_cvvdp_value(cvvdp.display, "--cvvdp-display", need("--cvvdp-display"))) return 2;
+      cvvdp.display_set = true;
     } else if (a == "--cvvdp-python") {
       cvvdp.options_seen = true;
       if (!assign_cvvdp_value(cvvdp.python, "--cvvdp-python", need("--cvvdp-python"))) return 2;
@@ -3217,17 +3279,14 @@ int run_cli(int argc, char** argv) {
     }
     if (!resolve_learned_config(learned_config_path)) return 2;
     apply_learned_config(cvvdp, cvqahdr);
-    if (cvvdp.selected && !validate_cvvdp_options(cvvdp)) return 2;
     if (cvqahdr.selected && !validate_cvqahdr_options(cvqahdr)) return 2;
     if (!native) {
+      if (cvvdp.selected && !finalize_cvvdp_config(opt, ref_side, test_side, cvvdp)) return 2;
       auto plan = std::make_unique<LearnedPlan>();
       plan->cvvdp = cvvdp;
       plan->cvqahdr = cvqahdr;
       plan->opt = opt;
       if (cvvdp.selected) {
-        if (cvvdp_side_specs_needed(opt, ref_side, test_side) &&
-            prepare_cvvdp_side_specs(opt, ref_side, test_side) != 0)
-          return 2;
         if (!prepare_cvvdp_learned_inputs(*plan, ref_side, test_side)) return 2;
       }
       if (!(cvvdp.selected && cvqahdr.selected) && !opt.enable_qcs) {
@@ -3390,6 +3449,8 @@ int run_cli(int argc, char** argv) {
   }
   if (g_learned) {
     g_learned->opt = opt;
+    if (g_learned->cvvdp.selected && !finalize_cvvdp_config(opt, ref_side, test_side, g_learned->cvvdp))
+      return 2;
     if (!prepare_learned_with_native(*g_learned, ref_side, test_side)) return 2;
     if (preflight_learned(*g_learned) != 0) return 2;
   }

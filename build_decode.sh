@@ -49,7 +49,7 @@ if [[ -n "${DAV1D_LIB:-}" ]]; then
   LDFLAGS+=" -L$DAV1D_LIB -Wl,--disable-new-dtags,-rpath,$DAV1D_LIB -Wl,-rpath-link,$DAV1D_LIB"
 fi
 srcs=(src/yuv_io.cpp src/psnr.cpp src/ssim_ref.cpp src/msssim.cpp
-      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/pu21.cpp src/decode.cpp)
+      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/pu21.cpp src/decode.cpp src/metric_resolve.cpp)
 if [[ "$PIXVQA_HAS_VMAF" == "1" ]]; then
   echo "libvmaf: enabled (CPU VMAF)"
   CXXFLAGS+=" -DPIXVQA_HAS_VMAF=1 $PIXVQA_VMAF_CFLAGS"

@@ -502,6 +502,51 @@ bool detect_compressed_info(const std::string& path, CompressedInfo& out, std::s
   return probe_one_picture(path, out, err);
 }
 
+bool probe_stream_hdr(const std::string& path, HdrSide& out, std::string& err) {
+  out = HdrSide{};
+  err.clear();
+  struct stat st;
+  if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+    err = "stream metadata probing requires a regular file";
+    return false;
+  }
+  AVFormatContext* fmt = nullptr;
+  const int saved = av_log_get_level();
+  av_log_set_level(AV_LOG_ERROR);
+  if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) < 0) {
+    av_log_set_level(saved);
+    err = "failed to open the compressed input";
+    return false;
+  }
+  if (avformat_find_stream_info(fmt, nullptr) < 0) {
+    avformat_close_input(&fmt);
+    av_log_set_level(saved);
+    err = "failed to read compressed stream information";
+    return false;
+  }
+  const int best = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+  if (best < 0) {
+    avformat_close_input(&fmt);
+    av_log_set_level(saved);
+    err = "compressed input has no video stream";
+    return false;
+  }
+  const AVCodecParameters* par = fmt->streams[best]->codecpar;
+  hdr_observe(out, map_trc(par->color_trc), map_primaries(par->color_primaries),
+              map_matrix(par->color_space), map_range(par->color_range));
+  avformat_close_input(&fmt);
+  av_log_set_level(saved);
+  if (out.transfer_conflict) {
+    err = "compressed stream transfer metadata is inconsistent";
+    return false;
+  }
+  if (out.transfer == HdrTransfer::Unspecified || out.transfer_source != HdrSource::Stream) {
+    err = "compressed stream has no transfer characteristic tag";
+    return false;
+  }
+  return true;
+}
+
 struct CompressedTestReader::Impl {
   AVFormatContext* fmt = nullptr;
   AVCodecContext* ctx = nullptr;

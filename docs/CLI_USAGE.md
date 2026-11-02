@@ -240,7 +240,7 @@ already understands. It does not change metric math.
 | Metrics | `psnr`, `xpsnr`, `ssim`, `msssim`, `vmaf`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp`, `cvqa-hdr-nr` |
 | Transfer | `pq`, BT.2020 primaries, `bt2020nc`, and limited range, unless you already passed those |
 | VMAF model | `model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json` when `--model` is omitted. Run from the repository root, or pass `--model` |
-| CVVDP | `--cvvdp-interpretation pq` and `--cvvdp-display standard_hdr_pq` when omitted |
+| CVVDP | `--cvvdp-interpretation` / `--cvvdp-display` when omitted: derived from `--hdr-transfer`, `--metrics pq|hlg|sdr`, or compressed-stream metadata (mixed raw/compressed assumes the raw side matches the compressed transfer unless you override) |
 | Learned QCS interval | `[0, 10]` for both `cvvdp` and `cvqa-hdr-nr` (the default for every run, not only the preset) |
 
 `--metrics all` selects the same metrics without the HDR defaults.
@@ -305,7 +305,7 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--input` | `auto`, `raw`, or `compressed`. Default `auto`. `raw` does not probe |
 | `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available. Decimals truncate toward zero |
 | `--model` | VMAF model JSON. No default |
-| `--cvvdp-interpretation` | Required for CVVDP: `sdr`, `pq`, or `hlg`; never inferred from the video. A group or `--preset hdr` fills it |
+| `--cvvdp-interpretation` | Optional override for CVVDP: `sdr`, `pq`, or `hlg`. When omitted, PixVQA resolves transfer from `--hdr-transfer`, a metric group (`pq`/`hlg`/`sdr`), or reliable compressed-input metadata, then maps to the default display model |
 | `--cvvdp-display` | Required official CVVDP display model. `pq` fills `standard_hdr_pq`; `hlg` fills `standard_hdr_hlg` |
 | `--cvvdp-python` | Interpreter for the adapter. Overrides `PIXVQA_CVVDP_PYTHON` and the config |
 | `--cvvdp-bin` | Official CVVDP executable. Overrides `[cvvdp] executable` |

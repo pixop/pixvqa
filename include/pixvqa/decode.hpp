@@ -65,6 +65,9 @@ struct CompressedInfo {
 // supported pixel format or size. Does not convert samples. err is one line.
 bool detect_compressed_info(const std::string& path, CompressedInfo& out, std::string& err);
 
+// Transfer characteristics from the container video stream header. Does not decode pictures.
+bool probe_stream_hdr(const std::string& path, HdrSide& out, std::string& err);
+
 // True when this process's libavcodec registered libdav1d or libaom-av1.
 bool av1_software_available();
 
