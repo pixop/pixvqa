@@ -290,7 +290,7 @@ then in the checkout that holds the executable. `--model` overrides it.
 
 ## Command-line Options
 
-`pixvqa --help` lists the options. `pixvqa --help-hdr` lists the HDR options and defaults. QCS is documented in [QCS.md](QCS.md). PQ and HLG setup is documented in [PU21.md](PU21.md).
+`pixvqa --help` lists everyday options. `pixvqa --help-advanced` lists backend overrides, QCS ranges, deprecated compatibility spellings, and persistent output controls. `pixvqa --help-hdr` lists the HDR options, group defaults, and color interpretation. QCS is documented in [QCS.md](QCS.md). PQ and HLG setup is documented in [PU21.md](PU21.md).
 
 | Option | Purpose |
 |---|---|
