@@ -2596,6 +2596,26 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   return 0;
 }
 
+// Shared with CVVDP parameter resolution (MetricTransferCli). Not native-only.
+bool metric_transfer_cli_flag(const std::string& flag) {
+  return flag == "--hdr-transfer" || flag == "--tf" || flag == "--ref-tf" || flag == "--dist-tf" ||
+         flag == "--ref-hdr-transfer" || flag == "--dist-hdr-transfer";
+}
+
+bool classifies_as_native_only_cli_flag(const std::string& a) {
+  if (metric_transfer_cli_flag(a)) return false;
+  if (a == "--input" || a == "--decode" || a == "--threads" || a == "--model" ||
+      a == "--vmaf-model" || a == "--cs" || a == "--ref-cs" || a == "--dist-cs" ||
+      a == "--hlg-peak" || a == "--seek") {
+    return true;
+  }
+  if (a.compare(0, 6, "--hdr-") == 0 || a.compare(0, 10, "--ref-hdr-") == 0 ||
+      a.compare(0, 11, "--dist-hdr-") == 0) {
+    return true;
+  }
+  return false;
+}
+
 int parse_hdr_option(Options& opt, const std::string& flag, const std::string& value) {
   HdrCli* slot = nullptr;
   std::string body;
@@ -2906,12 +2926,7 @@ int run_cli(int argc, char** argv) {
     if (a == "--version") {
       print_version_and_exit(argv[0]);
     }
-    if ((a == "--input" || a == "--decode" || a == "--threads" || a == "--model" ||
-         a == "--vmaf-model" || a == "--cs" || a == "--tf" || a == "--ref-tf" || a == "--dist-tf" ||
-         a == "--ref-cs" || a == "--dist-cs" || a == "--hlg-peak" || a == "--seek" ||
-         a.compare(0, 6, "--hdr-") == 0 || a.compare(0, 10, "--ref-hdr-") == 0 ||
-         a.compare(0, 11, "--dist-hdr-") == 0) &&
-        native_only_option.empty()) {
+    if (classifies_as_native_only_cli_flag(a) && native_only_option.empty()) {
       native_only_option = a;
     }
 
@@ -3231,9 +3246,13 @@ int run_cli(int argc, char** argv) {
   if (learned) {
     const std::vector<const MetricCaps*> caps = selected_metric_caps(opt, cvvdp, cvqahdr);
     if (!native && !native_only_option.empty()) {
+      const char* learned_only =
+          (cvvdp.selected && cvqahdr.selected)
+              ? "cvvdp and cvqa-hdr-nr"
+              : (cvvdp.selected ? "cvvdp" : "cvqa-hdr-nr");
       std::fprintf(stderr,
                    "pixvqa: %s is incompatible with %s alone; it applies only to native metrics\n",
-                   native_only_option.c_str(), cvvdp.selected ? "cvvdp" : "cvqa-hdr-nr");
+                   native_only_option.c_str(), learned_only);
       return 2;
     }
     for (const MetricCaps* c : caps) {
