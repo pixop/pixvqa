@@ -2744,6 +2744,8 @@ int adopt_detected_layout(SideSpec& side, const char* role) {
 int prepare_formats(Options& opt, SideSpec& ref, SideSpec& test) {
   if (classify_side(opt, ref, "reference") != 0) return 2;
   if (classify_side(opt, test, "test") != 0) return 2;
+  // -s/-f bind to the most recent -r/-t; inherit so a raw side still sees geometry.
+  inherit_side_geometry(ref, test);
   if (adopt_detected_layout(ref, "reference") != 0) return 2;
   if (adopt_detected_layout(test, "test") != 0) return 2;
   return 0;
@@ -2757,6 +2759,7 @@ int prepare_cvvdp_side_specs(Options& opt, SideSpec& ref, SideSpec& test) {
   const bool ref_raw = !ref.compressed;
   const bool test_raw = !test.compressed;
   if (!ref_raw && !test_raw) return 0;
+  inherit_side_geometry(ref, test);
   if (ref_raw && adopt_detected_layout(ref, "reference") != 0) return 2;
   if (test_raw && adopt_detected_layout(test, "test") != 0) return 2;
   if (ref_raw != test_raw) {
@@ -2843,7 +2846,7 @@ int run_cli(int argc, char** argv) {
     if (a == "--version") {
       print_version_and_exit(argv[0]);
     }
-    if ((a == "--input" || a == "--decode" || a == "--threads" || a == "-v" || a == "--model" ||
+    if ((a == "--input" || a == "--decode" || a == "--threads" || a == "--model" ||
          a == "--vmaf-model" || a == "--cs" || a == "--tf" || a == "--ref-tf" || a == "--dist-tf" ||
          a == "--ref-cs" || a == "--dist-cs" || a == "--hlg-peak" || a == "--seek" ||
          a.compare(0, 6, "--hdr-") == 0 || a.compare(0, 10, "--ref-hdr-") == 0 ||
@@ -3739,6 +3742,7 @@ int run_cli(int argc, char** argv) {
           if (opt.enable_xpsnr) print_xpsnr(xframe);
           print_pu21_scores(opt, pu21);
           std::printf("\n");
+          if (g_learned) std::fflush(stdout);
         }
       }
       ++nframes;
@@ -3774,6 +3778,7 @@ int run_cli(int argc, char** argv) {
           print_vmaf(vframes[static_cast<size_t>(i)]);
           std::printf("\n");
         }
+        if (g_learned) std::fflush(stdout);
       }
       const char* feat_env = pix_getenv("VMAF_FEATURES");
       if (feat_env && feat_env[0] == '1') {

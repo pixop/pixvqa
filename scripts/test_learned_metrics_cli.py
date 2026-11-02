@@ -22,6 +22,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PIXVQA = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
 DECODE_BIN = Path(os.environ.get("PIXVQA_DECODE_BIN", ROOT / "build" / "swdec" / "pixvqa"))
 FFMPEG = os.environ.get("PIXVQA_TEST_FFMPEG") or shutil.which("ffmpeg")
+
+
+def decode_bin_current() -> bool:
+    """True when the decode-capable pixvqa binary is at least as new as main.cpp."""
+    main_cpp = ROOT / "src" / "main.cpp"
+    if not DECODE_BIN.is_file() or not main_cpp.is_file():
+        return False
+    return DECODE_BIN.stat().st_mtime >= main_cpp.stat().st_mtime
 FAILS = 0
 
 CVVDP_JOD = "9.311432838439941"
@@ -247,6 +255,82 @@ def summary_block(stdout: str) -> str:
 
 def expected_qcs(values, lower, upper) -> float:
     return 100.0 * sum(min(max((v - lower) / (upper - lower), 0.0), 1.0) for v in values) / len(values)
+
+
+def geometry_bind_cases(s: Suite) -> None:
+    """Reproduce Berlin-style CLI: -r raw.yuv -t file.mp4 -s … -f … (bind follows -t)."""
+    proc = s.run([
+        "--metrics", "cvvdp", "-r", str(s.ref), "-t", str(s.fake_mp4),
+        "-s", "16x16", "-f", "420p:10", "--fps", "60", *s.cvvdp(),
+    ])
+    if "requires -s and -f" in proc.stderr:
+        fail("cvvdp-geometry-after-test-bind", proc.stderr[-800:])
+    elif expect("cvvdp-geometry-after-test-bind", proc, 0, needles=["mock cvvdp warning"]):
+        args = " ".join(s.backend_args("cvvdp"))
+        if "--raw-ref" not in args or "--raw-width" not in args:
+            fail("cvvdp-geometry-after-test-bind", args)
+        else:
+            ok("cvvdp-geometry-after-test-bind")
+    proc = s.run(["--metrics", "cvvdp", "-r", str(s.ref), "-t", str(s.fake_mp4), *s.cvvdp()])
+    if proc.returncode != 2 or "requires -s and -f" not in proc.stderr:
+        fail("cvvdp-geometry-missing", proc.stderr[-400:])
+    else:
+        ok("cvvdp-geometry-missing-rejected")
+
+
+def verbosity_cases(s: Suite) -> None:
+    proc = s.run(["-v", "1", "--metrics", "cvvdp", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp()])
+    if proc.returncode == 2 and "incompatible" in proc.stderr and "-v" in proc.stderr:
+        fail("cvvdp-v1-learned-only", proc.stderr[-400:])
+    elif expect("cvvdp-v1-learned-only", proc, 0, needles=["mock cvvdp warning"]):
+        ok("cvvdp-v1-learned-only-accepted")
+
+    proc = s.run(["--metrics", "psnr,cvvdp", "-v", "1", *s.raw_pair(), *s.cvvdp()])
+    if expect("native-cvvdp-v1", proc, 0, stdout_needles=["Summary:"]):
+        frames = [m for m in re.finditer(r"^\d+\s*:", proc.stdout, re.M)]
+        if not frames or proc.stdout.index(frames[0].group()) >= proc.stdout.index("Summary:"):
+            fail("native-cvvdp-v1", "per-frame lines missing or after Summary")
+        elif "CVVDP jod" in proc.stdout.split("Summary:")[0]:
+            fail("native-cvvdp-v1", "learned score appeared before Summary in per-frame section")
+        else:
+            ok("native-cvvdp-v1-per-frame-before-summary")
+
+    proc = s.run(["--metrics", "psnr,cvvdp", "-v", "0", *s.raw_pair(), *s.cvvdp()])
+    if expect("native-cvvdp-v0", proc, 0, stdout_needles=["Summary:"]) \
+            and re.search(r"^\d+\s*:", proc.stdout, re.M):
+        fail("native-cvvdp-v0", "per-frame lines present at -v 0")
+    elif proc.returncode == 0:
+        ok("native-cvvdp-v0-summary-only")
+
+    if not DECODE_BIN.is_file() or not FFMPEG or not decode_bin_current():
+        print("SKIP pq -v cases (need current PIXVQA_DECODE_BIN built from this tree; make swdec or full)")
+    else:
+        dist = s.tmp / "pq-dist.mp4"
+        made = subprocess.run(
+            [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=16x16:rate=60",
+             "-frames:v", "2", "-c:v", "libx264", "-qp", "28", "-pix_fmt", "yuv420p10le",
+             "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+             str(dist)],
+            capture_output=True, text=True,
+        )
+        if made.returncode != 0:
+            print(f"SKIP pq -v cases (ffmpeg: {made.stderr.strip()[-120:]})")
+        else:
+            pq_run = ["--metrics", "pq", "-r", str(s.ref), "-t", str(dist),
+                      "-s", "16x16", "-f", "420p:10", "--fps", "60", *s.cvvdp(), *s.nr()]
+            proc = s.run([*pq_run, "-v", "1"], binary=DECODE_BIN)
+            if expect("pq-v1", proc, 0, stdout_needles=["Summary:", "[ PSNR"]):
+                frames = [m for m in re.finditer(r"^\d+\s*:", proc.stdout, re.M)]
+                if not frames or proc.stdout.index(frames[0].group()) >= proc.stdout.index("Summary:"):
+                    fail("pq-v1", "native per-frame missing before Summary")
+                else:
+                    ok("pq-v1-native-per-frame-before-summary")
+
+            proc = s.run([*pq_run, "-v", "0"], binary=DECODE_BIN)
+            if expect("pq-v0", proc, 0, stdout_needles=["Summary:"]) and re.search(r"^\d+\s*:", proc.stdout, re.M):
+                fail("pq-v0", "per-frame at -v 0")
+            elif proc.returncode == 0:
+                ok("pq-v0-summary-only")
 
 
 def cli_cases(s: Suite) -> None:
@@ -946,6 +1030,8 @@ def main() -> int:
         return 2
     with tempfile.TemporaryDirectory() as tmp:
         suite = Suite(Path(tmp))
+        geometry_bind_cases(suite)
+        verbosity_cases(suite)
         cli_cases(suite)
         decode_cases(suite)
     if FAILS:
