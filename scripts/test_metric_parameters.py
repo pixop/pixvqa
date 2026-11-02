@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Tests for unified CVVDP / HDR transfer parameter resolution."""
+"""SDR/PQ/HLG metric parameter resolution, provenance, and CLI conformance suite.
+
+Runs positive CVVDP/HDR tests, declarative negative CLI matrix, and FFmpeg build checks.
+"""
 from __future__ import annotations
 
 import json
@@ -327,7 +330,19 @@ def main() -> int:
     test_resolver_unit()
     test_cli_inference()
     test_learned_native_guard()
-    return 0
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
+
+    rc = run_cli_conformance_suite(json_report=ROOT / "reports" / "metric_cli_conformance.json")
+
+    ffmpeg_build = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_metric_resolve_ffmpeg_build.py")],
+        cwd=ROOT,
+    )
+    if ffmpeg_build.returncode != 0:
+        rc = 1
+    return rc
 
 
 if __name__ == "__main__":
