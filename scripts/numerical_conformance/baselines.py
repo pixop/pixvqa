@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import BASELINE_ROOT
 from .metric_fields import allowed_baseline_case_keys, required_fields_for_case
+from .provenance import cvvdp_has_package_identity
 from .tolerances import within_tolerance
 
 
@@ -75,7 +76,7 @@ def validate_provenance(meta: dict | None) -> list[str]:
         cvvdp = learned.get("cvvdp")
         if not isinstance(cvvdp, dict):
             errors.append("learned_provenance.cvvdp missing")
-        elif not any(k.endswith("_version") for k in cvvdp) and "package_version_missing" not in cvvdp:
+        elif not cvvdp_has_package_identity(cvvdp):
             errors.append("learned_provenance.cvvdp has no package version identity")
 
     return errors

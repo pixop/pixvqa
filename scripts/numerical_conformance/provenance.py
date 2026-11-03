@@ -14,6 +14,24 @@ from .cli_invoke import parse_cvqa_asset_paths
 from .config import ROOT
 from .tolerances import catalog_export
 
+# PyPI / wheel names tried for CVVDP backend identity (first match wins for canonical key).
+CVVDP_DISTRIBUTIONS: tuple[tuple[str, str], ...] = (
+    ("cvvdp", "cvvdp_version"),
+    ("pixvqa-cvvdp", "pixvqa_cvvdp_version"),
+    ("colorvideovdp", "colorvideovdp_version"),
+)
+
+PYTHON_PACKAGE_SNAPSHOT = (
+    "cvvdp",
+    "pixvqa-cvvdp",
+    "pixvqa-cvqahdr",
+    "colorvideovdp",
+    "torch",
+    "torchvision",
+    "open_clip_torch",
+    "numpy",
+)
+
 
 def _git_head(repo: Path | None = None) -> str:
     cwd = repo or ROOT
@@ -76,8 +94,28 @@ def _python_package_version(python: str | None, distribution: str) -> str | None
 
 
 def _pip_versions_snapshot(python: str | None) -> dict[str, str | None]:
-    names = ("pixvqa-cvvdp", "pixvqa-cvqahdr", "colorvideovdp", "torch", "numpy")
-    return {name: _python_package_version(python, name) for name in names}
+    return {name: _python_package_version(python, name) for name in PYTHON_PACKAGE_SNAPSHOT}
+
+
+def _collect_cvvdp_package_versions(learned_python: str | None) -> dict[str, Any]:
+    cvvdp: dict[str, Any] = {}
+    for dist, field in CVVDP_DISTRIBUTIONS:
+        ver = _python_package_version(learned_python, dist)
+        if ver:
+            cvvdp[field] = ver
+    if not cvvdp_has_package_identity(cvvdp):
+        cvvdp["package_version_missing"] = (
+            "could not resolve cvvdp, pixvqa-cvvdp, or colorvideovdp version from learned python"
+        )
+    return cvvdp
+
+
+def cvvdp_has_package_identity(cvvdp: dict[str, Any] | None) -> bool:
+    if not cvvdp or not isinstance(cvvdp, dict):
+        return False
+    if cvvdp.get("package_version_missing"):
+        return False
+    return any(k.endswith("_version") and cvvdp.get(k) for k in cvvdp)
 
 
 def collect_learned_provenance(
@@ -91,6 +129,7 @@ def collect_learned_provenance(
         "python_packages": {},
     }
     block["python_packages"] = _pip_versions_snapshot(learned_python)
+    block["cvvdp"] = _collect_cvvdp_package_versions(learned_python)
 
     if not learned_config:
         block["status"] = "learned_config_not_set"
@@ -136,17 +175,6 @@ def collect_learned_provenance(
         cvqa["repository_missing"] = "repository unset in config"
 
     block["cvqa_hdr_nr"] = cvqa
-
-    cvvdp: dict[str, Any] = {}
-    for dist in ("pixvqa-cvvdp", "colorvideovdp"):
-        ver = _python_package_version(learned_python, dist)
-        if ver:
-            cvvdp[f"{dist.replace('-', '_')}_version"] = ver
-    if not any(k.endswith("_version") for k in cvvdp):
-        cvvdp["package_version_missing"] = (
-            "could not resolve pixvqa-cvvdp or colorvideovdp version from learned python"
-        )
-    block["cvvdp"] = cvvdp
     block["status"] = "collected"
     return block
 
