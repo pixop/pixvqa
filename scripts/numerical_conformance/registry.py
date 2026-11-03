@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .metric_caps import GROUP_METRICS, includes_cvqa
+
 Family = Literal["sdr", "pq", "hlg"]
 Scenario = Literal["raw_raw", "raw_comp", "comp_comp"]
 
@@ -32,13 +34,6 @@ METRICS: tuple[MetricSpec, ...] = (
     MetricSpec("cvqa-hdr-nr", False, True, False, ("sdr", "pq")),
 )
 
-GROUP_METRICS = {
-    "sdr": ("psnr", "xpsnr", "ssim", "msssim", "vmaf", "cvvdp", "cvqa-hdr-nr"),
-    "pq": ("psnr", "xpsnr", "ssim", "msssim", "vmaf", "pu21-psnr", "pu21-ssim", "pu21-msssim", "cvvdp", "cvqa-hdr-nr"),
-    "hlg": ("psnr", "xpsnr", "ssim", "msssim", "pu21-psnr", "pu21-ssim", "pu21-msssim", "cvvdp"),
-}
-
-
 def metric_supported(metric: str, family: Family) -> bool:
     if metric in GROUP_METRICS.get(family, ()):
         return True
@@ -48,15 +43,36 @@ def metric_supported(metric: str, family: Family) -> bool:
     return False
 
 
-def scenario_paths(fx, scenario: Scenario) -> tuple[str, str, bool, bool]:
+def needs_nr_temporal(metric: str, scenario: Scenario) -> bool:
+    if not includes_cvqa(metric):
+        return False
+    if scenario == "raw_raw":
+        return False
+    return True
+
+
+def resolve_media_paths(
+    fx,
+    scenario: Scenario,
+    metric: str,
+) -> tuple[str, str, bool, bool]:
     """Return ref path, test path, ref_is_raw, test_is_raw."""
+    nr = needs_nr_temporal(metric, scenario)
     if scenario == "raw_raw":
         return str(fx.reference_yuv), str(fx.distorted_yuv), True, True
     if scenario == "raw_comp":
+        if nr:
+            return str(fx.reference_yuv_60), str(fx.distorted_lossy_60), True, False
         return str(fx.reference_yuv), str(fx.distorted_lossy), True, False
     if scenario == "comp_comp":
+        if nr:
+            return str(fx.reference_lossless_60), str(fx.distorted_lossy_60), False, False
         return str(fx.reference_lossless), str(fx.distorted_lossy), False, False
     raise ValueError(scenario)
+
+
+def scenario_paths(fx, scenario: Scenario) -> tuple[str, str, bool, bool]:
+    return resolve_media_paths(fx, scenario, "psnr")
 
 
 def incompatible_reason(metric: str, family: Family, scenario: Scenario) -> str | None:

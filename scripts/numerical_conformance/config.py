@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WIDTH = 3840
 HEIGHT = 2160
 FRAMES = 5
+FRAMES_NR = 60  # CVQA-HDR-NR official sampler minimum at 60 fps
 FPS_NUM = 60
 FPS_DEN = 1
 FPS = f"{FPS_NUM}/{FPS_DEN}"

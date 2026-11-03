@@ -30,6 +30,24 @@ Verified: decode(lossless MKV) == `reference.yuv`; decode(`distorted_lossy.mp4`)
 
 See `registry.py` (mirrors `kMetricCaps` in `src/main.cpp` and `docs/METRICS_AND_FORMATS.md`).
 
+For CVQA-HDR-NR and metric groups that include it, the suite also generates **60-frame** compressed
+(and matching reference) variants (`*_60f.*`) because the official NR sampler requires at least
+one second at 60 fps. The core 5-frame matrix is unchanged for other metrics.
+
+After upgrading the harness, regenerate cached fixtures once:
+
+```bash
+python3 scripts/test_metric_numerical_conformance.py --profile smoke --force-fixtures
+```
+
+Learned metrics use `config/learned_metrics.local.toml` or:
+
+```bash
+export PIXVQA_LEARNED_PYTHON=/home/sergio/codeccomp/metrics/pixvqa/deps/learned-env/bin/python
+```
+
+Optional VMAF override: `PIXVQA_VMAF_MODEL=/path/to/model.json`
+
 ## Commands (RTX 4070 WSL)
 
 ```bash

@@ -331,6 +331,13 @@ def main() -> int:
     test_cli_inference()
     test_learned_native_guard()
 
+    inv = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_numerical_cli_invoke.py")],
+        cwd=ROOT,
+    )
+    if inv.returncode != 0:
+        return 1
+
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 

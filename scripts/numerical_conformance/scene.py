@@ -1,4 +1,4 @@
-"""Deterministic synthetic UHD scene (5 frames)."""
+"""Deterministic synthetic UHD scene."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,12 +6,13 @@ import numpy as np
 from .config import FRAMES, HEIGHT, WIDTH
 
 
-def scene_linear_rgb(frame_index: int) -> np.ndarray:
+def scene_linear_rgb(frame_index: int, *, frame_count: int | None = None) -> np.ndarray:
     """Return (H,W,3) scene-linear RGB in 0..1 with motion and test patterns."""
+    total = frame_count if frame_count is not None else FRAMES
     h, w = HEIGHT, WIDTH
     ys = np.linspace(0.0, 1.0, h, dtype=np.float64)[:, None]
     xs = np.linspace(0.0, 1.0, w, dtype=np.float64)[None, :]
-    t = frame_index / max(FRAMES - 1, 1)
+    t = frame_index / max(total - 1, 1)
     # Horizontal luma gradient + vertical colour shift.
     base = 0.12 + 0.55 * xs + 0.08 * np.sin(2 * np.pi * (ys + t))
     r = np.clip(base + 0.25 * np.sin(2 * np.pi * (xs * 8 + t)), 0, 1)
@@ -35,5 +36,5 @@ def scene_linear_rgb(frame_index: int) -> np.ndarray:
     return np.clip(rgb, 0.0, 1.0)
 
 
-def all_scene_frames() -> list[np.ndarray]:
-    return [scene_linear_rgb(i) for i in range(FRAMES)]
+def all_scene_frames(frame_count: int = FRAMES) -> list[np.ndarray]:
+    return [scene_linear_rgb(i, frame_count=frame_count) for i in range(frame_count)]
