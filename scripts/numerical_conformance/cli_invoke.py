@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from .config import CHROMA, FPS, FRAMES, FRAMES_NR, ROOT, SIZE
-from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvqa, includes_learned, includes_vmaf, selected_caps
+from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvqa, includes_cvvdp, includes_learned, includes_native, includes_vmaf, selected_caps
 from .registry import CVVDP_DISPLAY, Scenario, needs_nr_temporal
 
 Family = Literal["sdr", "pq", "hlg"]
@@ -203,7 +203,7 @@ def build_pixvqa_command(
         argv += ["--model", str(model)]
         notes.append(f"vmaf model {model.name}")
 
-    if "cvvdp" in names or mval == "sdr":
+    if includes_cvvdp(metric):
         disp = cvvdp_display_for(family)
         if disp:
             argv += ["--cvvdp-display", disp]
@@ -218,10 +218,11 @@ def build_pixvqa_command(
         if ctx.learned_config and os.environ.get("PIXVQA_LEARNED_CONFIG", "").lower() != "none":
             env.setdefault("PIXVQA_LEARNED_CONFIG", str(ctx.learned_config))
         if ctx.learned_python:
-            env["PIXVQA_CVVDP_PYTHON"] = ctx.learned_python
-            env["PIXVQA_CVQAHDR_PYTHON"] = ctx.learned_python
-            argv += ["--cvvdp-python", ctx.learned_python]
+            if includes_cvvdp(metric):
+                env["PIXVQA_CVVDP_PYTHON"] = ctx.learned_python
+                argv += ["--cvvdp-python", ctx.learned_python]
             if includes_cvqa(metric):
+                env["PIXVQA_CVQAHDR_PYTHON"] = ctx.learned_python
                 argv += ["--cvqahdr-python", ctx.learned_python]
     else:
         env["PIXVQA_LEARNED_CONFIG"] = "none"
@@ -237,14 +238,14 @@ def classify_failure(proc_text: str, returncode: int, metric: str) -> tuple[str,
     text = proc_text
     config_markers = (
         "requires --model",
-        "--cvvdp-display",
         "transfer is unspecified",
         "--frames is incompatible",
         "No module named pixvqa_cvvdp",
         "No module named pixvqa_cvqahdr",
         "could not execute CVVDP interpreter",
         "could not execute CVQA-HDR-NR interpreter",
-        "pixvqa_cvvdp",
+        "--cvvdp-* options require --metrics cvvdp",
+        "--cvqahdr-* options require --metrics cvqa-hdr-nr",
         "preflight failed",
     )
     for marker in config_markers:
@@ -252,7 +253,10 @@ def classify_failure(proc_text: str, returncode: int, metric: str) -> tuple[str,
             return "FAIL", text[-800:]
 
     if includes_learned(metric) and returncode == 2:
-        asset_markers = ("--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile", "checkpoint")
+        low = text.lower()
+        if "checkpoint not found" in low or "checkpoint not fou" in low:
+            return "SKIP", "cvqa-hdr-nr checkpoint/profile missing or path wrong in learned config"
+        asset_markers = ("--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile")
         if any(m in text for m in asset_markers):
             return "SKIP", text[-500:]
     return "FAIL", text[-800:]

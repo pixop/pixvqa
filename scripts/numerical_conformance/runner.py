@@ -17,9 +17,9 @@ from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_fai
 from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
 from .fixtures import ensure_all_families
-from .metric_caps import GROUP_METRICS, expand_metrics, includes_learned
+from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvvdp, includes_learned, includes_native
 from .parse_metrics import parse_run
-from .registry import Scenario, incompatible_reason, resolve_media_paths
+from .registry import Scenario, cvvdp_skip_reason, incompatible_reason, resolve_media_paths
 from .tolerances import close
 
 Profile = Literal["smoke", "comprehensive"]
@@ -133,11 +133,13 @@ def _validate_parsed(case: NumericalCase, parsed, invoke, proc) -> str | None:
     metric_name = case.metric.split(":", 1)[-1] if case.metric.startswith("group:") else case.metric
     names = expand_metrics(case.metric)
 
-    if invoke.expected_frames is not None:
+    if invoke.expected_frames is not None and includes_native(case.metric):
+        if parsed.total_frames is None:
+            return f"expected {invoke.expected_frames} native frames, missing Total frames summary"
         if parsed.total_frames != invoke.expected_frames:
             return f"expected {invoke.expected_frames} frames, got {parsed.total_frames}"
 
-    if "psnr" in names or case.metric.startswith("group:"):
+    if includes_native(case.metric):
         if parsed.psnr_avg is not None and not math.isfinite(parsed.psnr_avg):
             return "non-finite PSNR avg"
         if case.metric.startswith("group:") and parsed.psnr_avg is None:
@@ -146,15 +148,17 @@ def _validate_parsed(case: NumericalCase, parsed, invoke, proc) -> str | None:
     if metric_name == "psnr" and parsed.psnr_avg is None:
         return "missing PSNR summary"
 
-    if metric_name == "cvvdp" and parsed.cvvdp_jod is None:
-        return "missing CVVDP JOD"
+    if includes_cvvdp(case.metric):
+        if parsed.cvvdp_jod is None:
+            return "missing CVVDP JOD"
+        if not math.isfinite(parsed.cvvdp_jod):
+            return "non-finite CVVDP JOD"
 
-    if metric_name == "cvvdp" and parsed.cvvdp_jod is not None and not math.isfinite(parsed.cvvdp_jod):
-        return "non-finite CVVDP JOD"
-
-    if "cvqa-hdr-nr" in names and proc.returncode == 0:
-        if "cvqa-hdr-nr" not in proc.stdout and "quality_score" not in proc.stdout:
-            return "missing cvqa-hdr-nr output"
+    if metric_name == "cvqa-hdr-nr":
+        if parsed.cvqa_quality is None:
+            return "missing cvqa-hdr-nr quality_score"
+        if not math.isfinite(parsed.cvqa_quality):
+            return "non-finite cvqa-hdr-nr quality_score"
     return None
 
 
@@ -170,6 +174,8 @@ def execute_case(
 
     if case.metric.startswith("group:") and case.scenario == "raw_raw" and case.family in ("sdr", "pq"):
         return _row(case, "SKIP", "group includes cvqa-hdr-nr (compressed test only)", [])
+    if reason := cvvdp_skip_reason(case.metric, case.family, case.scenario):
+        return _row(case, "SKIP", reason, [])
     if not case.metric.startswith("group:"):
         if reason := incompatible_reason(metric_name, case.family, case.scenario):
             return _row(case, "SKIP", reason, [])

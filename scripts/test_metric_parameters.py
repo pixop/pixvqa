@@ -352,6 +352,13 @@ def main() -> int:
     if ff.returncode != 0:
         return 1
 
+    parse = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_numerical_parse_learned.py")],
+        cwd=ROOT,
+    )
+    if parse.returncode != 0:
+        return 1
+
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 

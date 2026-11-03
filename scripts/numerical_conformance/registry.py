@@ -83,3 +83,20 @@ def incompatible_reason(metric: str, family: Family, scenario: Scenario) -> str 
     if metric == "cvqa-hdr-nr" and scenario == "raw_raw":
         return "cvqa-hdr-nr requires compressed test"
     return None
+
+
+def cvvdp_skip_reason(metric: str, family: Family, scenario: Scenario) -> str | None:
+    """PixVQA rejects SDR raw-side CVVDP (pq/hlg interpretation only for raw YUV)."""
+    from .metric_caps import expand_metrics
+
+    names = expand_metrics(metric)
+    if "cvvdp" not in names:
+        return None
+    if family != "sdr":
+        return None
+    if scenario in ("raw_raw", "raw_comp"):
+        return (
+            "cvvdp raw YUV supports only pq/hlg interpretation; "
+            "SDR raw reference/test is unsupported by pixvqa"
+        )
+    return None

@@ -56,6 +56,15 @@ def includes_cvqa(metric: str) -> bool:
     return "cvqa-hdr-nr" in expand_metrics(metric)
 
 
+def includes_cvvdp(metric: str) -> bool:
+    return "cvvdp" in expand_metrics(metric)
+
+
+def includes_native(metric: str) -> bool:
+    learned = {"cvvdp", "cvqa-hdr-nr"}
+    return any(n not in learned for n in expand_metrics(metric))
+
+
 def includes_learned(metric: str) -> bool:
     return any(n in ("cvvdp", "cvqa-hdr-nr") for n in expand_metrics(metric))
 
