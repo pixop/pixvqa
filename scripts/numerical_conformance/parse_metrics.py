@@ -12,8 +12,23 @@ PSNR_SUMMARY = re.compile(
 SSIM_SUMMARY = re.compile(
     r"SSIM\s+y:([0-9.]+)\s+u:([0-9.]+)\s+v:([0-9.]+)\s+avg:([0-9.]+)"
 )
+MSSSIM_SUMMARY = re.compile(
+    r"MS-SSIM\s+y:([0-9.]+)\s+u:([0-9.]+)\s+v:([0-9.]+)\s+avg:([0-9.]+)"
+)
+XPSNR_SUMMARY = re.compile(
+    r"XPSNR\s+y:([0-9.]+)\s+u:([0-9.]+)\s+v:([0-9.]+)\s+avg:([0-9.]+)"
+)
+VMAF_MEAN = re.compile(r"\[\s*VMAF\s+mean:([0-9.eE+-]+)", re.I)
 PU21_PSNR = re.compile(
     r"PU21-PSNR\s+r:([0-9.]+)\s+g:([0-9.]+)\s+b:([0-9.]+)\s+avg:([0-9.]+)"
+)
+PU21_SSIM = re.compile(
+    r"PU21-SSIM\s+y:([0-9.]+)\s+u:n/a\s+v:n/a\s+avg:([0-9.]+)",
+    re.I,
+)
+PU21_MSSSIM = re.compile(
+    r"PU21-MS-SSIM\s+y:([0-9.]+)\s+u:n/a\s+v:n/a\s+avg:([0-9.]+)",
+    re.I,
 )
 CVVDP_JOD = re.compile(r"\[ CVVDP jod:\s*([0-9.]+)", re.I)
 CVVDP_JSON_JOD = re.compile(r'"jod"\s*:\s*([0-9.eE+-]+)')
@@ -30,7 +45,12 @@ class ParsedRun:
     total_frames: int | None
     psnr_avg: float | None
     ssim_avg: float | None
+    msssim_avg: float | None
+    xpsnr_avg: float | None
+    vmaf_mean: float | None
     pu21_psnr_avg: float | None
+    pu21_ssim_avg: float | None
+    pu21_msssim_avg: float | None
     cvvdp_jod: float | None
     cvqa_quality: float | None
     hdr_inferred: bool
@@ -94,21 +114,37 @@ def _cvqa_quality_from_text(text: str) -> float | None:
     return None
 
 
+def _optional_avg(match: re.Match[str] | None, group: int = 4) -> float | None:
+    if not match:
+        return None
+    return _finite_metric_float(match.group(group))
+
+
 def parse_run(stdout: str, stderr: str, rc: int) -> ParsedRun:
     combined = stdout + stderr
     tf = TOTAL_FRAMES.search(stdout)
     psnr = _last(PSNR_SUMMARY, stdout)
     ssim = _last(SSIM_SUMMARY, stdout)
+    msssim = _last(MSSSIM_SUMMARY, stdout)
+    xpsnr = _last(XPSNR_SUMMARY, stdout)
+    vmaf = _last(VMAF_MEAN, stdout)
     pu21 = _last(PU21_PSNR, stdout)
+    pu21_ssim = _last(PU21_SSIM, stdout)
+    pu21_mss = _last(PU21_MSSSIM, stdout)
     jod_val = _cvvdp_jod_from_text(combined)
     cvqa_q = _cvqa_quality_from_text(combined)
     return ParsedRun(
         returncode=rc,
         total_frames=int(tf.group(1)) if tf else None,
-        psnr_avg=float(psnr.group(4)) if psnr else None,
-        ssim_avg=float(ssim.group(4)) if ssim else None,
-        pu21_psnr_avg=float(pu21.group(4)) if pu21 else None,
-        cvvdp_jod=jod_val,
+        psnr_avg=_optional_avg(psnr),
+        ssim_avg=_optional_avg(ssim),
+        msssim_avg=_optional_avg(msssim),
+        xpsnr_avg=_optional_avg(xpsnr),
+        vmaf_mean=_optional_avg(vmaf, 1),
+        pu21_psnr_avg=_optional_avg(pu21),
+        pu21_ssim_avg=_optional_avg(pu21_ssim, 2),
+        pu21_msssim_avg=_optional_avg(pu21_mss, 2),
+        cvvdp_jod=jod_val if jod_val is None or math.isfinite(jod_val) else None,
         cvqa_quality=cvqa_q,
         hdr_inferred="transfer=pq (inferred)" in combined or "transfer=hlg (inferred)" in combined,
         hdr_stream="(stream)" in combined and "HDR:" in combined,

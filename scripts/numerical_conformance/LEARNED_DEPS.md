@@ -17,4 +17,4 @@ CVQA-only invocations use `-t distorted.mp4` only (no `--fps`, `-s`, `-f`, or `-
 
 ## CVVDP SDR raw inputs
 
-PixVQA does not support CVVDP with SDR raw YUV (`raw_raw` / `raw_comp` with `--metrics sdr` transfer). The suite records **SKIP** for standalone CVVDP and SDR groups on those scenarios (product contract, not a harness defect).
+PixVQA does not support CVVDP with SDR raw YUV (`raw_raw` / `raw_comp` with `--metrics sdr` transfer). The suite records **NA** (not applicable) for standalone CVVDP and affected SDR groups on those scenarios (product contract, not a harness defect). Missing checkpoints remain **SKIP** (dependency) and mandatory **SKIP** still fails `--strict`.

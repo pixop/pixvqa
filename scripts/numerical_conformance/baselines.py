@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from .config import BASELINE_ROOT
+from .metric_fields import required_fields_for_case
+from .tolerances import within_tolerance
 
 
 def baseline_path(profile: str) -> Path:
@@ -16,6 +19,29 @@ def load_baseline(profile: str) -> dict:
     if not path.is_file():
         return {"version": 1, "approved": False, "cases": {}}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+PROVENANCE_REQUIRED_KEYS = (
+    "pixvqa_commit",
+    "pixvqa_version",
+    "tolerance_profile",
+    "tolerances",
+    "fixtures",
+    "generated_at",
+)
+
+
+def validate_provenance(meta: dict | None) -> list[str]:
+    if not meta:
+        return ["baseline meta missing"]
+    errors: list[str] = []
+    for key in PROVENANCE_REQUIRED_KEYS:
+        if key not in meta:
+            errors.append(f"baseline meta missing {key}")
+    tol = meta.get("tolerances")
+    if tol is not None and not isinstance(tol, dict):
+        errors.append("baseline meta tolerances must be an object")
+    return errors
 
 
 def save_candidate(profile: str, cases: dict, meta: dict) -> Path:
@@ -32,27 +58,124 @@ def save_candidate(profile: str, cases: dict, meta: dict) -> Path:
     return cand
 
 
-def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] | None:
-    if not baseline.get("approved"):
-        return None
-    expected = baseline.get("cases", {}).get(row["id"])
-    if not expected or row.get("status") != "PASS":
-        return None
-    for key in ("psnr_avg", "cvvdp_jod"):
-        if key not in expected or row.get(key) is None:
-            continue
-        if not close(key, float(expected[key]), float(row[key])):
-            return _row_from_row(row, "FAIL", f"baseline regression {key}: {row[key]} vs {expected[key]}")
-    if expected.get("status") and expected["status"] != row["status"]:
-        return _row_from_row(row, "FAIL", f"baseline status {expected['status']} vs {row['status']}")
-    return None
-
-
-def _row_from_row(row: dict[str, Any], status: str, detail: str) -> dict[str, Any]:
+def _row_from_row(row: dict[str, Any], status: str, detail: str, **extra: Any) -> dict[str, Any]:
     out = dict(row)
     out["status"] = status
     out["detail"] = detail
+    out.update(extra)
     return out
+
+
+def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] | None:
+    """Return an updated row on regression failure, or None if baseline check passes/skipped."""
+    if not baseline.get("approved"):
+        mark_regression_not_evaluated(row)
+        return None
+
+    prov_errors = validate_provenance(baseline.get("meta"))
+    if prov_errors:
+        return _row_from_row(
+            row,
+            "FAIL",
+            "baseline provenance invalid: " + "; ".join(prov_errors),
+            numerical_regression="FAIL",
+        )
+
+    if row.get("status") != "PASS":
+        row["numerical_regression"] = "SKIPPED"
+        row["numerical_regression_reason"] = f"execution status {row.get('status')}"
+        return None
+
+    case_id = row["id"]
+    cases = baseline.get("cases", {})
+    if case_id not in cases:
+        return _row_from_row(
+            row,
+            "FAIL",
+            f"missing baseline case {case_id}",
+            numerical_regression="FAIL",
+        )
+
+    expected = cases[case_id]
+    if expected.get("status") and expected["status"] != "PASS":
+        return _row_from_row(
+            row,
+            "FAIL",
+            f"baseline status {expected['status']} vs execution PASS",
+            numerical_regression="FAIL",
+        )
+
+    metric = row.get("metric", "")
+    family = row.get("family", "sdr")
+    required = required_fields_for_case(metric, family)
+    comparisons: list[dict[str, Any]] = []
+
+    for field in required:
+        if field not in expected:
+            return _row_from_row(
+                row,
+                "FAIL",
+                f"baseline missing required field {field} for {case_id}",
+                numerical_regression="FAIL",
+            )
+        observed = row.get(field)
+        if observed is None:
+            return _row_from_row(
+                row,
+                "FAIL",
+                f"missing observed {field} for baseline comparison",
+                numerical_regression="FAIL",
+            )
+        try:
+            obs_f = float(observed)
+            exp_f = float(expected[field])
+        except (TypeError, ValueError):
+            return _row_from_row(
+                row,
+                "FAIL",
+                f"non-numeric baseline values for {field}",
+                numerical_regression="FAIL",
+            )
+        ok, detail = within_tolerance(field, obs_f, exp_f)
+        comparisons.append(detail)
+        if not ok:
+            return _row_from_row(
+                row,
+                "FAIL",
+                (
+                    f"baseline regression {field}: observed={obs_f} expected={exp_f} "
+                    f"abs_error={detail.get('abs_error')} abs_tol={detail.get('abs_tol')}"
+                ),
+                numerical_regression="FAIL",
+                baseline_comparisons=comparisons,
+            )
+
+    row["numerical_regression"] = "PASS"
+    row["baseline_comparisons"] = comparisons
+    return None
+
+
+def mark_regression_not_evaluated(row: dict[str, Any]) -> None:
+    row.setdefault("numerical_regression", "NOT_EVALUATED")
+    row.setdefault("numerical_regression_reason", "no approved baseline")
+
+
+def audit_mandatory_baseline_coverage(
+    results: list[dict[str, Any]],
+    baseline: dict,
+) -> list[str]:
+    if not baseline.get("approved"):
+        return []
+    cases = baseline.get("cases", {})
+    missing: list[str] = []
+    for row in results:
+        if not row.get("mandatory"):
+            continue
+        if row.get("status") != "PASS":
+            continue
+        if row["id"] not in cases:
+            missing.append(row["id"])
+    return missing
 
 
 def approve_candidate(profile: str) -> Path:
@@ -60,6 +183,9 @@ def approve_candidate(profile: str) -> Path:
     if not cand.is_file():
         raise FileNotFoundError(cand)
     data = json.loads(cand.read_text(encoding="utf-8"))
+    errors = validate_provenance(data.get("meta"))
+    if errors:
+        raise ValueError("candidate provenance incomplete: " + "; ".join(errors))
     data["approved"] = True
     dest = baseline_path(profile)
     dest.write_text(json.dumps(data, indent=2), encoding="utf-8")

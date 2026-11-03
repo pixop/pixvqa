@@ -11,16 +11,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from .baselines import compare_to_baseline, load_baseline, save_candidate
+from .baselines import audit_mandatory_baseline_coverage, compare_to_baseline, load_baseline, save_candidate
 from .berlin import run_berlin_optional
 from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_failure, cvqa_assets_available
 from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
 from .fixtures import ensure_all_families
 from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvqa, includes_cvvdp, includes_learned, includes_native
+from .metric_fields import read_field, required_fields_for_case, write_fields_to_row
 from .parse_metrics import parse_run
-from .registry import Scenario, cvvdp_skip_reason, incompatible_reason, resolve_media_paths
-from .tolerances import close
+from .provenance import build_provenance
+from .registry import Scenario, incompatible_reason, not_applicable_reason, resolve_media_paths
+from .tolerances import close, within_tolerance
 
 Profile = Literal["smoke", "comprehensive"]
 
@@ -130,44 +132,23 @@ def build_cases(profile: Profile) -> list[NumericalCase]:
 
 
 def _validate_parsed(case: NumericalCase, parsed, invoke, proc) -> str | None:
-    metric_name = case.metric.split(":", 1)[-1] if case.metric.startswith("group:") else case.metric
-    names = expand_metrics(case.metric)
-
     if invoke.expected_frames is not None and includes_native(case.metric):
         if parsed.total_frames is None:
             return f"expected {invoke.expected_frames} native frames, missing Total frames summary"
         if parsed.total_frames != invoke.expected_frames:
             return f"expected {invoke.expected_frames} frames, got {parsed.total_frames}"
 
-    if includes_native(case.metric):
-        if parsed.psnr_avg is not None and not math.isfinite(parsed.psnr_avg):
-            return "non-finite PSNR avg"
-        if case.metric.startswith("group:") and parsed.psnr_avg is None:
-            return "missing PSNR summary in group run"
+    required = required_fields_for_case(case.metric, case.family)
+    for field in required:
+        val = read_field(parsed, field)
+        if val is None:
+            return f"missing required metric field {field}"
+        if not math.isfinite(val):
+            return f"non-finite {field}"
 
-    if metric_name == "psnr" and parsed.psnr_avg is None:
-        return "missing PSNR summary"
-
-    if includes_cvvdp(case.metric):
-        if parsed.cvvdp_jod is None:
-            return "missing CVVDP JOD"
-        if not math.isfinite(parsed.cvvdp_jod):
-            return "non-finite CVVDP JOD"
-
-    if metric_name == "cvqa-hdr-nr":
-        if parsed.cvqa_quality is None:
-            return "missing cvqa-hdr-nr quality_score"
-        if not math.isfinite(parsed.cvqa_quality):
-            return "non-finite cvqa-hdr-nr quality_score"
-
-    if case.metric.startswith("group:") and includes_cvqa(case.metric):
+    if case.metric.startswith("group:") and includes_native(case.metric):
         if parsed.psnr_avg is None:
             return "missing PSNR summary in group run"
-        if includes_cvvdp(case.metric):
-            if parsed.cvvdp_jod is None or not math.isfinite(parsed.cvvdp_jod):
-                return "missing CVVDP JOD in group run"
-        if parsed.cvqa_quality is None or not math.isfinite(parsed.cvqa_quality):
-            return "missing cvqa-hdr-nr quality_score in group run"
     return None
 
 
@@ -181,13 +162,11 @@ def execute_case(
     fx = fixtures[case.family]
     metric_name = case.metric.split(":", 1)[-1] if case.metric.startswith("group:") else case.metric
 
-    if case.metric.startswith("group:") and case.scenario == "raw_raw" and case.family in ("sdr", "pq"):
-        return _row(case, "SKIP", "group includes cvqa-hdr-nr (compressed test only)", [])
-    if reason := cvvdp_skip_reason(case.metric, case.family, case.scenario):
-        return _row(case, "SKIP", reason, [])
+    if reason := not_applicable_reason(case.metric, case.family, case.scenario):
+        return _row(case, "NA", reason, [], classification="not_applicable")
     if not case.metric.startswith("group:"):
         if reason := incompatible_reason(metric_name, case.family, case.scenario):
-            return _row(case, "SKIP", reason, [])
+            return _row(case, "FAIL", reason, [])
 
     if includes_learned(case.metric) and not invoke_ctx.learned_python:
         return _row(
@@ -247,9 +226,10 @@ def execute_case(
     return _row(
         case,
         "PASS",
-        f"psnr_avg={parsed.psnr_avg} jod={parsed.cvvdp_jod}",
+        "execution ok",
         cmd_repr,
         parsed=parsed,
+        execution_conformance="PASS",
     )
 
 
@@ -259,6 +239,7 @@ def _row(
     detail: str,
     command: list[str],
     parsed=None,
+    **extra: Any,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "id": case.id,
@@ -269,10 +250,11 @@ def _row(
         "detail": detail,
         "command": command,
         "mandatory": case.mandatory,
+        "execution_conformance": "PASS" if status == "PASS" else ("NA" if status == "NA" else "FAIL"),
     }
+    row.update(extra)
     if parsed:
-        row["psnr_avg"] = parsed.psnr_avg
-        row["cvvdp_jod"] = parsed.cvvdp_jod
+        write_fields_to_row(row, parsed)
     return row
 
 
@@ -284,7 +266,7 @@ def run_suite(
     force_fixtures: bool = False,
 ) -> int:
     env = discover()
-    counts = {"PASS": 0, "FAIL": 0, "SKIP": 0}
+    counts = {"PASS": 0, "FAIL": 0, "SKIP": 0, "NA": 0}
 
     if not env.numpy_ok:
         print("FAIL numerical suite requires numpy (pip install numpy)", file=sys.stderr)
@@ -327,6 +309,8 @@ def run_suite(
                         f"HDR explicit PSNR {row['psnr_avg']} vs inferred-path {inferred}",
                         row.get("command", []),
                     )
+                else:
+                    row["validation_level"] = "reference_parity"
         bl = compare_to_baseline(row, baseline)
         if bl is not None:
             row = bl
@@ -337,6 +321,8 @@ def run_suite(
             print(f"OK   {case.id}")
         elif st == "SKIP":
             print(f"SKIP {case.id}: {row['detail'][:120]}")
+        elif st == "NA":
+            print(f"NA   {case.id}: {row['detail'][:120]}")
         else:
             print(f"FAIL {case.id}: {row['detail'][:160]}", file=sys.stderr)
         if row.get("psnr_avg") is not None and case.scenario == "raw_raw" and case.metric == "psnr":
@@ -358,6 +344,8 @@ def run_suite(
         if row2["status"] == "PASS" and c1 is not None and c2 is not None:
             if not close("psnr_avg", c1, c2):
                 row2 = _row(ccase, "FAIL", f"PSNR raw_raw {c1} vs raw_comp {c2}", row2.get("command", []))
+            else:
+                row2["validation_level"] = "reference_parity"
         results.append(row2)
         counts[row2["status"]] = counts.get(row2["status"], 0) + 1
 
@@ -366,50 +354,124 @@ def run_suite(
             cpu = next((r for r in results if r["id"] == f"{family}.backend.psnr_cpu"), None)
             gpu = next((r for r in results if r["id"] == f"{family}.backend.psnr_gpu"), None)
             if cpu and gpu and cpu["status"] == "PASS" and gpu["status"] == "PASS":
-                ok = close("psnr_avg", cpu["psnr_avg"], gpu["psnr_avg"])
+                ok = close("psnr_avg", cpu["psnr_avg"], gpu["psnr_avg"], mode="cross_backend_parity")
                 row = {
                     "id": f"{family}.backend.psnr_cpu_vs_gpu",
                     "status": "PASS" if ok else "FAIL",
                     "detail": "cpu/gpu agree" if ok else f"cpu {cpu['psnr_avg']} vs gpu {gpu['psnr_avg']}",
                     "mandatory": True,
+                    "validation_level": "reference_parity",
                 }
                 results.append(row)
                 counts[row["status"]] += 1
             sw = next((r for r in results if r["id"] == f"{family}.decode.psnr_sw"), None)
             nv = next((r for r in results if r["id"] == f"{family}.decode.psnr_nvdec"), None)
             if sw and nv and sw["status"] == "PASS" and nv["status"] == "PASS":
-                ok = close("psnr_avg", sw["psnr_avg"], nv["psnr_avg"])
+                ok = close("psnr_avg", sw["psnr_avg"], nv["psnr_avg"], mode="cross_backend_parity")
                 results.append(
                     {
                         "id": f"{family}.decode.sw_vs_nvdec",
                         "status": "PASS" if ok else "FAIL",
                         "detail": "decode paths agree" if ok else f"sw {sw['psnr_avg']} vs nvdec {nv['psnr_avg']}",
                         "mandatory": False,
+                        "validation_level": "reference_parity",
                     }
                 )
                 counts["PASS" if ok else "FAIL"] += 1
 
+    from .metric_fields import ALL_NUMERIC_FIELDS
+
+    case_keys = ("status",) + ALL_NUMERIC_FIELDS
     candidate = {
-        r["id"]: {k: r[k] for k in r if k in ("psnr_avg", "cvvdp_jod", "status")}
+        r["id"]: {k: r[k] for k in case_keys if k in r}
         for r in results
         if r["status"] == "PASS"
     }
+    fixture_paths = {k: str(v.root) for k, v in fixtures.items()}
     save_candidate(
         profile,
         candidate,
-        {
-            "pixvqa": env.pixvqa_version,
-            "learned_python": invoke_ctx.learned_python,
-            "fixtures": {k: str(v.root) for k, v in fixtures.items()},
-        },
+        build_provenance(
+            pixvqa_version=env.pixvqa_version,
+            learned_python=invoke_ctx.learned_python,
+            learned_config=str(invoke_ctx.learned_config) if invoke_ctx.learned_config else None,
+            fixtures=fixture_paths,
+            device_note="cuda" if env.cuda_available else "cpu",
+        ),
     )
 
-    verdict = "PASS" if counts["FAIL"] == 0 and not (strict and counts["SKIP"]) else "FAIL"
+    exec_fail = sum(
+        1
+        for r in results
+        if r.get("mandatory") and r.get("execution_conformance") == "FAIL"
+    )
+    exec_verdict = "PASS" if exec_fail == 0 else "FAIL"
+
+    if baseline.get("approved"):
+        missing_cases = audit_mandatory_baseline_coverage(results, baseline)
+        for mid in missing_cases:
+            results.append(
+                {
+                    "id": mid,
+                    "status": "FAIL",
+                    "detail": f"missing mandatory baseline case {mid}",
+                    "mandatory": True,
+                    "numerical_regression": "FAIL",
+                    "execution_conformance": "PASS",
+                }
+            )
+            counts["FAIL"] = counts.get("FAIL", 0) + 1
+        reg_fail = any(r.get("numerical_regression") == "FAIL" for r in results)
+        reg_verdict = "PASS" if not reg_fail and not missing_cases else "FAIL"
+    else:
+        reg_verdict = "NOT_EVALUATED"
+
+    parity_rows = [r for r in results if r.get("validation_level") == "reference_parity"]
+    parity_rows.extend(
+        r
+        for r in results
+        if r["id"].endswith("consistency.psnr_raw_vs_comp") or "hdr.inferred_vs_explicit" in r["id"]
+    )
+    parity_fail = any(r.get("status") == "FAIL" for r in parity_rows)
+    optional = run_berlin_optional(env.full_bin)
+    berlin_fail = False
+    if optional:
+        for row in optional["berlin_cvvdp"]:
+            if row["status"] == "FAIL":
+                berlin_fail = True
+    parity_verdict = "PASS" if not parity_fail and not berlin_fail else ("NOT_RUN" if not parity_rows and not optional else "FAIL")
+
+    verdict = exec_verdict
+    if reg_verdict == "FAIL":
+        verdict = "FAIL"
+    if parity_verdict == "FAIL":
+        verdict = "FAIL"
+
     report = {
         "suite": "numerical-conformance",
         "profile": profile,
         "strict": strict,
         "verdict": verdict,
+        "validation_levels": {
+            "execution_conformance": {
+                "verdict": exec_verdict,
+                "mandatory_failures": exec_fail,
+                "note": "PixVQA runs complete with required finite metrics for applicable cases.",
+            },
+            "numerical_regression": {
+                "verdict": reg_verdict,
+                "baseline_approved": baseline.get("approved", False),
+                "note": (
+                    "Compared to approved baselines with per-metric tolerances."
+                    if baseline.get("approved")
+                    else "No approved baseline; regression not evaluated (execution-only)."
+                ),
+            },
+            "independent_reference_parity": {
+                "verdict": parity_verdict,
+                "note": "Cross-path checks and optional BerlinSeqs CVVDP reference.",
+            },
+        },
         "finished": datetime.now(timezone.utc).isoformat(),
         "environment": {
             "full_bin": str(env.full_bin),
@@ -423,23 +485,32 @@ def run_suite(
         "baseline_approved": baseline.get("approved", False),
         "cases": results,
     }
-    berlin = run_berlin_optional(env.full_bin)
-    if berlin:
-        report["optional"] = berlin
-        for row in berlin["berlin_cvvdp"]:
-            if row["status"] == "FAIL":
-                verdict = "FAIL"
-                counts["FAIL"] = counts.get("FAIL", 0) + 1
+    if optional:
+        report["optional"] = optional
+        if berlin_fail:
+            verdict = "FAIL"
+            counts["FAIL"] = counts.get("FAIL", 0) + 1
     report["verdict"] = verdict
+    report["validation_levels"]["independent_reference_parity"]["berlin_ran"] = optional is not None
     if json_report:
         json_report.parent.mkdir(parents=True, exist_ok=True)
         json_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    print(f"\nNumerical {profile}: {verdict}  PASS={counts['PASS']} FAIL={counts['FAIL']} SKIP={counts['SKIP']}")
+    print(
+        f"\nNumerical {profile}: {verdict}  "
+        f"PASS={counts['PASS']} FAIL={counts['FAIL']} SKIP={counts['SKIP']} NA={counts['NA']}"
+    )
+    print(f"  execution_conformance: {exec_verdict}")
+    print(f"  numerical_regression: {reg_verdict}")
+    print(f"  independent_reference_parity: {parity_verdict}")
     if json_report:
         print(f"JSON report: {json_report}")
     if counts["FAIL"]:
         return 1
-    if strict and counts["SKIP"]:
-        return 1
+    if strict:
+        mandatory_skip = sum(
+            1 for r in results if r.get("mandatory") and r.get("status") == "SKIP"
+        )
+        if mandatory_skip:
+            return 1
     return 0

@@ -91,5 +91,15 @@ python3 scripts/test_metric_numerical_conformance.py --profile smoke --approve-b
 
 Approved baselines are **never** overwritten by normal runs.
 
+## Three validation levels (do not conflate)
+
+| Level | Meaning | Pass criteria |
+|-------|---------|----------------|
+| **Execution conformance** | PixVQA exits 0; every applicable mandatory case yields finite values for all selected metrics (parsed from official stdout summaries). | No mandatory `FAIL`; `NA` for unsupported product combinations is expected. |
+| **Numerical regression** | Compare observed values to an **approved** baseline using explicit per-metric tolerances (`tolerances.py`). | `NOT_EVALUATED` until a baseline is approved; then every mandatory PASS case must match baseline fields with recorded abs error and tolerance. |
+| **Independent reference parity** | Cross-path agreement (raw vs comp PSNR, HDR inferred vs explicit, CPU vs GPU PSNR, SW vs NVDEC decode) and optional BerlinSeqs CVVDP JOD (`berlin.py`, wider tolerance). | Separate from baseline regression; optional Berlin requires `PIXVQA_BERLIN_REF` / `PIXVQA_BERLIN_TEST`. |
+
+JSON reports include `validation_levels` with separate verdicts. Successful execution alone is **not** full numerical regression conformance.
+
 Optional real-content CVVDP check (not part of portable fixtures): BerlinSeqs JOD
 5f=`8.788558959960938`, 60f=`9.17333984375`.

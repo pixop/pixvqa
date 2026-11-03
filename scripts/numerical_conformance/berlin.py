@@ -40,7 +40,9 @@ def run_berlin_optional(env_full_bin: Path | None = None) -> dict | None:
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
         parsed = parse_run(proc.stdout, proc.stderr, proc.returncode)
-        ok = proc.returncode == 0 and parsed.cvvdp_jod is not None and close("cvvdp_jod", expected, parsed.cvvdp_jod)
+        ok = proc.returncode == 0 and parsed.cvvdp_jod is not None and close(
+            "cvvdp_jod", expected, parsed.cvvdp_jod, mode="reference_parity"
+        )
         rows.append(
             {
                 "frames": n,

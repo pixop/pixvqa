@@ -17,7 +17,7 @@ from numerical_conformance.cli_invoke import (  # noqa: E402
     resolve_vmaf_model,
 )
 from numerical_conformance.metric_caps import GROUP_METRICS, includes_cvqa, includes_cvvdp  # noqa: E402
-from numerical_conformance.registry import cvvdp_skip_reason  # noqa: E402
+from numerical_conformance.registry import cvvdp_skip_reason, not_applicable_reason  # noqa: E402
 
 
 def test_vmaf_requires_model_flag() -> None:
@@ -163,10 +163,11 @@ def test_cvvdp_only_no_cvqahdr_cli_flags() -> None:
     assert "--cvvdp-python" in inv.argv
 
 
-def test_sdr_cvvdp_raw_skip_reason() -> None:
+def test_sdr_cvvdp_raw_not_applicable() -> None:
     assert cvvdp_skip_reason("cvvdp", "sdr", "raw_raw")
-    assert cvvdp_skip_reason("group:sdr", "sdr", "raw_comp")
-    assert cvvdp_skip_reason("cvvdp", "pq", "raw_raw") is None
+    na = not_applicable_reason("cvvdp", "sdr", "raw_raw")
+    assert na is not None and na.startswith("N/A:")
+    assert not_applicable_reason("cvvdp", "pq", "raw_raw") is None
 
 
 def test_classify_checkpoint_skip() -> None:
@@ -203,7 +204,7 @@ def main() -> int:
         test_cvqa_preflight_missing_checkpoint,
         test_classify_fps_cvqa_is_fail_not_skip,
         test_cvvdp_raw_transfer,
-        test_sdr_cvvdp_raw_skip_reason,
+        test_sdr_cvvdp_raw_not_applicable,
         test_classify_checkpoint_skip,
         test_classify_python_module_as_fail,
     ]

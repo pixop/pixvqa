@@ -78,10 +78,29 @@ def scenario_paths(fx, scenario: Scenario) -> tuple[str, str, bool, bool]:
 def incompatible_reason(metric: str, family: Family, scenario: Scenario) -> str | None:
     if not metric_supported(metric, family):
         return f"metric {metric} not in --metrics {family} group"
-    if metric == "cvqa-hdr-nr" and scenario != "raw_comp" and scenario != "comp_comp":
-        return "cvqa-hdr-nr requires compressed test"
     if metric == "cvqa-hdr-nr" and scenario == "raw_raw":
+        return "cvqa-hdr-nr requires compressed test (N/A on raw_raw)"
+    if metric == "cvqa-hdr-nr" and scenario not in ("raw_comp", "comp_comp"):
         return "cvqa-hdr-nr requires compressed test"
+    return None
+
+
+def not_applicable_reason(
+    metric: str,
+    family: Family,
+    scenario: Scenario,
+) -> str | None:
+    """PixVQA-by-design unsupported combinations (not env/deps failures)."""
+    if metric.startswith("group:") and scenario == "raw_raw" and family in ("sdr", "pq"):
+        return (
+            "N/A: metric group on raw_raw includes cvqa-hdr-nr which requires compressed test"
+        )
+    if reason := cvvdp_skip_reason(metric, family, scenario):
+        return f"N/A: {reason}"
+    if not metric.startswith("group:"):
+        if reason := incompatible_reason(metric, family, scenario):
+            if reason.startswith("cvqa") or "not in" in reason:
+                return f"N/A: {reason}"
     return None
 
 

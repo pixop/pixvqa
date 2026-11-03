@@ -359,6 +359,13 @@ def main() -> int:
     if parse.returncode != 0:
         return 1
 
+    base = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_numerical_baselines.py")],
+        cwd=ROOT,
+    )
+    if base.returncode != 0:
+        return 1
+
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 
