@@ -71,7 +71,7 @@ The ordinary installation smoke test and the dedicated metric-validation campaig
 | CLI conformance | `python3 scripts/test_metric_cli_conformance.py` | The 42-case parameter/CLI matrix |
 | Parameter resolver tests | `python3 scripts/test_metric_parameters.py` | Separate focused unit/integration checks, **not** the 42-case matrix |
 | Numerical conformance | `python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict` | SDR/PQ/HLG fixtures, internal checks, and regression against the approved baseline |
-| Two-phase orchestrator | `python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict` | Intended combined workflow; **verify Phase 1 wiring before relying on this command** |
+| Two-phase orchestrator | `python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict` | Phase 1 CLI matrix (42 cases), Phase 1b resolver tests, Phase 2 numerical conformance |
 
 The approved comprehensive regression reference is at [`baselines/numerical_conformance/comprehensive.json`](baselines/numerical_conformance/comprehensive.json) (95 cases). Baseline regression checks repeatability against recorded outputs; **they do not establish independent mathematical parity** with external metric implementations.
 

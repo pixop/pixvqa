@@ -84,8 +84,7 @@ python3 scripts/test_metric_numerical_conformance.py --profile smoke --strict
 # Phase 2 comprehensive
 python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict
 
-# Both phases (known issue: until Phase 1 orchestration is fixed, this currently
-# invokes test_metric_parameters.py rather than the 42-case CLI runner)
+# Both phases (Phase 1 CLI matrix, Phase 1b resolver tests, Phase 2 numerical)
 python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict
 ```
 

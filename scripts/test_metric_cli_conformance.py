@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point for metric CLI conformance (also invoked from test_metric_parameters.py)."""
+"""Entry point for the 42-case SDR/PQ/HLG CLI conformance matrix."""
 from __future__ import annotations
 
 import sys

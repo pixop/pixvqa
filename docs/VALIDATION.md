@@ -10,7 +10,7 @@ This guide is the entry point for PixVQA validation beyond basic installation QA
 | Check CLI contracts | `python3 scripts/test_metric_cli_conformance.py` | 42-case CLI matrix; requires appropriate built binaries |
 | Test parameter resolution | `python3 scripts/test_metric_parameters.py` | Separate unit/integration tests, not the 42-case matrix |
 | Check numerical conformance | `python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict` | UHD SDR/PQ/HLG, learned metrics if installed, approved numerical baseline |
-| Orchestrate Phase 1 + Phase 2 | `python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict` | **Known issue in this archive:** Phase 1 currently calls the parameter-resolver tests instead of the 42-case CLI matrix. Do not interpret this as 42/42 CLI coverage until corrected. |
+| Orchestrate Phase 1 + Phase 2 | `python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict` | Phase 1 runs the 42-case CLI matrix, then parameter resolver tests (Phase 1b), then numerical conformance. Use `--skip-parameter-tests` to omit Phase 1b. |
 
 ## Prerequisites
 
