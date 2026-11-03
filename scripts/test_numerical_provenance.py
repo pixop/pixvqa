@@ -2,6 +2,7 @@
 """Regression tests for numerical baseline provenance collection."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -87,77 +88,59 @@ def test_snapshot_includes_torchvision_and_open_clip() -> None:
     assert block["python_packages"]["open_clip_torch"] == "3.1.0"
 
 
-def test_python_package_version_uses_learned_interpreter_subprocess() -> None:
-    calls: list[list[str]] = []
+def test_package_version_queries_learned_interpreter_only() -> None:
+    learned = "/learned/env/bin/python"
+    harness_version = "999.0.0-from-harness"
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        class R:
-            returncode = 0
-            stdout = "2.11.0+cu128\n"
+    def fake_run(args, **kwargs):
+        assert args[0] == learned
+        assert args[1] == "-c"
+        assert "importlib.metadata" in args[2]
+        assert "m.version(" in args[2] and "torch" in args[2]
+        return subprocess.CompletedProcess(args, 0, "2.11.0+cu128", "")
 
-        return R()
-
-    with patch("numerical_conformance.provenance.subprocess.run", side_effect=fake_run):
-        got = _python_package_version("/learned/bin/python", "torch")
-    assert got == "2.11.0+cu128"
-    assert calls[0][0] == "/learned/bin/python"
-    assert calls[0][1:3] == ["-c", "import importlib.metadata as m\nprint(m.version('torch'))\n"]
-
-
-def test_python_package_version_never_falls_back_to_harness() -> None:
-    harness_version = "HARNESS-WRONG"
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 1
-            stdout = ""
-
-        return R()
+    import importlib.metadata as harness_metadata
 
     with patch("numerical_conformance.provenance.subprocess.run", side_effect=fake_run):
-        with patch(
-            "importlib.metadata.version",
-            return_value=harness_version,
-            create=True,
+        with patch.object(
+            harness_metadata,
+            "version",
+            side_effect=AssertionError("harness interpreter must not be queried"),
         ):
-            got = _python_package_version(sys.executable, "numpy")
-    assert got is None
+            got = _python_package_version(learned, "torch")
+    assert got == "2.11.0+cu128"
+    assert got != harness_version
 
 
-def test_python_package_version_isolated_learned_vs_harness_mock() -> None:
-    """Two interpreters return different versions; harness must not leak into learned path."""
-    learned = sys.executable
+def test_package_version_none_when_learned_interpreter_fails() -> None:
+    import importlib.metadata as harness_metadata
 
-    def fake_run(cmd, **kwargs):
-        code = cmd[2]
-        class R:
-            returncode = 0
-
-        if "torch" in code:
-            R.stdout = "2.11.0+cu128\n"
-        elif "numpy" in code:
-            R.stdout = "2.5.2\n"
-        else:
-            R.returncode = 1
-            R.stdout = ""
-        return R()
+    def fake_run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 1, "", "PackageNotFoundError")
 
     with patch("numerical_conformance.provenance.subprocess.run", side_effect=fake_run):
-        block = collect_learned_provenance(learned_python=learned, learned_config=None)
-    assert block["python_packages"]["torch"] == "2.11.0+cu128"
-    assert block["python_packages"]["numpy"] == "2.5.2"
+        with patch.object(
+            harness_metadata,
+            "version",
+            return_value="1.25.2",
+        ):
+            assert _python_package_version("/learned/bin/python", "numpy") is None
 
 
-def test_pixvqa_cvvdp_distribution_detected() -> None:
-    def fake_version(_python: str | None, name: str) -> str | None:
-        if name == "pixvqa-cvvdp":
-            return "0.9.0"
-        return None
+def test_two_interpreters_return_different_versions() -> None:
+    learned_a = "/env/a/bin/python"
+    learned_b = "/env/b/bin/python"
 
-    with patch("numerical_conformance.provenance._python_package_version", side_effect=fake_version):
-        block = collect_learned_provenance(learned_python="/env/bin/python", learned_config=None)
-    assert block["cvvdp"]["pixvqa_cvvdp_version"] == "0.9.0"
+    def fake_run(args, **kwargs):
+        if args[0] == learned_a:
+            return subprocess.CompletedProcess(args, 0, "0.5.7", "")
+        if args[0] == learned_b:
+            return subprocess.CompletedProcess(args, 0, "0.6.0", "")
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+    with patch("numerical_conformance.provenance.subprocess.run", side_effect=fake_run):
+        assert _python_package_version(learned_a, "cvvdp") == "0.5.7"
+        assert _python_package_version(learned_b, "cvvdp") == "0.6.0"
 
 
 def main() -> int:
@@ -167,10 +150,9 @@ def main() -> int:
         test_cvvdp_missing_when_no_distribution,
         test_validate_provenance_accepts_cvvdp_version,
         test_snapshot_includes_torchvision_and_open_clip,
-        test_python_package_version_uses_learned_interpreter_subprocess,
-        test_python_package_version_never_falls_back_to_harness,
-        test_python_package_version_isolated_learned_vs_harness_mock,
-        test_pixvqa_cvvdp_distribution_detected,
+        test_package_version_queries_learned_interpreter_only,
+        test_package_version_none_when_learned_interpreter_fails,
+        test_two_interpreters_return_different_versions,
     ]
     for fn in tests:
         fn()

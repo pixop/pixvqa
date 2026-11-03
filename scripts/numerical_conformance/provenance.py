@@ -73,23 +73,25 @@ def _sha256_file(path: Path) -> str | None:
 
 
 def _python_package_version(python: str | None, distribution: str) -> str | None:
-    """Resolve a distribution version in the configured learned interpreter only."""
     if not python:
         return None
-    code = (
+    script = (
         "import importlib.metadata as m\n"
-        f"print(m.version({distribution!r}))\n"
+        "try:\n"
+        f"    print(m.version({distribution!r}))\n"
+        "except m.PackageNotFoundError:\n"
+        "    raise SystemExit(1)\n"
     )
     try:
         proc = subprocess.run(
-            [python, "-c", code],
+            [python, "-c", script],
             capture_output=True,
             text=True,
             timeout=30,
         )
         if proc.returncode == 0:
-            version = proc.stdout.strip()
-            return version or None
+            out = proc.stdout.strip()
+            return out if out else None
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
