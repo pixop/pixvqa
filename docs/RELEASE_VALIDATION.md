@@ -121,3 +121,11 @@ Review the consolidated report and remaining coverage gaps
 before creating a new release tag.
 
 Existing published Git tags must not be moved.
+
+## Separate CLI and numerical conformance campaign
+
+The eleven stages above are distinct from the unified metric parameter
+validation campaign. The separate [Validation Guide](VALIDATION.md) documents
+the 42-case CLI conformance matrix and UHD SDR/PQ/HLG numerical regression
+against an approved 95-case baseline. `make release-check` does not imply that
+the optional learned-metric and independent-reference checks have run.

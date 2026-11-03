@@ -91,3 +91,13 @@ If the guided installer fails, consult the [Manual Installation Guide](INSTALL.m
 For clean-install testing, full release QA prerequisites, and known validation limitations, see [Installation Validation](INSTALL_VALIDATION.md). The `smoke` profile above is the recommended post-installation check.
 
 **Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
+
+### Full metric conformance (optional)
+
+The installation smoke test above is not the 42-case CLI conformance suite or
+the comprehensive numerical regression suite. To validate a development
+build, see the [Validation Guide](VALIDATION.md) and the
+[numerical conformance reference](../scripts/numerical_conformance/README.md).
+
+The two-phase orchestrator in the archived feature branch has a known Phase 1
+entry-point issue; run the 42-case CLI entry point separately until fixed.

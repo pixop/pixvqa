@@ -2,102 +2,36 @@
   <img src="docs/brand/pixop-vqa-logo-crop.png" alt="Pixop VQA" width="640">
 </p>
 
-# PixVQA — A Unified Video Quality Assessment Tool by Pixop
+# PixVQA — Video Quality Assessment by Pixop
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![FFmpeg](https://img.shields.io/badge/FFmpeg-n8.1.3-blue)](https://ffmpeg.org/) [![libvmaf](https://img.shields.io/badge/libvmaf-74f930d-blue)](https://github.com/Netflix/vmaf) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares a reference sequence with a distorted sequence and prints text scores for the selected metrics. The default lists each frame and then a summary. Native metrics have no JSON mode. It reads raw planar YUV and, when built with FFmpeg, compressed video. Decoding uses the codec FFmpeg reports.
+PixVQA evaluates video quality using full-reference metrics and optional learned-model backends. It accepts raw planar YUV, or compressed video with an FFmpeg-enabled build, and prints per-frame scores and summaries where supported. Native metric output is text-based; learned backends have their own output options.
 
-## Features
+## Capabilities
 
-PixVQA supports PSNR, XPSNR, SSIM, MS-SSIM, VMAF, PU21-PSNR/SSIM/MS-SSIM, ColorVideoVDP, and CompressedVQA-HDR NR, with optional temporal Quality Consistency Score (QCS). It accepts raw YUV and, with an FFmpeg-enabled build, compressed video. CPU implementations are available for every native metric; optional CUDA acceleration is available for selected metrics and NVDEC decoding of supported HEVC/AV1 streams.
+- **Full-reference metrics:** PSNR, XPSNR, SSIM, MS-SSIM, VMAF, and PU21-PSNR/SSIM/MS-SSIM.
+- **Optional learned metrics:** ColorVideoVDP (`cvvdp`, full-reference JOD) and CompressedVQA-HDR NR (`cvqa-hdr-nr`, no-reference). They require separate Python environments and model assets.
+- **SDR and HDR:** SDR, PQ, and HLG metric groups with unified transfer/color configuration.
+- **Input and acceleration:** raw YUV; compressed formats with FFmpeg; optional CUDA metric backends and NVDEC for supported streams.
+- **Temporal analysis:** optional Quality Consistency Score (QCS).
 
-ColorVideoVDP is an optional Python/PyTorch backend, not a built-in native metric, and it is not installed with PixVQA. It outputs JOD scores: higher is better, and identical content scores 10. Compressed inputs such as MP4 are supported for SDR and HDR. Raw input is limited-range BT.2020/PQ YUV420p10le.
+Supported formats, backends, and metric-specific restrictions are documented in [Metrics & Formats](docs/METRICS_AND_FORMATS.md). In particular, not every metric accepts every input or transfer function.
 
-```bash
-./bin/pixvqa --metrics cvvdp \
-  -r reference.mp4 \
-  -t distorted.mp4 \
-  --cvvdp-interpretation pq \
-  --cvvdp-display standard_hdr_pq
-```
+## Quick start
 
-Installation, configuration, and detailed usage are in [ColorVideoVDP](docs/COLORVIDEOVDP.md).
-
-CompressedVQA-HDR NR is also an optional Python/PyTorch backend.
-It needs only a distorted compressed video and external upstream/model assets;
-it preserves the published OpenCV decoding, sampling, preprocessing, and
-calibration. It does not support raw YUV or `--frames`. Its QCS covers about
-one sampled frame per second.
-
-```bash
-./bin/pixvqa --metrics cvqa-hdr-nr \
-  -t distorted.mp4 \
-  --cvqahdr-python /home/me/pixvqa-learned-env/bin/python \
-  --cvqahdr-repo /home/me/src/CompressedVQA-HDR \
-  --cvqahdr-checkpoint /home/me/models/NR_HDR_VQA.pth \
-  --cvqahdr-profile /home/me/models/NR_HDR_VQA.npy
-```
-
-See [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md) for input constraints and
-machine-readable output.
-
-Both learned metrics run in one pinned Python environment
-([learned-metric environment](docs/LEARNED_ENVIRONMENT.md)). A local
-`config/learned_metrics.local.toml` stores the interpreter, model paths, and
-`PATH` additions, so the commands above need no `--cvvdp-python` or `--cvqahdr-*`
-options. Command-line options still override it. See
-[learned-metric config](docs/LEARNED_METRICS_CONFIG.md).
-
-`--device cpu|gpu|auto` (alias of `--metric-device`) applies to the learned
-metrics as well. `gpu` requires CUDA and never falls back to the CPU. `auto`
-uses CUDA when PyTorch sees a device. CPU and CUDA scores agree to about 1e-6;
-see [learned metrics on CPU and CUDA](docs/LEARNED_DEVICES.md).
-
-With `--qcs`, both learned metrics default to the QCS interval **[0, 10]**.
-The interval is used only for QCS and never clamps the reported JOD or NR
-score. CVVDP QCS integrates a per-frame JOD-equivalent sequence taken from the
-official full-video pass; it is an extension of the video-level model (see
-[QCS](docs/QCS.md#learned-metrics)).
-
-`--metrics sdr`, `--metrics pq`, and `--metrics hlg` each select that
-transfer's metric set and its colorimetry and display. Comma-separated metric
-names still select only the metrics you name
-([metric groups](docs/CLI_USAGE.md#metric-groups)).
-
-One HDR10 command runs every supported metric. `--preset hdr` selects them,
-sets PQ, BT.2020 primaries, the `bt2020nc` matrix, and limited range, the bundled
-HDR VMAF model, and CVVDP's `pq` / `standard_hdr_pq` display. Each metric is
-printed on its own, then one summary lists every score. The build needs FFmpeg
-and libvmaf (`make swdec` or `make full` with libvmaf). `--frames` is rejected
-because NR reads the whole clip. See the
-[HDR master command](docs/CLI_USAGE.md#hdr-master-command).
-
-Native metrics, `cvvdp`, and `cvqa-hdr-nr` can be combined in one
-`--metrics` list. PixVQA validates every selected metric and preflights each
-Python backend before running anything. It then runs native metrics, CVVDP, and
-NR in that order and prints one summary. `-t` is always required. `-r` is
-required when any full-reference metric is selected. When `cvqa-hdr-nr` is the
-only metric, `-r` is ignored. See
-[mixed native and learned metrics](docs/CLI_USAGE.md#mixed-native-and-learned-metrics).
-
-See [supported metrics, SDR/HDR recommendations, pixel formats, and CPU/GPU capabilities](docs/METRICS_AND_FORMATS.md).
-
-## Quick Start
-
-Supported platform: Linux x86-64 (including Ubuntu 22.04/24.04 and WSL2). Native Windows builds have not been validated.
+**Platform:** Linux x86-64, including Ubuntu 22.04/24.04 and WSL2. Native Windows builds are not validated.
 
 ```bash
 git clone https://github.com/pixop/pixvqa.git
 cd pixvqa
 bash install_pixvqa.sh
 ./bin/pixvqa --version
-python3 scripts/run_qa.py --profile smoke
 ```
 
-The guided installer sets up dependencies and lets you select CPU-only, FFmpeg software decoding, or optional CUDA/NVDEC support. CUDA/NVDEC requires a compatible NVIDIA driver and CUDA toolkit 12.8 installed.
+The guided installer lets you choose CPU-only, FFmpeg software decoding, or optional CUDA/NVDEC functionality. CUDA/NVDEC requires a suitable NVIDIA driver and CUDA toolkit 12.8. For the examples below, choose an FFmpeg-enabled build.
 
-To compare the bundled HEVC samples (requires software decoding or the full build):
+Compare the bundled HEVC samples:
 
 ```bash
 ./bin/pixvqa --metrics psnr,ssim,msssim \
@@ -105,22 +39,54 @@ To compare the bundled HEVC samples (requires software decoding or the full buil
   -t samples/dist_hevc.mp4
 ```
 
-CPU-only builds use raw YUV inputs. For dependency locations, `make cpu`, `make swdec`, `make full`, installation prefixes, and troubleshooting, read the [installation and build guide](docs/GETTING_STARTED.md).
+Run the post-installation smoke QA:
+
+```bash
+python3 scripts/run_qa.py --profile smoke
+```
+
+For raw YUV, build variants (`make cpu`, `make swdec`, `make full`), and installation details, see [Getting Started](docs/GETTING_STARTED.md). Builds made with `make` are written to `build/<variant>/pixvqa`; they do not automatically replace `./bin/pixvqa`.
+
+## Common workflows
+
+**Individual metrics:** use `--metrics psnr,ssim,msssim` or another comma-separated list. **Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
+
+**HDR10:** `--preset hdr` selects the documented PQ/HDR10 workflow, including the corresponding colorimetry, display configuration, and available metric group. It does not make unsupported metric/input combinations valid; see the [HDR master command](docs/CLI_USAGE.md#hdr-master-command).
+
+**Learned metrics:** configure their separate Python/PyTorch dependencies and model files before use. ColorVideoVDP is a full-reference quality metric; CompressedVQA-HDR NR needs only a distorted **compressed** clip and does not support `--frames`. See [ColorVideoVDP](docs/COLORVIDEOVDP.md), [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md), [Learned environment](docs/LEARNED_ENVIRONMENT.md), and [Local configuration](docs/LEARNED_METRICS_CONFIG.md).
+
+**Device selection:** `--device cpu|gpu|auto` (alias `--metric-device`) controls supported metric implementations. GPU availability and numerical agreement depend on the specific metric and environment; see [Learned Devices](docs/LEARNED_DEVICES.md).
+
+**QCS:** `--qcs` enables temporal quality-consistency analysis where supported. Its interval and learned-metric semantics are described in [QCS](docs/QCS.md).
+
+For full command-line examples, including raw inputs and mixed native/learned evaluations, see [CLI Usage](docs/CLI_USAGE.md). Use `./bin/pixvqa --help`, `--help-advanced`, and `--help-hdr` for the corresponding option groups.
+
+## Testing and numerical validation
+
+The ordinary installation smoke test and the dedicated metric-validation campaign serve different purposes:
+
+| Check | Entry point | Purpose |
+|---|---|---|
+| Installation smoke QA | `python3 scripts/run_qa.py --profile smoke` | Basic post-installation confidence |
+| CLI conformance | `python3 scripts/test_metric_cli_conformance.py` | The 42-case parameter/CLI matrix |
+| Parameter resolver tests | `python3 scripts/test_metric_parameters.py` | Separate focused unit/integration checks, **not** the 42-case matrix |
+| Numerical conformance | `python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict` | SDR/PQ/HLG fixtures, internal checks, and regression against the approved baseline |
+| Two-phase orchestrator | `python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict` | Intended combined workflow; **verify Phase 1 wiring before relying on this command** |
+
+The approved comprehensive regression reference is at [`baselines/numerical_conformance/comprehensive.json`](baselines/numerical_conformance/comprehensive.json) (95 cases). Baseline regression checks repeatability against recorded outputs; **they do not establish independent mathematical parity** with external metric implementations.
+
+See [Validation Guide](docs/VALIDATION.md) for prerequisites, the five reported validation levels, and workflow caveats. Detailed fixture, tolerance, provenance, candidate and approval policies are in the [Numerical Conformance Reference](scripts/numerical_conformance/README.md). The historical [preflight report](reports/NUMERICAL_VALIDATION_PREFLIGHT.md) describes an earlier validation stage.
 
 ## Documentation
 
-**Getting started:** [Installation & builds](docs/GETTING_STARTED.md) · [Manual installation](docs/INSTALL.md) · [Make build guide](docs/BUILD_MAKE.md) · [Installation validation](docs/INSTALL_VALIDATION.md)
-
-**Using PixVQA:** [CLI examples & options](docs/CLI_USAGE.md) · [Supported metrics & formats](docs/METRICS_AND_FORMATS.md) · [ColorVideoVDP](docs/COLORVIDEOVDP.md) · [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md)
-
-**Technical guides:** [PU21 / HDR](docs/PU21.md) · [QCS](docs/QCS.md) · [Learned metrics on CPU/CUDA](docs/LEARNED_DEVICES.md) · [CI](docs/CI.md)
-
-**Additional information:** [References](docs/REFERENCES.md) · [Licensing](docs/LICENSING.md)
+- **Getting started:** [Installation & builds](docs/GETTING_STARTED.md) · [Manual installation](docs/INSTALL.md) · [Make guide](docs/BUILD_MAKE.md) · [Installation validation](docs/INSTALL_VALIDATION.md)
+- **Using PixVQA:** [CLI usage](docs/CLI_USAGE.md) · [Metrics & formats](docs/METRICS_AND_FORMATS.md) · [ColorVideoVDP](docs/COLORVIDEOVDP.md) · [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md)
+- **Advanced configuration:** [Learned environment](docs/LEARNED_ENVIRONMENT.md) · [Learned-model config](docs/LEARNED_METRICS_CONFIG.md) · [Learned devices](docs/LEARNED_DEVICES.md) · [PU21](docs/PU21.md) · [QCS](docs/QCS.md)
+- **Validation:** [Validation guide](docs/VALIDATION.md) · [Numerical conformance](scripts/numerical_conformance/README.md) · [Release validation](docs/RELEASE_VALIDATION.md) · [CI](docs/CI.md)
+- **Project information:** [References](docs/REFERENCES.md) · [Licensing](docs/LICENSING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## License
 
-PixVQA is licensed under the [MIT License](LICENSE) (SPDX `MIT`). Copyright (c) 2026 Pixop ApS. [docs/LICENSING.md](docs/LICENSING.md) explains third-party and model licenses. Dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+PixVQA is licensed under the [MIT License](LICENSE) (SPDX `MIT`). Copyright (c) 2026 Pixop ApS. See [Licensing](docs/LICENSING.md) for third-party and model licenses.
 
-The logo at `docs/brand/pixop-vqa-logo-crop.png` is included with the repository. The MIT license does not grant unrestricted trademark or logo use. See [docs/brand/README.md](docs/brand/README.md).
-
-CLI help: `pixvqa --help` covers common workflows; `pixvqa --help-advanced` covers learned-backend overrides and compatibility flags; `pixvqa --help-hdr` documents HDR color parameters. Existing advanced arguments are still accepted.
+The Pixop logo is included in the repository but is **not** granted unrestricted trademark use under the MIT license; see [brand usage](docs/brand/README.md).

@@ -51,23 +51,31 @@ Peak memory: run `python3 scripts/test_numerical_fixture_cache.py` and read the
 `INFO single-frame UHD encode` line (single-frame tracemalloc peak, typically under 650 MB).
 
 ```bash
-export PIXVQA_LEARNED_PYTHON=/home/sergio/codeccomp/metrics/pixvqa/deps/learned-env/bin/python
+export PIXVQA_LEARNED_PYTHON=/path/to/learned-env/bin/python
 # optional if not using config/learned_metrics.local.toml beside the binary
 ```
 
 Optional VMAF override: `PIXVQA_VMAF_MODEL=/path/to/model.json`
 
-## Commands (RTX 4070 WSL)
+## Commands (Linux / WSL; comprehensive validation demonstrated on RTX 4070)
+
+The guided installer normally provides `./bin/pixvqa`; `make full` builds
+`./build/full/pixvqa` without installing it. Set `PIXVQA_BIN` to the binary
+with the required capabilities. The 42-case CLI runner also uses a CPU and
+software-decoder binary (defaults `build/cpu/pixvqa` and `build/swdec/pixvqa`).
 
 ```bash
 pip install numpy   # if missing
 make -j8 full cpu swdec
 
-export PIXVQA_BIN=build/full/pixvqa
+export PIXVQA_BIN="$PWD/build/full/pixvqa"
 export PIXVQA_CLI_CONFORMANCE_STRICT=1
 export PIXVQA_NUMERICAL_STRICT=1
 
 # Phase 1 only (42 CLI cases)
+python3 scripts/test_metric_cli_conformance.py
+
+# Separate parameter resolver tests (not the 42-case CLI matrix)
 python3 scripts/test_metric_parameters.py
 
 # Phase 2 smoke (fast numerical)
@@ -76,14 +84,23 @@ python3 scripts/test_metric_numerical_conformance.py --profile smoke --strict
 # Phase 2 comprehensive
 python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict
 
-# Both phases
+# Both phases (known issue: until Phase 1 orchestration is fixed, this currently
+# invokes test_metric_parameters.py rather than the 42-case CLI runner)
 python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict
 ```
 
 ## Baselines
 
+The tracked **approved** comprehensive reference is
+[`comprehensive.json`](../../baselines/numerical_conformance/comprehensive.json)
+(95 numerical cases). Routine `--profile comprehensive --strict` runs compare against
+this baseline. It is not necessary to regenerate or reapprove it. The pinned
+commit in the baseline records the origin of its numerical values, not the
+current HEAD.
+
+
 Candidate results: `baselines/numerical_conformance/<profile>.candidate.json`  
-Approve after review (regenerate candidates after parser or provenance changes; do not approve pre-fix `.candidate.json` files):
+For a **new** profile/candidate only, approve after review (regenerate candidates after parser or provenance changes; do not approve pre-fix `.candidate.json` files):
 
 ```bash
 python3 scripts/test_metric_numerical_conformance.py --profile smoke --approve-baseline
@@ -114,12 +131,23 @@ Approved baselines are **never** overwritten by normal runs.
 | **Execution conformance** | PixVQA exits 0; applicable mandatory cases yield finite parsed metrics. | Fails on mandatory `FAIL`; `NA` for unsupported product combinations. |
 | **Numerical regression** | Observed values vs an **approved** baseline (`tolerances.py`). | `NOT_EVALUATED` until a baseline is approved. |
 | **Internal numerical consistency** | Same-build PixVQA cross-path checks: HDR inferred vs explicit PSNR, raw vs compressed PSNR, CPU vs GPU PSNR, software vs NVDEC decode. | `NOT_RUN` on smoke / when checks are not executed. |
+| **Independent reference parity** | Optional, CVVDP-only BerlinSeqs comparison against pinned constants of limited reference provenance. Does not establish general independent correctness. | `NOT_EVALUATED` when optional inputs are absent. |
 | **Candidate reproducibility** | Read-only `--compare-candidate` vs verified unapproved JSON (95 metric cases + provenance). | `NOT_RUN` without the flag; `PASS`/`FAIL` when comparing. |
 
-JSON reports expose all four under `validation_levels`. Internal consistency **PASS** does **not** imply independent reference parity.
+JSON reports expose all **five** under `validation_levels`. Internal consistency **PASS** does **not** imply independent reference parity.
 
 Synthetic internal-consistency case IDs (`*.consistency.psnr_raw_vs_comp`, `*.backend.psnr_cpu_vs_gpu`, optional `*.decode.sw_vs_nvdec`) are mandatory for the internal-consistency level but are **not** part of the 95-case approved baseline and do not participate in numerical-regression missing-case audits.
 
 ### Optional BerlinSeqs CVVDP check
 
 Not part of portable fixtures. Enabled with `PIXVQA_BERLIN_REF` and `PIXVQA_BERLIN_TEST`. Compares PixVQA CVVDP JOD to **pinned constants** in `berlin.py` (5f=`8.788558959960938`, 60f=`9.17333984375`). This is an optional **reproducibility** check scoped to **CVVDP only**; constants are **not** documented as independently verified in the harness. Does not imply parity for PSNR, VMAF, CVQA, or other metrics.
+
+## Unsupported combinations and missing dependencies
+
+The comprehensive profile contains seven expected **NA** cases (unsupported
+metric/input combinations), not seven SKIP results. See the [validation guide](../../docs/VALIDATION.md#pass-fail-skip-and-na) for the exact IDs and reasons.
+A required case skipped because of a missing dependency still fails `--strict`.
+
+The 42-case CLI matrix is distinct from parameter-resolver unit/integration tests.
+Until `scripts/run_pixvqa_validation.py` is corrected, run
+`python3 scripts/test_metric_cli_conformance.py` explicitly for full CLI coverage.

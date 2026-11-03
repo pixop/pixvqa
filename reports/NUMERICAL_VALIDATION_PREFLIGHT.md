@@ -1,3 +1,16 @@
+> **HISTORICAL PREFLIGHT — SUPERSEDED (2026-11-03).** This report records an
+> earlier phase *before* baseline approval and the final five-level validation
+> reporting. It is retained as historical evidence, not the current merge gate.
+> The approved 95-case baseline is
+> [`baselines/numerical_conformance/comprehensive.json`](../baselines/numerical_conformance/comprehensive.json).
+> Subsequent RTX 4070 comprehensive execution reported **101 PASS, 0 FAIL,
+> 0 SKIP, 7 NA**, with execution conformance, numerical regression, and
+> internal consistency **PASS**; independent reference parity **NOT_EVALUATED**.
+> For current commands and verdict definitions, consult the
+> [Validation Guide](../docs/VALIDATION.md). The script listed here as the
+> 42-case CLI suite is incorrect: that suite uses
+> `scripts/test_metric_cli_conformance.py`.
+
 # PixVQA numerical validation preflight (`feature/unified-metric-parameters`)
 
 ## RTX 4070 results (execution phase — prior run)

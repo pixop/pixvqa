@@ -1,5 +1,7 @@
 {
   "version": 1,
-  "approved": false,
-  "note": "Run suite on RTX, review reports/numerical_conformance.json, then --approve-baseline"
+  "approved": true,
+  "approved_profile": "comprehensive",
+  "baseline": "comprehensive.json",
+  "note": "The comprehensive baseline is approved and tracked. Other profiles may require separate candidate review and approval. See scripts/numerical_conformance/README.md."
 }
