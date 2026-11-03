@@ -3,9 +3,14 @@
 **Branch:** `feature/unified-metric-parameters`
 **Audit HEAD:** `74fdb451de7fa3d6ad94b73afaf804d28eab1708` (`74fdb45`)
 **Audit date:** 2026-11-03
-**Mode:** Read-only inspection (no doc or code changes in this commit except this report)
+**Mode:** Historical read-only inspection of the development branch at `74fdb45`
 
 **RTX 4070 status (reported by maintainers, not re-run in this audit environment):** CLI conformance 42/42; comprehensive numerical 101 PASS / 0 FAIL / 0 SKIP / 7 NA; numerical regression, internal consistency, and candidate reproducibility PASS.
+
+**Historical status:** This report records issues found before the follow-up
+documentation and orchestrator fixes. Its original NO-GO findings are not the
+current status of `main`. For current instructions, see
+[Validation](../VALIDATION.md) and the repository [README](../../README.md).
 
 ---
 

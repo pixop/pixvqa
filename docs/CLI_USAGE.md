@@ -6,7 +6,9 @@ XPSNR requires `--fps` unless a reliable constant frame rate can be determined f
 
 The examples use `pixvqa` to refer to `./bin/pixvqa` or an executable on `PATH`. The `samples/` directory contains short Big Buck Bunny excerpts.
 
-**Compressed Reference and Distorted Video**
+## Examples
+
+### Compressed Reference and Distorted Video
 
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
@@ -26,7 +28,7 @@ pixvqa --metrics psnr,xpsnr,ssim,msssim \
   -t samples/dist_vvc.mp4
 ```
 
-**Uncompressed Reference and Compressed Distorted Video**
+### Uncompressed Reference and Compressed Distorted Video
 
 ```bash
 pixvqa --metrics psnr,ssim \
@@ -34,7 +36,7 @@ pixvqa --metrics psnr,ssim \
   -t distorted.mp4
 ```
 
-**Uncompressed Reference and Distorted Video**
+### Uncompressed Reference and Distorted Video
 
 XPSNR requires `--fps` because raw YUV does not contain frame-rate metadata.
 
@@ -44,7 +46,7 @@ pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
   -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
-**VMAF**
+### VMAF
 
 VMAF requires an explicit model selection using `--model`. Bundled VMAF models are available in the `model/` directory.
 
@@ -67,13 +69,17 @@ pixvqa --metrics vmaf \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
 
-**ColorVideoVDP (optional external backend)**
+### ColorVideoVDP (optional external backend)
 
 CVVDP is installed separately from PixVQA. It runs as `cvvdp` in `--metrics`,
 alone or [mixed with other metrics](#mixed-native-and-learned-metrics).
-It requires explicit sample interpretation and an official display model; PixVQA
-does not infer HDR parameters for it. Raw input in this phase is limited-range
-planar YUV420p10le PQ, passed with `-s`, `-f 420p:10`, and `--fps`.
+PixVQA resolves CVVDP interpretation from explicit options, metric groups,
+or reliable compressed-stream transfer metadata. The display model follows
+the selected PQ/HLG interpretation; SDR requires an explicit display.
+Compressed inputs must have valid per-side color metadata. Raw CVVDP inputs
+are limited to YUV420p10le PQ or HLG and require `-s`, `-f 420p:10`, and
+`--fps` when both sides are raw. See [ColorVideoVDP](COLORVIDEOVDP.md)
+for the metadata and mixed-input contracts.
 
 ```bash
 pixvqa --metrics cvvdp \
@@ -96,7 +102,7 @@ pixvqa --metrics cvvdp \
 See [COLORVIDEOVDP.md](COLORVIDEOVDP.md) for isolated installation, supported
 displays, the JSON result record, and incompatible native options.
 
-**CompressedVQA-HDR NR (optional external backend)**
+### CompressedVQA-HDR NR (optional external backend)
 
 CompressedVQA-HDR NR is installed separately from PixVQA. It runs as
 `cvqa-hdr-nr` in `--metrics`, alone or mixed with other metrics. It is
@@ -148,7 +154,7 @@ check finishes before any metric runs.
 | Metric | Raw YUV | Compressed video | `--frames` |
 |---|---|---|---|
 | Native | Yes | `make swdec` or `make full` only | Yes |
-| `cvvdp` | Raw YUV420p10le PQ/HLG with `-s`, `-f 420p:10`, and `--fps` when both inputs are raw | Compressed video (decoded by pycvvdp) when both are compressed | Raw/compressed and compressed/raw pairs are supported; geometry and frame rate must match | Yes |
+| `cvvdp` | YUV420p10le PQ/HLG; `-s`, `-f 420p:10`, and `--fps` when both inputs are raw | Yes, including mixed raw/compressed pairs (Python decoding) | Yes |
 | `cvqa-hdr-nr` | No | Yes; decoded by OpenCV | No |
 
 `cvvdp` accepts raw/compressed, compressed/raw, raw/raw, and compressed/compressed pairs when geometry and frame rate match. The `make cpu`
@@ -156,8 +162,9 @@ and `make cuda` builds have no FFmpeg decoder. Native metrics on compressed
 input therefore need `make swdec` or `make full`. The learned backends decode
 in their own Python environments, so any build can run `cvvdp` and
 `cvqa-hdr-nr` on compressed video when no native metric is selected.
-Native-only options, such as `--decode`, `--threads`, `-v`, `--model`, and the
-HDR options, are rejected when no native metric is selected.
+Native-only options such as `--decode`, `--threads`, `-v`, `--model`, and
+native-only HDR colorimetry overrides are rejected when no native metric is
+selected. Shared `--hdr-transfer` is accepted for CVVDP-only runs.
 
 **Execution.** PixVQA validates every option and format, then runs each
 learned backend's `--check` preflight: interpreter, imports, model assets,
@@ -179,9 +186,11 @@ Total frames:120  fps:...
 ```
 
 Learned scores are printed with full precision, as the shortest decimal text
-that round-trips to the same double. CVVDP coverage is `frames:N`: the test
-length, capped by `--frames`. NR coverage gives the sample count, the OpenCV
-frame count, and the sampling density. Provenance, such as runtime versions,
+that round-trips to the same double. CVVDP coverage `frames:N` reflects the
+evaluated source length; for mixed raw/compressed input, the adapter rejects
+unequal known lengths unless a positive `--frames` cap fits both sides.
+NR coverage gives the sample count, the OpenCV frame count, and the
+sampling density. Provenance, such as runtime versions,
 hashes, commands, and sample timestamps, stays in each backend's JSON record.
 Records are temporary unless `--cvvdp-output-json` or `--cvqahdr-output-json`
 is given. A metric that fails prints `status:failed`, for example
@@ -202,7 +211,7 @@ text report.
   ran.
 - 1: a runtime failure. Completed results are still printed.
 
-**PU21 Metrics for HDR Video (PQ and HLG)**
+### PU21 Metrics for HDR Video (PQ and HLG)
 
 PU21 metrics account for HDR transfer functions, unlike conventional metrics that operate on encoded sample values. For PQ and HLG, PixVQA defaults to BT.2020 primaries, BT.2020nc matrix, and limited range when these are unspecified. HLG defaults to a 1000 cd/m² display peak; PQ requires no display peak. See the [PU21 guide](PU21.md) for details.
 
@@ -218,7 +227,7 @@ pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg \
   -t distorted10.yuv -s 1920x1080 -f 420p:10
 ```
 
-**GPU Decoding (NVDEC)**
+### GPU Decoding (NVDEC)
 
 Decode the compressed HEVC 10-bit 4:2:0 video using NVIDIA NVDEC while reading the reference as raw YUV.
 

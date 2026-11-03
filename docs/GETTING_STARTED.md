@@ -99,5 +99,5 @@ the comprehensive numerical regression suite. To validate a development
 build, see the [Validation Guide](VALIDATION.md) and the
 [numerical conformance reference](../scripts/numerical_conformance/README.md).
 
-The two-phase orchestrator in the archived feature branch has a known Phase 1
-entry-point issue; run the 42-case CLI entry point separately until fixed.
+The current orchestrator runs the 42-case CLI matrix (Phase 1), separate
+parameter-resolution tests (Phase 1b), and numerical conformance (Phase 2).
