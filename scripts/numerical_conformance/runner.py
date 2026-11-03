@@ -17,12 +17,12 @@ from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_fai
 from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
 from .fixtures import ensure_all_families
-from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvqa, includes_cvvdp, includes_learned, includes_native
+from .metric_caps import GROUP_METRICS, includes_cvqa, includes_learned, includes_native
 from .metric_fields import read_field, required_fields_for_case, write_fields_to_row
 from .parse_metrics import parse_run
 from .provenance import build_provenance
 from .registry import Scenario, incompatible_reason, not_applicable_reason, resolve_media_paths
-from .tolerances import close, within_tolerance
+from .tolerances import close
 
 Profile = Literal["smoke", "comprehensive"]
 
