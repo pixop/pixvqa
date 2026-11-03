@@ -1,0 +1,740 @@
+{
+  "version": 1,
+  "approved": true,
+  "meta": {
+    "generated_at": "2026-11-03T14:07:06.586765+00:00",
+    "pixvqa_commit": "b0906e5e303728dfd36d064ac068945ece863027",
+    "pixvqa_version": "pixvqa version 0.3.0-dev",
+    "python_version": "3.11.15",
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "learned_python": "/home/sergio/codeccomp/metrics/pixvqa/deps/learned-env/bin/python",
+    "learned_config": "/home/sergio/codeccomp/metrics/pixvqa-unified-test/config/learned_metrics.local.toml",
+    "learned_provenance": {
+      "cvvdp": {
+        "cvvdp_version": "0.5.7"
+      },
+      "cvqa_hdr_nr": {
+        "repository_path": "/home/sergio/codeccomp/metrics/pixvqa/deps/CompressedVQA-HDR",
+        "checkpoint_path": "/home/sergio/codeccomp/metrics/pixvqa/deps/CompressedVQA-HDR/ckpts/NR_HDR_VQA.pth",
+        "profile_path": "/home/sergio/codeccomp/metrics/pixvqa/deps/CompressedVQA-HDR/ckpts/NR_HDR_VQA.npy",
+        "checkpoint_sha256": "b37659902ce96e2f49de22e5e0c865c694921e3b8e3e55b770adc3be7cac8b88",
+        "profile_sha256": "601a7314e802a6867c33784355587bd892ad49990d2074cc64fe1bd7cdf6d49f",
+        "compressed_vqa_hdr_commit": "76bff6d5c078d51be06eddf1ed11591f3678145a"
+      },
+      "python_packages": {
+        "cvvdp": "0.5.7",
+        "pixvqa-cvvdp": null,
+        "pixvqa-cvqahdr": null,
+        "colorvideovdp": null,
+        "torch": "2.11.0+cu128",
+        "torchvision": "0.26.0+cu128",
+        "open_clip_torch": "3.1.0",
+        "numpy": "2.5.2"
+      },
+      "learned_config_path": "/home/sergio/codeccomp/metrics/pixvqa-unified-test/config/learned_metrics.local.toml",
+      "status": "collected"
+    },
+    "tolerance_profile": "same_backend_repro_v1",
+    "tolerances": {
+      "psnr_avg": {
+        "abs_tol": 0.02,
+        "rel_tol": null,
+        "unit": "dB",
+        "mode": "same_backend_repro",
+        "rationale": "Native PSNR summary avg; FP64 CPU path reference on fixed fixtures."
+      },
+      "ssim_avg": {
+        "abs_tol": 1e-05,
+        "rel_tol": null,
+        "unit": "SSIM index",
+        "mode": "same_backend_repro",
+        "rationale": "Plane-weighted SSIM avg; stable on deterministic fixtures."
+      },
+      "msssim_avg": {
+        "abs_tol": 1e-05,
+        "rel_tol": null,
+        "unit": "MS-SSIM index",
+        "mode": "same_backend_repro",
+        "rationale": "Multi-scale SSIM avg; same windowing as SSIM family."
+      },
+      "xpsnr_avg": {
+        "abs_tol": 0.02,
+        "rel_tol": null,
+        "unit": "dB",
+        "mode": "same_backend_repro",
+        "rationale": "Temporal XPSNR summary avg at fixed fps."
+      },
+      "vmaf_mean": {
+        "abs_tol": 0.01,
+        "rel_tol": null,
+        "unit": "VMAF",
+        "mode": "same_backend_repro",
+        "rationale": "libvmaf temporal mean pool on fixed model and inputs."
+      },
+      "pu21_psnr_avg": {
+        "abs_tol": 0.05,
+        "rel_tol": null,
+        "unit": "dB",
+        "mode": "same_backend_repro",
+        "rationale": "PU21-PSNR pooled RGB avg (256 peak encoding)."
+      },
+      "pu21_ssim_avg": {
+        "abs_tol": 1e-05,
+        "rel_tol": null,
+        "unit": "PU21 SSIM",
+        "mode": "same_backend_repro",
+        "rationale": "PU21-encoded luma SSIM avg."
+      },
+      "pu21_msssim_avg": {
+        "abs_tol": 1e-05,
+        "rel_tol": null,
+        "unit": "PU21 MS-SSIM",
+        "mode": "same_backend_repro",
+        "rationale": "PU21-encoded luma MS-SSIM avg."
+      },
+      "cvvdp_jod": {
+        "abs_tol": 0.0001,
+        "rel_tol": null,
+        "unit": "JOD",
+        "mode": "same_backend_repro",
+        "rationale": "Learned CVVDP JSON/mixed summary JOD on fixed display."
+      },
+      "cvqa_quality": {
+        "abs_tol": 0.0001,
+        "rel_tol": null,
+        "unit": "quality_score",
+        "mode": "same_backend_repro",
+        "rationale": "CVQA-HDR-NR mixed summary quality_score scale."
+      }
+    },
+    "fixtures": {
+      "sdr": "/home/sergio/codeccomp/metrics/pixvqa-unified-test/.cache/pixvqa-numerical-fixtures/uhd60/sdr",
+      "pq": "/home/sergio/codeccomp/metrics/pixvqa-unified-test/.cache/pixvqa-numerical-fixtures/uhd60/pq",
+      "hlg": "/home/sergio/codeccomp/metrics/pixvqa-unified-test/.cache/pixvqa-numerical-fixtures/uhd60/hlg"
+    },
+    "fixture_manifest_sha256": {
+      "sdr": "64bd946f18a1c8b22e90bb3317a72e24ec8940ee11634ec6c2ea01515af52759",
+      "pq": "54f0d018d479613272b314632aa57897ccfc02e057b2aaa1d36f2f4be52b249c",
+      "hlg": "4d3ed5421ee156644f4bcfe5ec9d1b398859e062e3ec09e2ce384d48e8b06c8e"
+    },
+    "device_note": "cuda",
+    "encoding_note": "YUV420 10-bit limited; HEVC lossy MP4 + MKV lossless per fixture README"
+  },
+  "cases": {
+    "sdr.raw_raw.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.raw_raw.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "sdr",
+      "xpsnr_avg": 47.3534
+    },
+    "sdr.raw_raw.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "sdr",
+      "ssim_avg": 0.977727
+    },
+    "sdr.raw_raw.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "sdr",
+      "msssim_avg": 0.990746
+    },
+    "sdr.raw_raw.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "sdr",
+      "vmaf_mean": 108.379489
+    },
+    "sdr.raw_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.raw_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "sdr",
+      "xpsnr_avg": 47.3534
+    },
+    "sdr.raw_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "sdr",
+      "ssim_avg": 0.977727
+    },
+    "sdr.raw_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "sdr",
+      "msssim_avg": 0.990746
+    },
+    "sdr.raw_comp.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "sdr",
+      "vmaf_mean": 108.379489
+    },
+    "sdr.raw_comp.cvqa-hdr-nr": {
+      "status": "PASS",
+      "metric": "cvqa-hdr-nr",
+      "family": "sdr",
+      "cvqa_quality": 8.244694007429416
+    },
+    "sdr.comp_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.comp_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "sdr",
+      "xpsnr_avg": 47.3534
+    },
+    "sdr.comp_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "sdr",
+      "ssim_avg": 0.977727
+    },
+    "sdr.comp_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "sdr",
+      "msssim_avg": 0.990746
+    },
+    "sdr.comp_comp.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "sdr",
+      "vmaf_mean": 108.379489
+    },
+    "sdr.comp_comp.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "sdr",
+      "cvvdp_jod": 9.612170219421387
+    },
+    "sdr.comp_comp.cvqa-hdr-nr": {
+      "status": "PASS",
+      "metric": "cvqa-hdr-nr",
+      "family": "sdr",
+      "cvqa_quality": 8.244694007429416
+    },
+    "sdr.comp_comp.group_sdr": {
+      "status": "PASS",
+      "metric": "group:sdr",
+      "family": "sdr",
+      "psnr_avg": 43.46,
+      "xpsnr_avg": 35.2968,
+      "ssim_avg": 0.975378,
+      "msssim_avg": 0.989353,
+      "vmaf_mean": 96.327062,
+      "cvvdp_jod": 9.589612007141113,
+      "cvqa_quality": 8.244694007429416
+    },
+    "sdr.hdr.inferred_vs_explicit": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.backend.psnr_cpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.backend.psnr_gpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.decode.psnr_sw": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "sdr.decode.psnr_nvdec": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "pq.raw_raw.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.raw_raw.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "pq",
+      "xpsnr_avg": 54.0211
+    },
+    "pq.raw_raw.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "pq",
+      "ssim_avg": 0.999921
+    },
+    "pq.raw_raw.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "pq",
+      "msssim_avg": 0.999989
+    },
+    "pq.raw_raw.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "pq",
+      "vmaf_mean": 106.870714
+    },
+    "pq.raw_raw.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "pq",
+      "pu21_psnr_avg": 999.99
+    },
+    "pq.raw_raw.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "pq",
+      "pu21_ssim_avg": 1.0
+    },
+    "pq.raw_raw.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "pq",
+      "pu21_msssim_avg": 1.0
+    },
+    "pq.raw_raw.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "pq",
+      "cvvdp_jod": 10.0
+    },
+    "pq.raw_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.raw_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "pq",
+      "xpsnr_avg": 54.0211
+    },
+    "pq.raw_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "pq",
+      "ssim_avg": 0.999921
+    },
+    "pq.raw_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "pq",
+      "msssim_avg": 0.999989
+    },
+    "pq.raw_comp.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "pq",
+      "vmaf_mean": 106.870714
+    },
+    "pq.raw_comp.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "pq",
+      "pu21_psnr_avg": 999.99
+    },
+    "pq.raw_comp.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "pq",
+      "pu21_ssim_avg": 1.0
+    },
+    "pq.raw_comp.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "pq",
+      "pu21_msssim_avg": 1.0
+    },
+    "pq.raw_comp.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "pq",
+      "cvvdp_jod": 10.0
+    },
+    "pq.raw_comp.cvqa-hdr-nr": {
+      "status": "PASS",
+      "metric": "cvqa-hdr-nr",
+      "family": "pq",
+      "cvqa_quality": 8.00822066207354
+    },
+    "pq.raw_comp.group_pq": {
+      "status": "PASS",
+      "metric": "group:pq",
+      "family": "pq",
+      "psnr_avg": 61.96,
+      "xpsnr_avg": 51.6116,
+      "ssim_avg": 0.999921,
+      "msssim_avg": 0.999989,
+      "vmaf_mean": 106.870714,
+      "pu21_psnr_avg": 999.99,
+      "pu21_ssim_avg": 1.0,
+      "pu21_msssim_avg": 1.0,
+      "cvvdp_jod": 10.0,
+      "cvqa_quality": 8.00822066207354
+    },
+    "pq.comp_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.comp_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "pq",
+      "xpsnr_avg": 54.0211
+    },
+    "pq.comp_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "pq",
+      "ssim_avg": 0.999921
+    },
+    "pq.comp_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "pq",
+      "msssim_avg": 0.999989
+    },
+    "pq.comp_comp.vmaf": {
+      "status": "PASS",
+      "metric": "vmaf",
+      "family": "pq",
+      "vmaf_mean": 106.870714
+    },
+    "pq.comp_comp.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "pq",
+      "pu21_psnr_avg": 999.99
+    },
+    "pq.comp_comp.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "pq",
+      "pu21_ssim_avg": 1.0
+    },
+    "pq.comp_comp.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "pq",
+      "pu21_msssim_avg": 1.0
+    },
+    "pq.comp_comp.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "pq",
+      "cvvdp_jod": 10.0
+    },
+    "pq.comp_comp.cvqa-hdr-nr": {
+      "status": "PASS",
+      "metric": "cvqa-hdr-nr",
+      "family": "pq",
+      "cvqa_quality": 8.00822066207354
+    },
+    "pq.comp_comp.group_pq": {
+      "status": "PASS",
+      "metric": "group:pq",
+      "family": "pq",
+      "psnr_avg": 61.96,
+      "xpsnr_avg": 51.6116,
+      "ssim_avg": 0.999921,
+      "msssim_avg": 0.999989,
+      "vmaf_mean": 106.870714,
+      "pu21_psnr_avg": 999.99,
+      "pu21_ssim_avg": 1.0,
+      "pu21_msssim_avg": 1.0,
+      "cvvdp_jod": 10.0,
+      "cvqa_quality": 8.00822066207354
+    },
+    "pq.hdr.inferred_vs_explicit": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.backend.psnr_cpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.backend.psnr_gpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.decode.psnr_sw": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "pq.decode.psnr_nvdec": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "hlg.raw_raw.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.raw_raw.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "hlg",
+      "xpsnr_avg": 48.3775
+    },
+    "hlg.raw_raw.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "hlg",
+      "ssim_avg": 0.984944
+    },
+    "hlg.raw_raw.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "hlg",
+      "msssim_avg": 0.993096
+    },
+    "hlg.raw_raw.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "hlg",
+      "pu21_psnr_avg": 36.944836
+    },
+    "hlg.raw_raw.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "hlg",
+      "pu21_ssim_avg": 0.960395
+    },
+    "hlg.raw_raw.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "hlg",
+      "pu21_msssim_avg": 0.976807
+    },
+    "hlg.raw_raw.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "hlg",
+      "cvvdp_jod": 8.689668655395508
+    },
+    "hlg.raw_raw.group_hlg": {
+      "status": "PASS",
+      "metric": "group:hlg",
+      "family": "hlg",
+      "psnr_avg": 45.04,
+      "xpsnr_avg": 48.3775,
+      "ssim_avg": 0.984944,
+      "msssim_avg": 0.993096,
+      "pu21_psnr_avg": 36.944836,
+      "pu21_ssim_avg": 0.960395,
+      "pu21_msssim_avg": 0.976807,
+      "cvvdp_jod": 8.689668655395508
+    },
+    "hlg.raw_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.raw_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "hlg",
+      "xpsnr_avg": 48.3775
+    },
+    "hlg.raw_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "hlg",
+      "ssim_avg": 0.984944
+    },
+    "hlg.raw_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "hlg",
+      "msssim_avg": 0.993096
+    },
+    "hlg.raw_comp.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "hlg",
+      "pu21_psnr_avg": 36.944836
+    },
+    "hlg.raw_comp.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "hlg",
+      "pu21_ssim_avg": 0.960395
+    },
+    "hlg.raw_comp.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "hlg",
+      "pu21_msssim_avg": 0.976807
+    },
+    "hlg.raw_comp.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "hlg",
+      "cvvdp_jod": 8.662384986877441
+    },
+    "hlg.raw_comp.group_hlg": {
+      "status": "PASS",
+      "metric": "group:hlg",
+      "family": "hlg",
+      "psnr_avg": 45.04,
+      "xpsnr_avg": 48.3775,
+      "ssim_avg": 0.984944,
+      "msssim_avg": 0.993096,
+      "pu21_psnr_avg": 36.944836,
+      "pu21_ssim_avg": 0.960395,
+      "pu21_msssim_avg": 0.976807,
+      "cvvdp_jod": 8.662384986877441
+    },
+    "hlg.comp_comp.psnr": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.comp_comp.xpsnr": {
+      "status": "PASS",
+      "metric": "xpsnr",
+      "family": "hlg",
+      "xpsnr_avg": 48.3775
+    },
+    "hlg.comp_comp.ssim": {
+      "status": "PASS",
+      "metric": "ssim",
+      "family": "hlg",
+      "ssim_avg": 0.984944
+    },
+    "hlg.comp_comp.msssim": {
+      "status": "PASS",
+      "metric": "msssim",
+      "family": "hlg",
+      "msssim_avg": 0.993096
+    },
+    "hlg.comp_comp.pu21-psnr": {
+      "status": "PASS",
+      "metric": "pu21-psnr",
+      "family": "hlg",
+      "pu21_psnr_avg": 36.944836
+    },
+    "hlg.comp_comp.pu21-ssim": {
+      "status": "PASS",
+      "metric": "pu21-ssim",
+      "family": "hlg",
+      "pu21_ssim_avg": 0.960395
+    },
+    "hlg.comp_comp.pu21-msssim": {
+      "status": "PASS",
+      "metric": "pu21-msssim",
+      "family": "hlg",
+      "pu21_msssim_avg": 0.976807
+    },
+    "hlg.comp_comp.cvvdp": {
+      "status": "PASS",
+      "metric": "cvvdp",
+      "family": "hlg",
+      "cvvdp_jod": 8.689668655395508
+    },
+    "hlg.comp_comp.group_hlg": {
+      "status": "PASS",
+      "metric": "group:hlg",
+      "family": "hlg",
+      "psnr_avg": 45.04,
+      "xpsnr_avg": 48.3775,
+      "ssim_avg": 0.984944,
+      "msssim_avg": 0.993096,
+      "pu21_psnr_avg": 36.944836,
+      "pu21_ssim_avg": 0.960395,
+      "pu21_msssim_avg": 0.976807,
+      "cvvdp_jod": 8.689668655395508
+    },
+    "hlg.hdr.inferred_vs_explicit": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.backend.psnr_cpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.backend.psnr_gpu": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.decode.psnr_sw": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "hlg.decode.psnr_nvdec": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    },
+    "sdr.consistency.psnr_raw_vs_comp": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "sdr",
+      "psnr_avg": 44.01
+    },
+    "pq.consistency.psnr_raw_vs_comp": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "pq",
+      "psnr_avg": 61.96
+    },
+    "hlg.consistency.psnr_raw_vs_comp": {
+      "status": "PASS",
+      "metric": "psnr",
+      "family": "hlg",
+      "psnr_avg": 45.04
+    }
+  }
+}
