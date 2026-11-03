@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from metric_cli_cases import CliConformanceCase, conformance_matrix  # noqa: E402
-from metric_test_fixtures import FixtureContext, base_env  # noqa: E402
+from metric_test_fixtures import FixtureContext, base_env, verify_cvvdp_mock_repeatable  # noqa: E402
 
 DEFAULT_CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
 DEFAULT_SWDEC = Path(os.environ.get("PIXVQA_DECODE_BIN", ROOT / "build" / "swdec" / "pixvqa"))
@@ -158,12 +158,27 @@ def _result(
     }
 
 
+def _fail_row(case: CliConformanceCase, detail: str, phase: str = "harness") -> dict[str, Any]:
+    return {
+        "id": case.id,
+        "category": case.category,
+        "outcome": case.outcome,
+        "status": "FAIL",
+        "expected": case.summary,
+        "phase": phase,
+        "returncode": -1,
+        "command": [],
+        "detail": detail,
+    }
+
+
 def run_cli_conformance_suite(
     *,
     cpu_bin: Path | None = None,
     swdec_bin: Path | None = None,
     json_report: Path | None = None,
     verbose: bool = True,
+    strict: bool = False,
 ) -> int:
     cpu = cpu_bin or DEFAULT_CPU
     swdec = swdec_bin or DEFAULT_SWDEC
@@ -172,51 +187,83 @@ def run_cli_conformance_suite(
     results: list[dict[str, Any]] = []
     counts = {"PASS": 0, "FAIL": 0, "SKIP": 0}
 
+    try:
+        verify_cvvdp_mock_repeatable()
+        if verbose:
+            print("OK   harness-cvvdp-mock-repeatable")
+    except Exception as exc:
+        if verbose:
+            print(f"FAIL harness-cvvdp-mock-repeatable: {exc}", file=sys.stderr)
+        counts["FAIL"] += 1
+        results.append(
+            {
+                "id": "harness-cvvdp-mock-repeatable",
+                "category": "harness",
+                "outcome": "accept",
+                "status": "FAIL",
+                "expected": "CVVDP mock install is repeatable in one temp directory",
+                "phase": "harness",
+                "detail": f"{exc}\n{traceback.format_exc()}",
+                "command": [],
+            }
+        )
+
     with tempfile.TemporaryDirectory(prefix="pixvqa_cli_conf_") as tmp:
-        ctx = FixtureContext(Path(tmp), ffmpeg if ffmpeg else None)
-        for case in conformance_matrix():
-            skip = infrastructure_skip(case, cpu, swdec, ffmpeg)
-            if skip:
-                counts["SKIP"] += 1
-                row = {
-                    "id": case.id,
-                    "category": case.category,
-                    "outcome": case.outcome,
-                    "status": "SKIP",
-                    "expected": case.summary,
-                    "detail": skip,
-                    "command": [],
-                }
-                results.append(row)
+        tmp_path = Path(tmp)
+        try:
+            ctx = FixtureContext(tmp_path, ffmpeg if ffmpeg else None)
+        except Exception as exc:
+            detail = f"fixture context: {exc}\n{traceback.format_exc()}"
+            for case in conformance_matrix():
+                results.append(_fail_row(case, detail, "fixture-context"))
+                counts["FAIL"] += 1
                 if verbose:
-                    print(f"SKIP {case.id} ({skip})")
-                continue
+                    print(f"FAIL {case.id}: fixture context setup", file=sys.stderr)
+        else:
+            for case in conformance_matrix():
+                row: dict[str, Any]
+                try:
+                    skip = infrastructure_skip(case, cpu, swdec, ffmpeg)
+                    if skip:
+                        counts["SKIP"] += 1
+                        row = {
+                            "id": case.id,
+                            "category": case.category,
+                            "outcome": case.outcome,
+                            "status": "SKIP",
+                            "expected": case.summary,
+                            "detail": skip,
+                            "command": [],
+                        }
+                        results.append(row)
+                        if verbose:
+                            print(f"SKIP {case.id} ({skip})")
+                        continue
 
-            bin_path = swdec if case.bin == "swdec" else cpu
-            env = base_env(Path(tmp), mock_cvvdp=case.mock_cvvdp)
-            try:
-                row = evaluate_case(case, ctx, bin_path, env)
-            except Exception as exc:
-                row = {
-                    "id": case.id,
-                    "category": case.category,
-                    "status": "FAIL",
-                    "expected": case.summary,
-                    "detail": f"{exc}\n{traceback.format_exc()}",
-                    "command": [],
-                }
-            results.append(row)
-            counts[row["status"]] = counts.get(row["status"], 0) + 1
-            if verbose:
-                if row["status"] == "PASS":
-                    print(f"OK   {case.id}")
-                elif row["status"] == "FAIL":
-                    print(f"FAIL {case.id}: {row.get('detail', '')[:200]}", file=sys.stderr)
+                    bin_path = swdec if case.bin == "swdec" else cpu
+                    env = base_env(tmp_path, mock_cvvdp=case.mock_cvvdp)
+                    row = evaluate_case(case, ctx, bin_path, env)
+                except Exception as exc:
+                    row = _fail_row(
+                        case,
+                        f"{exc}\n{traceback.format_exc()}",
+                        "fixture-or-run",
+                    )
+                results.append(row)
+                status = row.get("status", "FAIL")
+                if status != "SKIP":
+                    counts[status] = counts.get(status, 0) + 1
+                if verbose:
+                    if status == "PASS":
+                        print(f"OK   {case.id}")
+                    elif status == "FAIL":
+                        print(f"FAIL {case.id}: {row.get('detail', '')[:200]}", file=sys.stderr)
 
-    verdict = "PASS" if counts["FAIL"] == 0 else "FAIL"
+    verdict = "PASS" if counts["FAIL"] == 0 and not (strict and counts["SKIP"]) else "FAIL"
     report = {
         "suite": "metric-cli-conformance",
         "verdict": verdict,
+        "strict": strict,
         "commit": git_head(),
         "finished": datetime.now(timezone.utc).isoformat(),
         "bins": {"cpu": str(cpu), "swdec": str(swdec), "ffmpeg": ffmpeg or ""},
@@ -231,11 +278,16 @@ def run_cli_conformance_suite(
     if verbose:
         print(
             f"\nCLI conformance: {verdict}  PASS={counts['PASS']} FAIL={counts['FAIL']} SKIP={counts['SKIP']}"
+            + (" (strict)" if strict else "")
         )
         if json_report:
             print(f"JSON report: {json_report}")
 
-    return 1 if counts["FAIL"] else 0
+    if counts["FAIL"]:
+        return 1
+    if strict and counts["SKIP"]:
+        return 1
+    return 0
 
 
 def main() -> int:
@@ -244,7 +296,17 @@ def main() -> int:
     parser.add_argument("--cpu-bin", type=Path, default=DEFAULT_CPU)
     parser.add_argument("--swdec-bin", type=Path, default=DEFAULT_SWDEC)
     parser.add_argument("-q", "--quiet", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail if any case is skipped (release validation)",
+    )
     args = parser.parse_args()
+    strict = args.strict or os.environ.get("PIXVQA_CLI_CONFORMANCE_STRICT", "") in (
+        "1",
+        "true",
+        "yes",
+    )
     default_json = ROOT / "reports" / "metric_cli_conformance.json"
     report_path = args.json or default_json
     return run_cli_conformance_suite(
@@ -252,6 +314,7 @@ def main() -> int:
         swdec_bin=args.swdec_bin,
         json_report=report_path,
         verbose=not args.quiet,
+        strict=strict,
     )
 
 

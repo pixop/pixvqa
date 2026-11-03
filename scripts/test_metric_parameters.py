@@ -334,7 +334,18 @@ def main() -> int:
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 
-    rc = run_cli_conformance_suite(json_report=ROOT / "reports" / "metric_cli_conformance.json")
+    strict = os.environ.get("PIXVQA_CLI_CONFORMANCE_STRICT", "") in ("1", "true", "yes")
+    harness = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_metric_fixture_harness.py")],
+        cwd=ROOT,
+    )
+    if harness.returncode != 0:
+        return 1
+
+    rc = run_cli_conformance_suite(
+        json_report=ROOT / "reports" / "metric_cli_conformance.json",
+        strict=strict,
+    )
 
     ffmpeg_build = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "test_metric_resolve_ffmpeg_build.py")],

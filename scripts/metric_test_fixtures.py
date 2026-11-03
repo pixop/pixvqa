@@ -184,15 +184,34 @@ print(json.dumps(payload, separators=(",", ":")))
 '''
 
 
+def install_cvvdp_mock(tmp_path: Path) -> Path:
+    """Install or refresh the pixvqa_cvvdp mock under tmp_path/mock (idempotent)."""
+    mock_root = tmp_path / "mock"
+    mock_root.mkdir(parents=True, exist_ok=True)
+    pkg = mock_root / "pixvqa_cvvdp"
+    pkg.mkdir(exist_ok=True)
+    main_py = cvvdp_mock_main_py()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "__main__.py").write_text(main_py, encoding="utf-8")
+    return mock_root
+
+
 def cvvdp_mock_env(tmp_path: Path) -> dict[str, str]:
+    mock_root = install_cvvdp_mock(tmp_path)
     env = os.environ.copy()
     env["PIXVQA_LEARNED_CONFIG"] = "none"
-    env["PYTHONPATH"] = str(tmp_path / "mock")
-    mock = tmp_path / "mock" / "pixvqa_cvvdp"
-    mock.mkdir(parents=True)
-    (mock / "__init__.py").write_text("", encoding="utf-8")
-    (mock / "__main__.py").write_text(cvvdp_mock_main_py(), encoding="utf-8")
+    env["PYTHONPATH"] = str(mock_root)
     return env
+
+
+def verify_cvvdp_mock_repeatable(*, iterations: int = 5) -> None:
+    """Regression: repeated mock install in one directory must not raise."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="pixvqa_mock_repeat_") as tmp:
+        root = Path(tmp)
+        for _ in range(iterations):
+            install_cvvdp_mock(root)
 
 
 def base_env(tmp_path: Path, *, mock_cvvdp: bool) -> dict[str, str]:
@@ -219,10 +238,19 @@ class FixtureContext:
         write_yuv(self.raw_b)
         write_corrupt_mp4(self.corrupt)
         if ffmpeg:
-            make_pq_mp4(ffmpeg, self.pq)
-            make_hlg_mp4(ffmpeg, self.hlg)
-            make_sdr_mp4(ffmpeg, self.sdr)
-            make_no_color_metadata_mp4(ffmpeg, self.nometa)
+            for maker, dest in (
+                (make_pq_mp4, self.pq),
+                (make_hlg_mp4, self.hlg),
+                (make_sdr_mp4, self.sdr),
+                (make_no_color_metadata_mp4, self.nometa),
+            ):
+                try:
+                    maker(ffmpeg, dest)
+                except RuntimeError:
+                    # FFmpeg -y overwrites; re-run after failed partial output is safe.
+                    if dest.is_file():
+                        dest.unlink(missing_ok=True)
+                    maker(ffmpeg, dest)
 
     def subst(self, token: str) -> str:
         key = token.strip("{}")
