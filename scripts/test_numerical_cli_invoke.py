@@ -16,6 +16,7 @@ from numerical_conformance.cli_invoke import (  # noqa: E402
     needs_explicit_hdr_transfer,
     resolve_vmaf_model,
 )
+from numerical_conformance.metric_caps import GROUP_METRICS, includes_cvqa, includes_cvvdp  # noqa: E402
 from numerical_conformance.registry import cvvdp_skip_reason  # noqa: E402
 
 
@@ -78,6 +79,9 @@ def test_group_sdr_display_and_no_frames_with_cvqa() -> None:
     assert inv.argv[inv.argv.index("--cvvdp-display") + 1] == "standard_4k"
     assert "-n" not in inv.argv
     assert includes_cvqa("group:sdr")
+    assert includes_cvvdp("group:sdr")
+    assert "cvqa-hdr-nr" in GROUP_METRICS["sdr"]
+    assert "cvvdp" in GROUP_METRICS["sdr"]
 
 
 def test_cvvdp_raw_transfer() -> None:
@@ -134,7 +138,18 @@ def test_classify_python_module_as_fail() -> None:
     assert status == "FAIL"
 
 
+def test_invocation_script_import_check() -> None:
+    """Catch NameError-style regressions before any test body runs on RTX."""
+    import py_compile
+
+    py_compile.compile(__file__, doraise=True)
+    assert includes_cvqa("group:pq")
+    assert "cvvdp" in GROUP_METRICS["hlg"]
+
+
 def main() -> int:
+    test_invocation_script_import_check()
+    print("OK   invocation-script-import-check")
     tests = [
         test_vmaf_requires_model_flag,
         test_pq_vmaf_hdr_model,
