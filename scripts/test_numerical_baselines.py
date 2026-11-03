@@ -127,7 +127,15 @@ def _valid_meta() -> dict:
     }
 
 
-def test_group_cvqa_fields_require_all_metrics() -> None:
+def test_unknown_tolerance_raises() -> None:
+    try:
+        within_tolerance("unknown_metric_field", 1.0, 1.0)
+    except KeyError:
+        return
+    raise AssertionError("expected KeyError for unknown metric field")
+
+
+def test_passing_baseline_comparison() -> None:
     baseline = {
         "approved": True,
         "meta": _valid_meta(),
@@ -173,7 +181,8 @@ def main() -> int:
         test_mixed_native_learned_parse,
         test_na_vs_fail_classification,
         test_provenance_validation,
-        test_group_cvqa_fields_require_all_metrics,
+        test_unknown_tolerance_raises,
+        test_passing_baseline_comparison,
     ]
     for fn in tests:
         fn()

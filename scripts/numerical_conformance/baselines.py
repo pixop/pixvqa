@@ -30,6 +30,15 @@ PROVENANCE_REQUIRED_KEYS = (
     "generated_at",
 )
 
+PROVENANCE_OPTIONAL_KEYS = (
+    "learned_python",
+    "learned_config",
+    "fixture_manifest_sha256",
+    "device_note",
+    "python_version",
+    "encoding_note",
+)
+
 
 def validate_provenance(meta: dict | None) -> list[str]:
     if not meta:

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+import platform
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,11 +49,14 @@ def build_provenance(
     learned_config: str | None,
     fixtures: dict[str, str],
     device_note: str | None = None,
+    encoding_note: str = "YUV420 10-bit limited; HEVC lossy MP4 + MKV lossless per fixture README",
 ) -> dict[str, Any]:
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "pixvqa_commit": _git_head(),
         "pixvqa_version": pixvqa_version,
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
         "learned_python": learned_python,
         "learned_config": learned_config,
         "tolerance_profile": "same_backend_repro_v1",
@@ -59,4 +64,5 @@ def build_provenance(
         "fixtures": fixtures,
         "fixture_manifest_sha256": _fixture_digest(fixtures),
         "device_note": device_note,
+        "encoding_note": encoding_note,
     }
