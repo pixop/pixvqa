@@ -66,6 +66,46 @@ def test_cvqa_rejects_non_finite_mixed() -> None:
     assert parsed.cvqa_quality is None
 
 
+def test_xpsnr_inf_chroma_planes_rtx_summary() -> None:
+    stdout = (
+        "1:[ XPSNR y:50.0 u:50.0 v:50.0 avg:50.0 min:50.0 ]\n"
+        "\nSummary:\n\n"
+        "[ XPSNR y:52.2602 u:inf v:inf avg:54.0211 min:52.2602 ]\n"
+        "Total frames:5\n"
+    )
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.xpsnr_avg == 54.0211
+    assert parsed.total_frames == 5
+
+
+def test_xpsnr_all_finite_planes() -> None:
+    stdout = "[ XPSNR y:52.2602 u:52.2602 v:52.2602 avg:54.0211 min:52.2602 ]\n"
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.xpsnr_avg == 54.0211
+
+
+def test_xpsnr_scientific_avg() -> None:
+    stdout = "[ XPSNR y:1.0 u:inf v:inf avg:1.25e+1 min:1.0 ]\n"
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.xpsnr_avg == 12.5
+
+
+def test_xpsnr_rejects_non_finite_avg() -> None:
+    assert parse_run("[ XPSNR y:1 u:inf v:inf avg:inf min:1 ]\n", "", 0).xpsnr_avg is None
+    assert parse_run("[ XPSNR y:1 u:inf v:inf avg:nan min:1 ]\n", "", 0).xpsnr_avg is None
+
+
+def test_xpsnr_malformed_no_match() -> None:
+    parsed = parse_run("[ XPSNR broken line ]\n", "", 0)
+    assert parsed.xpsnr_avg is None
+
+
+def test_ssim_inf_chroma_finite_avg() -> None:
+    stdout = "[ SSIM  y:0.990000 u:inf v:inf avg:0.990000 ]\n"
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.ssim_avg == 0.99
+
+
 def main() -> int:
     test_cvvdp_json_without_total_frames()
     print("OK   cvvdp-json-no-total-frames")
@@ -81,6 +121,18 @@ def main() -> int:
     print("OK   cvqa-ignores-other-metric-json")
     test_cvqa_rejects_non_finite_mixed()
     print("OK   cvqa-rejects-non-finite-mixed")
+    test_xpsnr_inf_chroma_planes_rtx_summary()
+    print("OK   xpsnr-inf-chroma-planes-rtx-summary")
+    test_xpsnr_all_finite_planes()
+    print("OK   xpsnr-all-finite-planes")
+    test_xpsnr_scientific_avg()
+    print("OK   xpsnr-scientific-avg")
+    test_xpsnr_rejects_non_finite_avg()
+    print("OK   xpsnr-rejects-non-finite-avg")
+    test_xpsnr_malformed_no_match()
+    print("OK   xpsnr-malformed-no-match")
+    test_ssim_inf_chroma_finite_avg()
+    print("OK   ssim-inf-chroma-finite-avg")
     return 0
 
 
