@@ -3,13 +3,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .config import CACHE_ROOT, FRAMES, FRAMES_NR, HEIGHT, WIDTH
-from .ffmpeg_util import decode_to_yuv, ffprobe_color, raw_to_hevc_lossless, raw_to_hevc_lossy
-from .scene import all_scene_frames
-from .yuv_io import rgb_frames_to_yuv, write_yuv420p10
+from .ffmpeg_util import (
+    decode_to_yuv,
+    ffprobe_color,
+    ffprobe_stream,
+    raw_to_hevc_lossless,
+    raw_to_hevc_lossy,
+)
+from .yuv_io import files_identical, raw_yuv_frame_count, stream_reference_yuv
+
+MANIFEST_VERSION = 2
+CORE_KEYS = ("reference_yuv", "distorted_yuv", "reference_lossless", "distorted_lossy")
+NR_KEYS = ("reference_yuv_60", "reference_lossless_60", "distorted_lossy_60")
+ALL_KEYS = CORE_KEYS + NR_KEYS
 
 
 @dataclass
@@ -27,9 +40,61 @@ class FamilyFixtures:
     def manifest_path(self) -> Path:
         return self.root / "manifest.json"
 
+    def path_map(self) -> dict[str, Path]:
+        return {k: getattr(self, k) for k in ALL_KEYS}
+
 
 def family_dir(family: str) -> Path:
     return CACHE_ROOT / "uhd60" / family
+
+
+def _lock_path(root: Path) -> Path:
+    return root / ".generating"
+
+
+def _acquire_lock(root: Path) -> None:
+    lock = _lock_path(root)
+    if lock.is_file():
+        age = time.time() - lock.stat().st_mtime
+        if age > 3600:
+            lock.unlink(missing_ok=True)
+        else:
+            raise RuntimeError(f"fixture generation already in progress ({lock})")
+    lock.write_text(str(os.getpid()), encoding="utf-8")
+
+
+def _release_lock(root: Path) -> None:
+    _lock_path(root).unlink(missing_ok=True)
+
+
+def _default_files(fx: FamilyFixtures) -> dict[str, str]:
+    return {k: str(getattr(fx, k)) for k in ALL_KEYS}
+
+
+def _merge_manifest_files(stored: dict[str, Any], fx: FamilyFixtures) -> dict[str, str]:
+    files = _default_files(fx)
+    files.update(stored.get("files") or {})
+    return files
+
+
+def _paths_exist(files: dict[str, str], keys: tuple[str, ...]) -> bool:
+    return all(Path(files[k]).is_file() for k in keys)
+
+
+def _verify_raw_yuv(path: Path, expected_frames: int) -> None:
+    if raw_yuv_frame_count(path) != expected_frames:
+        raise RuntimeError(f"{path}: expected {expected_frames} frames")
+
+
+def _verify_compressed(ffmpeg: str, path: Path, expected_frames: int, family: str) -> None:
+    info = ffprobe_stream(ffmpeg, path)
+    w = int(info.get("width", "0") or "0")
+    h = int(info.get("height", "0") or "0")
+    if w != WIDTH or h != HEIGHT:
+        raise RuntimeError(f"{path}: expected {WIDTH}x{HEIGHT}, got {w}x{h}")
+    nb = info.get("nb_read_frames") or info.get("nb_frames") or ""
+    if nb.isdigit() and int(nb) != expected_frames:
+        raise RuntimeError(f"{path}: expected {expected_frames} frames, ffprobe {nb}")
 
 
 def _build_yuv_bundle(
@@ -43,27 +108,76 @@ def _build_yuv_bundle(
     reference_lossless: Path,
     distorted_lossy: Path,
 ) -> None:
-    linear = all_scene_frames(frame_count)
-    write_yuv420p10(reference_yuv, rgb_frames_to_yuv(linear, family))
+    stream_reference_yuv(reference_yuv, family=family, frame_count=frame_count)
+    _verify_raw_yuv(reference_yuv, frame_count)
+
     raw_to_hevc_lossy(ffmpeg, reference_yuv, distorted_lossy, family=family, qp=34)
-    tmp_dist = root / f"_dist_dec_{frame_count}.raw"
-    decode_to_yuv(ffmpeg, distorted_lossy, tmp_dist)
-    distorted_yuv.write_bytes(tmp_dist.read_bytes())
-    tmp_dist.unlink(missing_ok=True)
+    _verify_compressed(ffmpeg, distorted_lossy, frame_count, family)
+
+    dist_tmp = distorted_yuv.with_suffix(distorted_yuv.suffix + ".tmp")
+    decode_to_yuv(ffmpeg, distorted_lossy, dist_tmp)
+    dist_tmp.replace(distorted_yuv)
+    _verify_raw_yuv(distorted_yuv, frame_count)
+
     raw_to_hevc_lossless(ffmpeg, reference_yuv, reference_lossless, family=family)
+    _verify_compressed(ffmpeg, reference_lossless, frame_count, family)
+
     tmp_ref = root / f"_ref_dec_{frame_count}.raw"
     decode_to_yuv(ffmpeg, reference_lossless, tmp_ref)
-    if tmp_ref.read_bytes() != reference_yuv.read_bytes():
+    if not files_identical(tmp_ref, reference_yuv):
         raise RuntimeError(f"{family}: lossless decode != {reference_yuv.name}")
     tmp_ref.unlink(missing_ok=True)
+
     tmp_check = root / f"_dist_check_{frame_count}.raw"
     decode_to_yuv(ffmpeg, distorted_lossy, tmp_check)
-    if tmp_check.read_bytes() != distorted_yuv.read_bytes():
+    if not files_identical(tmp_check, distorted_yuv):
         raise RuntimeError(f"{family}: decode({distorted_lossy.name}) != {distorted_yuv.name}")
     tmp_check.unlink(missing_ok=True)
 
 
-def build_family(family: str, ffmpeg: str, *, force: bool = False) -> FamilyFixtures:
+def _write_manifest(
+    fx: FamilyFixtures,
+    ffmpeg: str,
+    files: dict[str, str],
+    *,
+    include_nr: bool,
+    prior: dict[str, Any] | None,
+) -> None:
+    keys = ALL_KEYS if include_nr else CORE_KEYS
+    sha: dict[str, str] = {}
+    if prior and prior.get("sha256"):
+        sha.update(prior["sha256"])
+    for k in keys:
+        sha[k] = sha256_file(Path(files[k]))
+    meta: dict[str, Any] = {
+        "manifest_version": MANIFEST_VERSION,
+        "family": fx.family,
+        "width": WIDTH,
+        "height": HEIGHT,
+        "frames": FRAMES,
+        "frames_nr": FRAMES_NR,
+        "verified": True,
+        "files": {k: files[k] for k in keys},
+        "sha256": {k: sha[k] for k in keys},
+        "lossless_container": "mkv",
+        "lossy_container": "mp4",
+        "reference_lossless_probe": ffprobe_color(ffmpeg, Path(files["reference_lossless"])),
+        "distorted_lossy_probe": ffprobe_color(ffmpeg, Path(files["distorted_lossy"])),
+    }
+    if include_nr:
+        meta["distorted_lossy_60_probe"] = ffprobe_color(ffmpeg, Path(files["distorted_lossy_60"]))
+    tmp = fx.manifest_path().with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    tmp.replace(fx.manifest_path())
+
+
+def build_family(
+    family: str,
+    ffmpeg: str,
+    *,
+    force: bool = False,
+    include_nr: bool = False,
+) -> FamilyFixtures:
     root = family_dir(family)
     root.mkdir(parents=True, exist_ok=True)
     fx = FamilyFixtures(
@@ -78,59 +192,67 @@ def build_family(family: str, ffmpeg: str, *, force: bool = False) -> FamilyFixt
         distorted_lossy_60=root / "distorted_lossy_60f.mp4",
     )
     manifest = fx.manifest_path()
-    required_keys = (
-        "reference_yuv",
-        "distorted_yuv",
-        "reference_lossless",
-        "distorted_lossy",
-        "reference_yuv_60",
-        "reference_lossless_60",
-        "distorted_lossy_60",
-    )
-    if not force and manifest.is_file():
-        stored = json.loads(manifest.read_text(encoding="utf-8"))
-        paths = stored.get("files", {})
-        if stored.get("verified") and all(Path(paths[k]).is_file() for k in required_keys):
+    stored: dict[str, Any] = {}
+    if manifest.is_file():
+        try:
+            stored = json.loads(manifest.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            stored = {}
+
+    files = _merge_manifest_files(stored, fx)
+    core_ok = _paths_exist(files, CORE_KEYS)
+    nr_ok = _paths_exist(files, NR_KEYS)
+
+    if force:
+        _lock_path(root).unlink(missing_ok=True)
+
+    if not force and stored.get("verified") and core_ok:
+        if not include_nr or nr_ok:
             return fx
 
-    _build_yuv_bundle(
-        ffmpeg,
-        family,
-        root,
-        frame_count=FRAMES,
-        reference_yuv=fx.reference_yuv,
-        distorted_yuv=fx.distorted_yuv,
-        reference_lossless=fx.reference_lossless,
-        distorted_lossy=fx.distorted_lossy,
-    )
-    _build_yuv_bundle(
-        ffmpeg,
-        family,
-        root,
-        frame_count=FRAMES_NR,
-        reference_yuv=fx.reference_yuv_60,
-        distorted_yuv=root / "distorted_60f.yuv",
-        reference_lossless=fx.reference_lossless_60,
-        distorted_lossy=fx.distorted_lossy_60,
-    )
+    need_core = force or not core_ok
+    need_nr = include_nr and (force or not nr_ok)
 
-    files = {k: str(getattr(fx, k)) for k in required_keys}
-    meta = {
-        "family": family,
-        "width": WIDTH,
-        "height": HEIGHT,
-        "frames": FRAMES,
-        "frames_nr": FRAMES_NR,
-        "verified": True,
-        "files": files,
-        "sha256": {k: sha256_file(Path(v)) for k, v in files.items()},
-        "lossless_container": "mkv",
-        "lossy_container": "mp4",
-        "reference_lossless_probe": ffprobe_color(ffmpeg, fx.reference_lossless),
-        "distorted_lossy_probe": ffprobe_color(ffmpeg, fx.distorted_lossy),
-        "distorted_lossy_60_probe": ffprobe_color(ffmpeg, fx.distorted_lossy_60),
-    }
-    manifest.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if not need_core and not need_nr:
+        return fx
+
+    _acquire_lock(root)
+    try:
+        if need_core:
+            _build_yuv_bundle(
+                ffmpeg,
+                family,
+                root,
+                frame_count=FRAMES,
+                reference_yuv=fx.reference_yuv,
+                distorted_yuv=fx.distorted_yuv,
+                reference_lossless=fx.reference_lossless,
+                distorted_lossy=fx.distorted_lossy,
+            )
+        if need_nr:
+            nr_dist_yuv = root / "distorted_60f.yuv"
+            _build_yuv_bundle(
+                ffmpeg,
+                family,
+                root,
+                frame_count=FRAMES_NR,
+                reference_yuv=fx.reference_yuv_60,
+                distorted_yuv=nr_dist_yuv,
+                reference_lossless=fx.reference_lossless_60,
+                distorted_lossy=fx.distorted_lossy_60,
+            )
+        files = _default_files(fx)
+        nr_present = _paths_exist(files, NR_KEYS)
+        _write_manifest(
+            fx,
+            ffmpeg,
+            files,
+            include_nr=nr_present,
+            prior=stored,
+        )
+    finally:
+        _release_lock(root)
+
     return fx
 
 
@@ -142,5 +264,13 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def ensure_all_families(ffmpeg: str, *, force: bool = False) -> dict[str, FamilyFixtures]:
-    return {fam: build_family(fam, ffmpeg, force=force) for fam in ("sdr", "pq", "hlg")}
+def ensure_all_families(
+    ffmpeg: str,
+    *,
+    force: bool = False,
+    include_nr: bool = False,
+) -> dict[str, FamilyFixtures]:
+    return {
+        fam: build_family(fam, ffmpeg, force=force, include_nr=include_nr)
+        for fam in ("sdr", "pq", "hlg")
+    }

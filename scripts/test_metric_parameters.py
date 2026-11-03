@@ -338,6 +338,13 @@ def main() -> int:
     if inv.returncode != 0:
         return 1
 
+    fix = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_numerical_fixture_cache.py")],
+        cwd=ROOT,
+    )
+    if fix.returncode != 0:
+        return 1
+
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 

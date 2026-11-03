@@ -37,13 +37,22 @@ one second at 60 fps. The core 5-frame matrix is unchanged for other metrics.
 After upgrading the harness, regenerate cached fixtures once:
 
 ```bash
+# Smoke (5-frame core assets only)
 python3 scripts/test_metric_numerical_conformance.py --profile smoke --force-fixtures
+
+# Comprehensive (adds 60-frame CVQA-HDR-NR companions)
+python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --force-fixtures
 ```
 
-Learned metrics use `config/learned_metrics.local.toml` or:
+Generation streams **one frame at a time** (no full 60-frame RGB batch). Smoke does **not** build 60-frame assets.
+Legacy manifests without `reference_yuv_60` remain valid for smoke; missing NR files are built only for comprehensive.
+
+Peak memory: run `python3 scripts/test_numerical_fixture_cache.py` and read the
+`INFO single-frame UHD encode` line (single-frame tracemalloc peak, typically under 650 MB).
 
 ```bash
 export PIXVQA_LEARNED_PYTHON=/home/sergio/codeccomp/metrics/pixvqa/deps/learned-env/bin/python
+# optional if not using config/learned_metrics.local.toml beside the binary
 ```
 
 Optional VMAF override: `PIXVQA_VMAF_MODEL=/path/to/model.json`

@@ -280,7 +280,11 @@ def run_suite(
         print(f"SKIP numerical suite: {msg}")
         return 0
 
-    fixtures = ensure_all_families(env.ffmpeg, force=force_fixtures)
+    fixtures = ensure_all_families(
+        env.ffmpeg,
+        force=force_fixtures,
+        include_nr=(profile == "comprehensive"),
+    )
     invoke_ctx = build_invoke_context(env.full_bin)
 
     cases = build_cases(profile)
