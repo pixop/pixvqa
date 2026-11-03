@@ -98,7 +98,7 @@ commit in the baseline records the origin of its numerical values, not the
 current HEAD.
 
 
-Candidate results: `baselines/numerical_conformance/<profile>.candidate.json`  
+Candidate results: `baselines/numerical_conformance/<profile>.candidate.json`
 For a **new** profile/candidate only, approve after review (regenerate candidates after parser or provenance changes; do not approve pre-fix `.candidate.json` files):
 
 ```bash

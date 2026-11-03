@@ -144,4 +144,3 @@ class PixvqaMixedVideoSource(video_source_dm):
         rgb = reader.unpack(frame_np, device)
         tensor = reshuffle_dims(rgb, in_dims="HWC", out_dims="BCFHW")
         return self.apply_dm_and_color_transform(tensor, colorspace)
-

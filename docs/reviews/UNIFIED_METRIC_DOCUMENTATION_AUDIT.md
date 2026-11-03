@@ -1,8 +1,8 @@
 # Unified metric parameters — documentation and integration audit
 
-**Branch:** `feature/unified-metric-parameters`  
-**Audit HEAD:** `74fdb451de7fa3d6ad94b73afaf804d28eab1708` (`74fdb45`)  
-**Audit date:** 2026-11-03  
+**Branch:** `feature/unified-metric-parameters`
+**Audit HEAD:** `74fdb451de7fa3d6ad94b73afaf804d28eab1708` (`74fdb45`)
+**Audit date:** 2026-11-03
 **Mode:** Read-only inspection (no doc or code changes in this commit except this report)
 
 **RTX 4070 status (reported by maintainers, not re-run in this audit environment):** CLI conformance 42/42; comprehensive numerical 101 PASS / 0 FAIL / 0 SKIP / 7 NA; numerical regression, internal consistency, and candidate reproducibility PASS.
