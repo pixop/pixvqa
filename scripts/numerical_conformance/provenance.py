@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.metadata
 import platform
 import subprocess
 import sys
@@ -74,23 +73,26 @@ def _sha256_file(path: Path) -> str | None:
 
 
 def _python_package_version(python: str | None, distribution: str) -> str | None:
+    """Resolve a distribution version in the configured learned interpreter only."""
     if not python:
         return None
+    code = (
+        "import importlib.metadata as m\n"
+        f"print(m.version({distribution!r}))\n"
+    )
     try:
         proc = subprocess.run(
-            [python, "-m", "importlib.metadata", "version", distribution],
+            [python, "-c", code],
             capture_output=True,
             text=True,
             timeout=30,
         )
         if proc.returncode == 0:
-            return proc.stdout.strip()
+            version = proc.stdout.strip()
+            return version or None
     except (OSError, subprocess.TimeoutExpired):
         pass
-    try:
-        return importlib.metadata.version(distribution)
-    except importlib.metadata.PackageNotFoundError:
-        return None
+    return None
 
 
 def _pip_versions_snapshot(python: str | None) -> dict[str, str | None]:
