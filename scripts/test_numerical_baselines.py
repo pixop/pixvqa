@@ -13,6 +13,7 @@ from numerical_conformance.baselines import (  # noqa: E402
     compare_to_baseline,
     validate_provenance,
 )
+from numerical_conformance.metric_fields import baseline_case_entry  # noqa: E402
 from numerical_conformance.parse_metrics import parse_run  # noqa: E402
 from numerical_conformance.registry import not_applicable_reason  # noqa: E402
 from numerical_conformance.tolerances import close, within_tolerance  # noqa: E402
@@ -124,6 +125,15 @@ def _valid_meta() -> dict:
         "tolerances": {"psnr_avg": {"abs_tol": 0.02}},
         "fixtures": {"sdr": "/tmp/sdr"},
         "generated_at": "2026-01-01T00:00:00+00:00",
+        "learned_provenance": {
+            "status": "collected",
+            "cvqa_hdr_nr": {
+                "checkpoint_sha256": "a" * 64,
+                "profile_sha256": "b" * 64,
+            },
+            "cvvdp": {"pixvqa_cvvdp_version": "0.0.1"},
+            "python_packages": {},
+        },
     }
 
 
@@ -135,6 +145,50 @@ def test_unknown_tolerance_raises() -> None:
     raise AssertionError("expected KeyError for unknown metric field")
 
 
+def test_baseline_case_entry_only_selected_fields() -> None:
+    row = {
+        "id": "pq.raw_comp.xpsnr",
+        "family": "pq",
+        "metric": "xpsnr",
+        "status": "PASS",
+        "psnr_avg": 99.0,
+        "xpsnr_avg": 54.0211,
+    }
+    entry = baseline_case_entry(row)
+    assert entry == {
+        "status": "PASS",
+        "metric": "xpsnr",
+        "family": "pq",
+        "xpsnr_avg": 54.0211,
+    }
+
+
+def test_baseline_rejects_contaminated_extra_fields() -> None:
+    baseline = {
+        "approved": True,
+        "meta": {**_valid_meta(), "learned_config": None},
+        "cases": {
+            "pq.raw_comp.xpsnr": {
+                "status": "PASS",
+                "metric": "xpsnr",
+                "family": "pq",
+                "xpsnr_avg": 54.0,
+                "psnr_avg": 54.0,
+            }
+        },
+    }
+    row = {
+        "id": "pq.raw_comp.xpsnr",
+        "family": "pq",
+        "metric": "xpsnr",
+        "status": "PASS",
+        "xpsnr_avg": 54.0,
+    }
+    out = compare_to_baseline(row, baseline)
+    assert out is not None
+    assert "unexpected fields" in out["detail"]
+
+
 def test_passing_baseline_comparison() -> None:
     baseline = {
         "approved": True,
@@ -142,6 +196,8 @@ def test_passing_baseline_comparison() -> None:
         "cases": {
             "pq.raw_comp.group_pq": {
                 "status": "PASS",
+                "metric": "group:pq",
+                "family": "pq",
                 "psnr_avg": 40.0,
                 "xpsnr_avg": 39.0,
                 "ssim_avg": 0.99,
@@ -181,6 +237,8 @@ def main() -> int:
         test_mixed_native_learned_parse,
         test_na_vs_fail_classification,
         test_provenance_validation,
+        test_baseline_case_entry_only_selected_fields,
+        test_baseline_rejects_contaminated_extra_fields,
         test_unknown_tolerance_raises,
         test_passing_baseline_comparison,
     ]

@@ -59,6 +59,31 @@ def write_fields_to_row(row: dict, parsed: ParsedRun) -> None:
             row[field] = val
 
 
+def write_selected_fields_to_row(row: dict, parsed: ParsedRun, metric: str, family: str) -> None:
+    for field in required_fields_for_case(metric, family):
+        val = read_field(parsed, field)
+        if val is not None:
+            row[field] = val
+
+
+def baseline_case_entry(row: dict[str, Any]) -> dict[str, Any]:
+    metric = row["metric"]
+    family = row["family"]
+    out: dict[str, Any] = {
+        "status": row["status"],
+        "metric": metric,
+        "family": family,
+    }
+    for field in required_fields_for_case(metric, family):
+        if field in row:
+            out[field] = row[field]
+    return out
+
+
+def allowed_baseline_case_keys(metric: str, family: str) -> frozenset[str]:
+    return frozenset({"status", "metric", "family", *required_fields_for_case(metric, family)})
+
+
 _PARSED_ATTR: dict[str, str] = {
     FIELD_PSNR: "psnr_avg",
     FIELD_SSIM: "ssim_avg",

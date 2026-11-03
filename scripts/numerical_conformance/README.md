@@ -83,11 +83,13 @@ python3 scripts/run_pixvqa_validation.py --profile comprehensive --strict
 ## Baselines
 
 Candidate results: `baselines/numerical_conformance/<profile>.candidate.json`  
-Approve after review:
+Approve after review (regenerate candidates after parser or provenance changes; do not approve pre-fix `.candidate.json` files):
 
 ```bash
 python3 scripts/test_metric_numerical_conformance.py --profile smoke --approve-baseline
 ```
+
+Candidates include only metric fields selected per case, plus `learned_provenance` (CVQA checkpoint/profile SHA-256, CompressedVQA-HDR commit when available, CVVDP package versions). Approval fails if mandatory provenance is incomplete.
 
 Approved baselines are **never** overwritten by normal runs.
 

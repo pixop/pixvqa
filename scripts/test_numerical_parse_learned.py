@@ -100,6 +100,40 @@ def test_xpsnr_malformed_no_match() -> None:
     assert parsed.xpsnr_avg is None
 
 
+def test_xpsnr_only_no_psnr_contamination() -> None:
+    stdout = """[ XPSNR y:52.2602 u:inf v:inf avg:54.0211 min:52.2602 ]
+Total frames:5
+"""
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.psnr_avg is None
+    assert parsed.xpsnr_avg == 54.0211
+
+
+def test_metric_name_collision_matrix() -> None:
+    stdout = (
+        "[ PU21-PSNR     r:24.0 g:24.0 b:24.0 avg:24.0 ]\n"
+        "[ PU21-SSIM     y:0.80 u:n/a v:n/a avg:0.80 ]\n"
+        "[ PU21-MS-SSIM  y:0.88 u:n/a v:n/a avg:0.88 ]\n"
+        "[ MS-SSIM  y:0.98 u:0.98 v:0.98 avg:0.98 ]\n"
+        "[ SSIM  y:0.99 u:inf v:inf avg:0.99 ]\n"
+        "[ PSNR  y:40.0 u:40.0 v:40.0 avg:40.0 ] [ MSE  y:0 u:0 v:0 avg:0 ]\n"
+        "[ XPSNR y:52.2602 u:inf v:inf avg:54.0211 min:52.2602 ]\n"
+    )
+    parsed = parse_run(stdout, "", 0)
+    assert parsed.psnr_avg == 40.0
+    assert parsed.xpsnr_avg == 54.0211
+    assert parsed.ssim_avg == 0.99
+    assert parsed.msssim_avg == 0.98
+    assert parsed.pu21_psnr_avg == 24.0
+    assert parsed.pu21_ssim_avg == 0.80
+    assert parsed.pu21_msssim_avg == 0.88
+
+    xonly = parse_run("[ XPSNR y:1 u:inf v:inf avg:2 min:1 ]\n", "", 0)
+    assert xonly.psnr_avg is None
+    assert xonly.ssim_avg is None
+    assert xonly.pu21_psnr_avg is None
+
+
 def test_ssim_inf_chroma_finite_avg() -> None:
     stdout = "[ SSIM  y:0.990000 u:inf v:inf avg:0.990000 ]\n"
     parsed = parse_run(stdout, "", 0)
@@ -131,6 +165,10 @@ def main() -> int:
     print("OK   xpsnr-rejects-non-finite-avg")
     test_xpsnr_malformed_no_match()
     print("OK   xpsnr-malformed-no-match")
+    test_xpsnr_only_no_psnr_contamination()
+    print("OK   xpsnr-only-no-psnr-contamination")
+    test_metric_name_collision_matrix()
+    print("OK   metric-name-collision-matrix")
     test_ssim_inf_chroma_finite_avg()
     print("OK   ssim-inf-chroma-finite-avg")
     return 0

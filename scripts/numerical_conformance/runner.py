@@ -18,7 +18,7 @@ from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
 from .fixtures import ensure_all_families
 from .metric_caps import GROUP_METRICS, includes_cvqa, includes_learned, includes_native
-from .metric_fields import read_field, required_fields_for_case, write_fields_to_row
+from .metric_fields import baseline_case_entry, read_field, required_fields_for_case, write_selected_fields_to_row
 from .parse_metrics import parse_run
 from .provenance import build_provenance
 from .registry import Scenario, incompatible_reason, not_applicable_reason, resolve_media_paths
@@ -254,7 +254,7 @@ def _row(
     }
     row.update(extra)
     if parsed:
-        write_fields_to_row(row, parsed)
+        write_selected_fields_to_row(row, parsed, case.metric, case.family)
     return row
 
 
@@ -379,13 +379,10 @@ def run_suite(
                 )
                 counts["PASS" if ok else "FAIL"] += 1
 
-    from .metric_fields import ALL_NUMERIC_FIELDS
-
-    case_keys = ("status",) + ALL_NUMERIC_FIELDS
     candidate = {
-        r["id"]: {k: r[k] for k in case_keys if k in r}
+        r["id"]: baseline_case_entry(r)
         for r in results
-        if r["status"] == "PASS"
+        if r["status"] == "PASS" and "metric" in r and "family" in r
     }
     fixture_paths = {k: str(v.root) for k, v in fixtures.items()}
     save_candidate(

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import BASELINE_ROOT
-from .metric_fields import required_fields_for_case
+from .metric_fields import allowed_baseline_case_keys, required_fields_for_case
 from .tolerances import within_tolerance
 
 
@@ -28,6 +28,7 @@ PROVENANCE_REQUIRED_KEYS = (
     "tolerances",
     "fixtures",
     "generated_at",
+    "learned_provenance",
 )
 
 PROVENANCE_OPTIONAL_KEYS = (
@@ -40,6 +41,10 @@ PROVENANCE_OPTIONAL_KEYS = (
 )
 
 
+def _is_sha256_hex(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value.lower())
+
+
 def validate_provenance(meta: dict | None) -> list[str]:
     if not meta:
         return ["baseline meta missing"]
@@ -50,6 +55,29 @@ def validate_provenance(meta: dict | None) -> list[str]:
     tol = meta.get("tolerances")
     if tol is not None and not isinstance(tol, dict):
         errors.append("baseline meta tolerances must be an object")
+
+    learned = meta.get("learned_provenance")
+    if not isinstance(learned, dict):
+        errors.append("baseline meta learned_provenance must be an object")
+        return errors
+
+    if meta.get("learned_config"):
+        cvqa = learned.get("cvqa_hdr_nr")
+        if not isinstance(cvqa, dict):
+            errors.append("learned_provenance.cvqa_hdr_nr missing")
+        else:
+            for key in ("checkpoint_sha256", "profile_sha256"):
+                if not _is_sha256_hex(cvqa.get(key)):
+                    errors.append(
+                        f"learned_provenance.cvqa_hdr_nr.{key} missing or invalid "
+                        "(regenerate candidate with readable checkpoint/profile paths)"
+                    )
+        cvvdp = learned.get("cvvdp")
+        if not isinstance(cvvdp, dict):
+            errors.append("learned_provenance.cvvdp missing")
+        elif not any(k.endswith("_version") for k in cvvdp) and "package_version_missing" not in cvvdp:
+            errors.append("learned_provenance.cvvdp has no package version identity")
+
     return errors
 
 
@@ -106,6 +134,18 @@ def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] |
         )
 
     expected = cases[case_id]
+    metric = row.get("metric", expected.get("metric", ""))
+    family = row.get("family", expected.get("family", "sdr"))
+    allowed = allowed_baseline_case_keys(metric, family)
+    extra = set(expected.keys()) - allowed
+    if extra:
+        return _row_from_row(
+            row,
+            "FAIL",
+            f"baseline has unexpected fields for {case_id}: {sorted(extra)}",
+            numerical_regression="FAIL",
+        )
+
     if expected.get("status") and expected["status"] != "PASS":
         return _row_from_row(
             row,
@@ -114,8 +154,6 @@ def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] |
             numerical_regression="FAIL",
         )
 
-    metric = row.get("metric", "")
-    family = row.get("family", "sdr")
     required = required_fields_for_case(metric, family)
     comparisons: list[dict[str, Any]] = []
 
@@ -187,12 +225,30 @@ def audit_mandatory_baseline_coverage(
     return missing
 
 
+def validate_baseline_cases(cases: dict) -> list[str]:
+    errors: list[str] = []
+    for case_id, entry in cases.items():
+        if not isinstance(entry, dict):
+            errors.append(f"case {case_id} is not an object")
+            continue
+        metric = entry.get("metric")
+        family = entry.get("family")
+        if not metric or not family:
+            errors.append(f"case {case_id} missing metric/family metadata")
+            continue
+        extra = set(entry.keys()) - allowed_baseline_case_keys(metric, family)
+        if extra:
+            errors.append(f"case {case_id} unexpected fields {sorted(extra)}")
+    return errors
+
+
 def approve_candidate(profile: str) -> Path:
     cand = baseline_path(profile).with_suffix(".candidate.json")
     if not cand.is_file():
         raise FileNotFoundError(cand)
     data = json.loads(cand.read_text(encoding="utf-8"))
     errors = validate_provenance(data.get("meta"))
+    errors.extend(validate_baseline_cases(data.get("cases", {})))
     if errors:
         raise ValueError("candidate provenance incomplete: " + "; ".join(errors))
     data["approved"] = True

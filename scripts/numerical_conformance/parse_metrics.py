@@ -11,16 +11,25 @@ TOTAL_FRAMES = re.compile(r"Total frames:(\d+)")
 _NUMERIC_TOKEN = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 _PLANE_VALUE = rf"(?:{_NUMERIC_TOKEN}|inf|nan|n/a)"
 
+
+def _metric_token(name: str) -> str:
+    """Match a full metric identifier, not a suffix (PSNR inside XPSNR, SSIM inside MS-SSIM)."""
+    return rf"(?<![A-Z0-9-]){re.escape(name)}"
+
+
 PSNR_SUMMARY = re.compile(
-    rf"PSNR\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('PSNR')}\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+"
+    rf"v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
     re.I,
 )
 SSIM_SUMMARY = re.compile(
-    rf"SSIM\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('SSIM')}\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+"
+    rf"v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
     re.I,
 )
 MSSSIM_SUMMARY = re.compile(
-    rf"MS-SSIM\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('MS-SSIM')}\s+y:({_PLANE_VALUE})\s+u:({_PLANE_VALUE})\s+"
+    rf"v:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
     re.I,
 )
 XPSNR_LINE = re.compile(
@@ -30,15 +39,18 @@ XPSNR_LINE = re.compile(
 )
 VMAF_MEAN = re.compile(r"\[\s*VMAF\s+mean:([0-9.eE+-]+)", re.I)
 PU21_PSNR = re.compile(
-    rf"PU21-PSNR\s+r:({_PLANE_VALUE})\s+g:({_PLANE_VALUE})\s+b:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('PU21-PSNR')}\s+r:({_PLANE_VALUE})\s+g:({_PLANE_VALUE})\s+"
+    rf"b:({_PLANE_VALUE})\s+avg:({_PLANE_VALUE})",
     re.I,
 )
 PU21_SSIM = re.compile(
-    rf"PU21-SSIM\s+y:({_PLANE_VALUE})\s+u:n/a\s+v:n/a\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('PU21-SSIM')}\s+y:({_PLANE_VALUE})\s+u:n/a\s+v:n/a\s+"
+    rf"avg:({_PLANE_VALUE})",
     re.I,
 )
 PU21_MSSSIM = re.compile(
-    rf"PU21-MS-SSIM\s+y:({_PLANE_VALUE})\s+u:n/a\s+v:n/a\s+avg:({_PLANE_VALUE})",
+    rf"(?:\[\s*)?{_metric_token('PU21-MS-SSIM')}\s+y:({_PLANE_VALUE})\s+u:n/a\s+v:n/a\s+"
+    rf"avg:({_PLANE_VALUE})",
     re.I,
 )
 CVVDP_JOD = re.compile(r"\[ CVVDP jod:\s*([0-9.eE+-]+)", re.I)
