@@ -118,6 +118,8 @@ Approved baselines are **never** overwritten by normal runs.
 
 JSON reports expose all four under `validation_levels`. Internal consistency **PASS** does **not** imply independent reference parity.
 
+Synthetic internal-consistency case IDs (`*.consistency.psnr_raw_vs_comp`, `*.backend.psnr_cpu_vs_gpu`, optional `*.decode.sw_vs_nvdec`) are mandatory for the internal-consistency level but are **not** part of the 95-case approved baseline and do not participate in numerical-regression missing-case audits.
+
 ### Optional BerlinSeqs CVVDP check
 
 Not part of portable fixtures. Enabled with `PIXVQA_BERLIN_REF` and `PIXVQA_BERLIN_TEST`. Compares PixVQA CVVDP JOD to **pinned constants** in `berlin.py` (5f=`8.788558959960938`, 60f=`9.17333984375`). This is an optional **reproducibility** check scoped to **CVVDP only**; constants are **not** documented as independently verified in the harness. Does not imply parity for PSNR, VMAF, CVQA, or other metrics.

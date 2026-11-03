@@ -10,8 +10,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from numerical_conformance.baselines import (  # noqa: E402
+    audit_mandatory_baseline_coverage,
     compare_to_baseline,
+    load_baseline,
     validate_provenance,
+)
+from numerical_conformance.config import BASELINE_ROOT  # noqa: E402
+from numerical_conformance.validation_levels import (  # noqa: E402
+    INTERNAL_NUMERICAL_CONSISTENCY,
+    overall_verdict_includes_internal_fail,
+    summarize_internal_consistency,
 )
 from numerical_conformance.metric_fields import baseline_case_entry  # noqa: E402
 from numerical_conformance.parse_metrics import parse_run  # noqa: E402
@@ -25,6 +33,7 @@ def _base_row(**kwargs):
         "family": "pq",
         "metric": "psnr",
         "status": "PASS",
+        "mandatory": True,
         "psnr_avg": 40.0,
     }
     row.update(kwargs)
@@ -225,6 +234,82 @@ def test_passing_baseline_comparison() -> None:
     assert out["numerical_regression"] == "FAIL"
 
 
+def test_internal_synthetic_not_required_in_baseline_audit() -> None:
+    baseline = {
+        "approved": True,
+        "meta": _valid_meta(),
+        "cases": {
+            "pq.raw_comp.psnr": {
+                "status": "PASS",
+                "metric": "psnr",
+                "family": "pq",
+                "psnr_avg": 40.0,
+            }
+        },
+    }
+    results = [
+        _base_row(),
+        {
+            "id": "pq.backend.psnr_cpu_vs_gpu",
+            "status": "PASS",
+            "mandatory": True,
+            "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
+        },
+        {
+            "id": "sdr.consistency.psnr_raw_vs_comp",
+            "status": "PASS",
+            "mandatory": True,
+            "metric": "psnr",
+            "family": "sdr",
+            "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
+        },
+    ]
+    missing = audit_mandatory_baseline_coverage(results, baseline)
+    assert missing == []
+
+
+def test_numerical_pass_still_audited_against_baseline() -> None:
+    baseline = {"approved": True, "meta": _valid_meta(), "cases": {}}
+    results = [_base_row()]
+    missing = audit_mandatory_baseline_coverage(results, baseline)
+    assert missing == ["pq.raw_comp.psnr"]
+
+
+def test_internal_synthetic_skips_baseline_regression() -> None:
+    baseline = {"approved": True, "meta": _valid_meta(), "cases": {}}
+    row = {
+        "id": "hlg.backend.psnr_cpu_vs_gpu",
+        "status": "PASS",
+        "mandatory": True,
+        "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
+    }
+    assert compare_to_baseline(row, baseline) is None
+    assert row["numerical_regression"] == "N/A"
+
+
+def test_internal_consistency_fail_still_fails_overall_verdict() -> None:
+    results = [
+        {
+            "id": "pq.backend.psnr_cpu_vs_gpu",
+            "status": "FAIL",
+            "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
+        }
+    ]
+    summary = summarize_internal_consistency(results)
+    assert summary["verdict"] == "FAIL"
+    assert overall_verdict_includes_internal_fail(summary)
+
+
+def test_comprehensive_approved_baseline_has_95_numerical_cases() -> None:
+    path = BASELINE_ROOT / "comprehensive.json"
+    if not path.is_file():
+        return
+    data = load_baseline("comprehensive")
+    if not data.get("approved"):
+        return
+    assert len(data.get("cases") or {}) == 95
+
+
 def main() -> int:
     tests = [
         test_no_approved_baseline_not_evaluated,
@@ -241,6 +326,11 @@ def main() -> int:
         test_baseline_rejects_contaminated_extra_fields,
         test_unknown_tolerance_raises,
         test_passing_baseline_comparison,
+        test_internal_synthetic_not_required_in_baseline_audit,
+        test_numerical_pass_still_audited_against_baseline,
+        test_internal_synthetic_skips_baseline_regression,
+        test_internal_consistency_fail_still_fails_overall_verdict,
+        test_comprehensive_approved_baseline_has_95_numerical_cases,
     ]
     for fn in tests:
         fn()

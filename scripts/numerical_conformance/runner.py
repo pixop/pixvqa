@@ -26,6 +26,8 @@ from .registry import Scenario, incompatible_reason, not_applicable_reason, reso
 from .tolerances import close
 from .validation_levels import (
     INTERNAL_NUMERICAL_CONSISTENCY,
+    is_internal_consistency_synthetic_case,
+    mark_numerical_regression_excluded_from_baseline,
     overall_verdict_includes_internal_fail,
     overall_verdict_includes_reference_fail,
     summarize_independent_reference_parity,
@@ -402,6 +404,10 @@ def run_suite(
                     }
                 )
                 counts["PASS" if ok else "FAIL"] += 1
+
+    for row in results:
+        if is_internal_consistency_synthetic_case(row):
+            mark_numerical_regression_excluded_from_baseline(row)
 
     candidate = {
         r["id"]: baseline_case_entry(r)

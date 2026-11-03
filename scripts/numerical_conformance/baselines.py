@@ -10,6 +10,10 @@ from .config import BASELINE_ROOT
 from .metric_fields import allowed_baseline_case_keys, required_fields_for_case
 from .provenance import cvvdp_has_package_identity
 from .tolerances import within_tolerance
+from .validation_levels import (
+    mark_numerical_regression_excluded_from_baseline,
+    requires_approved_baseline_regression,
+)
 
 
 def baseline_path(profile: str) -> Path:
@@ -177,6 +181,9 @@ def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] |
     case_id = row["id"]
     cases = baseline.get("cases", {})
     if case_id not in cases:
+        if not requires_approved_baseline_regression(row):
+            mark_numerical_regression_excluded_from_baseline(row)
+            return None
         return _row_from_row(
             row,
             "FAIL",
@@ -214,9 +221,7 @@ def audit_mandatory_baseline_coverage(
     cases = baseline.get("cases", {})
     missing: list[str] = []
     for row in results:
-        if not row.get("mandatory"):
-            continue
-        if row.get("status") != "PASS":
+        if not requires_approved_baseline_regression(row):
             continue
         if row["id"] not in cases:
             missing.append(row["id"])

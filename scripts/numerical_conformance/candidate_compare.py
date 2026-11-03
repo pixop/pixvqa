@@ -14,6 +14,7 @@ from .candidate_commit_compatibility import (
 )
 from .config import ROOT
 from .metric_fields import allowed_baseline_case_keys
+from .validation_levels import is_numerical_metric_row
 
 
 def load_candidate_file(path: Path) -> dict[str, Any]:
@@ -21,11 +22,6 @@ def load_candidate_file(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("candidate file must be a JSON object")
     return data
-
-
-def is_numerical_metric_row(row: dict[str, Any]) -> bool:
-    """Executable numerical cases (excludes synthetic internal-consistency rows)."""
-    return "metric" in row and "family" in row
 
 
 def numerical_pass_rows(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
