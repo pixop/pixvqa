@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 
@@ -16,6 +17,10 @@ PU21_PSNR = re.compile(
 )
 CVVDP_JOD = re.compile(r"\[ CVVDP jod:\s*([0-9.]+)", re.I)
 CVVDP_JSON_JOD = re.compile(r'"jod"\s*:\s*([0-9.eE+-]+)')
+CVQA_MIXED_SUMMARY = re.compile(
+    r"\[\s*CVQA-HDR-NR\s+quality_score:([0-9.eE+-]+)",
+    re.I,
+)
 TOTAL_FRAMES = re.compile(r"Total frames:(\d+)")
 
 
@@ -60,12 +65,32 @@ def _cvvdp_jod_from_text(text: str) -> float | None:
     return None
 
 
+def _finite_metric_float(raw: str) -> float | None:
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if not math.isfinite(value):
+        return None
+    return value
+
+
 def _cvqa_quality_from_text(text: str) -> float | None:
+    mixed = list(CVQA_MIXED_SUMMARY.finditer(text))
+    if mixed:
+        val = _finite_metric_float(mixed[-1].group(1))
+        if val is not None:
+            return val
     for obj in _parse_json_line_objects(text):
-        if obj.get("metric") == "cvqa-hdr-nr" and "quality_score" in obj:
-            return float(obj["quality_score"])
-        if "quality_score" in obj and "raw_model_score" in obj:
-            return float(obj["quality_score"])
+        metric = obj.get("metric")
+        if metric not in (None, "cvqa-hdr-nr"):
+            continue
+        if "quality_score" not in obj:
+            continue
+        if metric == "cvqa-hdr-nr" or "raw_model_score" in obj:
+            val = _finite_metric_float(str(obj["quality_score"]))
+            if val is not None:
+                return val
     return None
 
 
@@ -76,7 +101,7 @@ def parse_run(stdout: str, stderr: str, rc: int) -> ParsedRun:
     ssim = _last(SSIM_SUMMARY, stdout)
     pu21 = _last(PU21_PSNR, stdout)
     jod_val = _cvvdp_jod_from_text(combined)
-    cvqa_q = _cvqa_quality_from_text(stdout)
+    cvqa_q = _cvqa_quality_from_text(combined)
     return ParsedRun(
         returncode=rc,
         total_frames=int(tf.group(1)) if tf else None,
