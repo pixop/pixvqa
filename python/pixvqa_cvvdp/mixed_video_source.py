@@ -64,26 +64,24 @@ class PixvqaMixedVideoSource(video_source_dm):
 
         ref_count = int(self._ref.frames)
         test_count = int(self._test.frames)
-        if test_count == -1 and ref_count == -1:
+        if test_count == -1 and ref_count == -1 and self.in_frames <= 0:
             raise vq_exception(
                 "Neither test nor reference video contains frame-count metadata; pass --nframes"
             )
-        if test_count == -1:
-            self.frames = ref_count
-        elif ref_count == -1:
-            self.frames = test_count
-        else:
-            self.frames = min(test_count, ref_count)
         if self.in_frames > 0:
-            self.frames = min(self.frames, self.in_frames)
-        if test_count != -1 and ref_count != -1 and test_count != ref_count:
-            logging.warning(
-                "Test and reference videos contain different frame counts (%s and %s). "
-                "Comparing %s frames.",
-                test_count,
-                ref_count,
-                self.frames,
-            )
+            for label, count in (("reference", ref_count), ("test", test_count)):
+                if count != -1 and count < self.in_frames:
+                    raise vq_exception(
+                        f"{label} has {count} frames, fewer than requested {self.in_frames}"
+                    )
+            self.frames = self.in_frames
+        else:
+            if ref_count != -1 and test_count != -1 and test_count != ref_count:
+                raise vq_exception(
+                    f"Test and reference frame counts differ: test {test_count}, "
+                    f"reference {ref_count}; pass --nframes to request a common prefix"
+                )
+            self.frames = ref_count if ref_count != -1 else test_count
 
         ref_fps = float(self._ref.avg_fps)
         test_fps = float(self._test.avg_fps)

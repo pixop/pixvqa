@@ -42,6 +42,8 @@ bool probe_side_family(const MetricSideProbe& side, std::string& family, std::st
   if (!side.compressed || side.path.empty()) return true;
 #ifdef PIXVQA_HAS_FFMPEG
   HdrSide hdr;
+  // Missing compressed transfer tags are a hard error: the Python adapter
+  // requires each compressed side to carry compatible color metadata.
   if (!probe_stream_hdr(side.path, hdr, err)) return false;
   family = hdr_side_transfer_family(hdr);
   if (family.empty()) {
@@ -159,13 +161,7 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
             test_family + "); set --hdr-transfer explicitly";
       return false;
     }
-    if (!ref_family.empty() && test.compressed && test_family.empty()) {
-      family = ref_family;
-      family_source = "reference stream metadata (test side lacks transfer tags)";
-    } else if (!test_family.empty() && reference.compressed && ref_family.empty()) {
-      family = test_family;
-      family_source = "test stream metadata (reference side lacks transfer tags)";
-    } else if (!test_family.empty() && !reference.compressed) {
+    if (!test_family.empty() && !reference.compressed) {
       family = test_family;
       family_source =
           "compressed test metadata (raw reference assumed to use the same transfer; set --hdr-transfer "

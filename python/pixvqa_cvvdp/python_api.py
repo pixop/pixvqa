@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from pixvqa_cvvdp import PINNED_COMMIT, PINNED_UPSTREAM, PINNED_VERSION
-from pixvqa_cvvdp.adapter import AdapterError, frames_evaluated, runtime_metadata
+from pixvqa_cvvdp.adapter import AdapterError, runtime_metadata
 from pixvqa_cvvdp.temporal import features_path
 from pixvqa_device import device_record, peak_rss_bytes
 
@@ -96,7 +96,7 @@ def run_mixed_predict(
         "device_logged_by_cvvdp": device,
         "device_info": device_record(prepared.get("device_requested", device), device, torch),
         "nframes_requested": nframes,
-        "frames_evaluated": frames_evaluated(prepared["test_meta"], nframes),
+        "frames_evaluated": int(vs.frames),
         "reference": prepared["ref_meta"],
         "test": prepared["test_meta"],
         "exit_code": 0,

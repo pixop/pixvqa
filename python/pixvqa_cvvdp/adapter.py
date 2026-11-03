@@ -196,8 +196,19 @@ def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None
         raise AdapterError("resolution mismatch between reference and test")
     if ref["r_frame_rate"] != test["r_frame_rate"]:
         raise AdapterError("frame rate mismatch between reference and test")
-    if nframes < 0 and ref["nb_frames"] and test["nb_frames"] and ref["nb_frames"] != test["nb_frames"]:
+    def known_count(meta: dict) -> int | None:
+        raw = meta.get("nb_frames")
+        return int(raw) if isinstance(raw, (str, int)) and str(raw).isdigit() else None
+
+    ref_count, test_count = known_count(ref), known_count(test)
+    if nframes <= 0 and ref_count is not None and test_count is not None and ref_count != test_count:
         raise AdapterError("frame count mismatch between reference and test")
+    if nframes > 0:
+        for label, count in (("reference", ref_count), ("test", test_count)):
+            if count is not None and count < nframes:
+                raise AdapterError(
+                    f"{label} has {count} frames, fewer than requested {nframes}"
+                )
     for label, meta in (("reference", ref), ("test", test)):
         if interpretation == "pq":
             if meta["color_transfer"] != "smpte2084" or meta["color_primaries"] != "bt2020":

@@ -37,6 +37,22 @@ config, then `python3`. With a config in place, `--cvvdp-python` can be
 omitted. `--cvvdp-bin` optionally points the adapter at a specific official
 CVVDP executable. `--frames` becomes CVVDP's `--nframes`.
 
+When inferring CVVDP interpretation from compressed files, **each compressed side**
+must have a reliable transfer-function tag. A tag on only one side is not
+propagated to an untagged compressed side. Missing tags, mismatched PQ/HLG
+transfers, and color metadata incompatible with the requested interpretation
+are rejected rather than silently assumed; fix the input metadata before
+running CVVDP. A raw side has no embedded tags and is interpreted according
+to the explicit/raw-side settings described below.
+
+Mixed raw/compressed CVVDP comparisons require matching frame counts when
+both lengths are known and no positive `--frames` cap is supplied (`--frames 0`
+means all frames). With `--frames N` (`N > 0`), both inputs must contain at
+least N frames where their lengths are known, and exactly N frames are scored.
+Unreported compressed-side lengths cannot be fully prevalidated; a premature
+EOF will fail at decode. The mixed-input JSON `frames_evaluated` is taken from
+the evaluated source length rather than estimated from the test metadata.
+
 `--cvvdp-gpu-mem GB` optionally passes CVVDP's `--gpu-mem` limit. The unit is
 decimal GB (for example, `--cvvdp-gpu-mem 4` is 4,000,000,000 bytes). Upstream
 uses it only on CUDA, to cap the block-processing memory budget at the smaller
@@ -46,7 +62,7 @@ record retains the requested `gpu_mem_gb` (or `null` when omitted).
 
 CVVDP can run alone or mixed with native metrics and `cvqa-hdr-nr`; see
 [mixed execution](CLI_USAGE.md#mixed-native-and-learned-metrics). It runs after
-the native metrics and before NR. It needs both inputs raw YUV420p10le (PQ or HLG) or both compressed. `--device cpu|gpu|auto` (alias of `--metric-device`) selects
+the native metrics and before NR. It supports both raw YUV420p10le inputs (PQ or HLG), both compressed inputs, or one raw and one compressed input. `--device cpu|gpu|auto` (alias of `--metric-device`) selects
 the device. `gpu` requires CUDA and fails in preflight without it. `auto` uses CUDA when PyTorch sees
 a device, else the CPU with a notice. The adapter always passes the official CLI an explicit `cpu` or
 `cuda`, because the CLI itself silently runs a `cuda` request on the CPU. It then checks the CLI's
