@@ -345,6 +345,13 @@ def main() -> int:
     if fix.returncode != 0:
         return 1
 
+    ff = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "test_numerical_ffmpeg_atomic.py")],
+        cwd=ROOT,
+    )
+    if ff.returncode != 0:
+        return 1
+
     sys.path.insert(0, str(ROOT / "scripts"))
     from metric_cli_conformance import run_cli_conformance_suite  # noqa: E402
 

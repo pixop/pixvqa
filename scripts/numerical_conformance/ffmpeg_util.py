@@ -8,6 +8,19 @@ from .config import FPS, HEIGHT, WIDTH
 from .color_science import yuv420p10_frame_bytes
 
 
+def atomic_tmp_path(out: Path) -> Path:
+    return out.with_name(out.name + ".tmp")
+
+
+def container_format_flags(final_path: Path) -> list[str]:
+    suffix = final_path.suffix.lower()
+    if suffix == ".mp4":
+        return ["-f", "mp4"]
+    if suffix == ".mkv":
+        return ["-f", "matroska"]
+    return []
+
+
 def run_ffmpeg(ffmpeg: str, args: list[str], *, label: str = "ffmpeg") -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
         [ffmpeg, "-hide_banner", "-loglevel", "error", *args],
@@ -23,7 +36,7 @@ def raw_to_hevc_lossless(
     ffmpeg: str, raw: Path, out: Path, *, family: str,
 ) -> None:
     meta = _family_x265_params(family, lossless=True)
-    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp = atomic_tmp_path(out)
     try:
         run_ffmpeg(
             ffmpeg,
@@ -45,6 +58,7 @@ def raw_to_hevc_lossless(
                 "libx265",
                 "-x265-params",
                 meta,
+                *container_format_flags(out),
                 str(tmp),
             ],
             label=f"lossless-{family}",
@@ -57,7 +71,7 @@ def raw_to_hevc_lossless(
 
 def raw_to_hevc_lossy(ffmpeg: str, raw: Path, out: Path, *, family: str, qp: int = 32) -> None:
     meta = _family_x265_params(family, lossless=False)
-    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp = atomic_tmp_path(out)
     try:
         run_ffmpeg(
             ffmpeg,
@@ -83,6 +97,7 @@ def raw_to_hevc_lossy(ffmpeg: str, raw: Path, out: Path, *, family: str, qp: int
                 meta,
                 "-tag:v",
                 "hvc1",
+                *container_format_flags(out),
                 str(tmp),
             ],
             label=f"lossy-{family}",
@@ -94,7 +109,7 @@ def raw_to_hevc_lossy(ffmpeg: str, raw: Path, out: Path, *, family: str, qp: int
 
 
 def decode_to_yuv(ffmpeg: str, src: Path, dst: Path) -> None:
-    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    tmp = atomic_tmp_path(dst)
     try:
         run_ffmpeg(
             ffmpeg,
@@ -138,7 +153,7 @@ def ffprobe_stream(ffmpeg: str, path: Path) -> dict[str, str]:
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=width,height,nb_frames,nb_read_frames,pix_fmt,color_transfer,color_primaries,color_space",
+            "stream=width,height,nb_frames,nb_read_frames,pix_fmt,codec_name,color_transfer,color_primaries,color_space",
             "-count_frames",
             "-of",
             "default=nw=1",

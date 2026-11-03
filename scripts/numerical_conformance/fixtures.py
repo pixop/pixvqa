@@ -52,7 +52,15 @@ def _lock_path(root: Path) -> Path:
     return root / ".generating"
 
 
+def _cleanup_stale_temps(root: Path) -> None:
+    for path in root.glob("*.tmp"):
+        path.unlink(missing_ok=True)
+    for path in root.glob("*.*.tmp"):
+        path.unlink(missing_ok=True)
+
+
 def _acquire_lock(root: Path) -> None:
+    _cleanup_stale_temps(root)
     lock = _lock_path(root)
     if lock.is_file():
         age = time.time() - lock.stat().st_mtime
