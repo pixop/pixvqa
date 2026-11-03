@@ -57,7 +57,7 @@ def test_missing_baseline_field_fails() -> None:
     }
     out = compare_to_baseline(_base_row(), baseline)
     assert out is not None
-    assert "baseline missing required field psnr_avg" in out["detail"]
+    assert "missing expected field psnr_avg" in out["detail"]
 
 
 def test_missing_observed_field_fails() -> None:

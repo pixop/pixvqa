@@ -19,6 +19,12 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--json", type=Path, default=ROOT / "reports" / "numerical_conformance.json")
     parser.add_argument("--force-fixtures", action="store_true")
+    parser.add_argument(
+        "--compare-candidate",
+        type=Path,
+        default=None,
+        help="Read-only compare run results to an unapproved candidate JSON (does not approve baseline).",
+    )
     parser.add_argument("--approve-baseline", action="store_true")
     args = parser.parse_args()
     if args.approve_baseline:
@@ -33,6 +39,7 @@ def main() -> int:
         strict=strict,
         json_report=args.json,
         force_fixtures=args.force_fixtures,
+        compare_candidate=args.compare_candidate,
     )
 
 

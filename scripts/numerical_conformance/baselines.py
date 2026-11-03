@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,55 @@ def _row_from_row(row: dict[str, Any], status: str, detail: str, **extra: Any) -
     return out
 
 
+def compare_pass_row_to_reference(
+    row: dict[str, Any],
+    expected: dict[str, Any],
+    case_id: str,
+) -> tuple[bool, str | None, list[dict[str, Any]]]:
+    """Compare a PASS run row to expected baseline/candidate case entry."""
+    metric = row.get("metric", expected.get("metric", ""))
+    family = row.get("family", expected.get("family", "sdr"))
+    allowed = allowed_baseline_case_keys(metric, family)
+    extra = set(expected.keys()) - allowed
+    if extra:
+        return False, f"unexpected fields for {case_id}: {sorted(extra)}", []
+
+    if expected.get("status") and expected["status"] != "PASS":
+        return False, f"expected status {expected['status']} vs execution PASS", []
+
+    if row.get("status") != "PASS":
+        return False, f"execution status {row.get('status')} not PASS", []
+
+    required = required_fields_for_case(metric, family)
+    comparisons: list[dict[str, Any]] = []
+
+    for field in required:
+        if field not in expected:
+            return False, f"missing expected field {field} for {case_id}", comparisons
+        observed = row.get(field)
+        if observed is None:
+            return False, f"missing observed {field} for {case_id}", comparisons
+        try:
+            obs_f = float(observed)
+            exp_f = float(expected[field])
+        except (TypeError, ValueError):
+            return False, f"non-numeric values for {field}", comparisons
+        if not math.isfinite(obs_f) or not math.isfinite(exp_f):
+            return False, f"non-finite values for {field}", comparisons
+        ok, detail = within_tolerance(field, obs_f, exp_f)
+        comparisons.append(detail)
+        if not ok:
+            return (
+                False,
+                (
+                    f"{field}: observed={obs_f} expected={exp_f} "
+                    f"abs_error={detail.get('abs_error')} abs_tol={detail.get('abs_tol')}"
+                ),
+                comparisons,
+            )
+    return True, None, comparisons
+
+
 def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] | None:
     """Return an updated row on regression failure, or None if baseline check passes/skipped."""
     if not baseline.get("approved"):
@@ -135,68 +185,15 @@ def compare_to_baseline(row: dict[str, Any], baseline: dict) -> dict[str, Any] |
         )
 
     expected = cases[case_id]
-    metric = row.get("metric", expected.get("metric", ""))
-    family = row.get("family", expected.get("family", "sdr"))
-    allowed = allowed_baseline_case_keys(metric, family)
-    extra = set(expected.keys()) - allowed
-    if extra:
+    ok, detail, comparisons = compare_pass_row_to_reference(row, expected, case_id)
+    if not ok:
         return _row_from_row(
             row,
             "FAIL",
-            f"baseline has unexpected fields for {case_id}: {sorted(extra)}",
+            f"baseline regression {detail}",
             numerical_regression="FAIL",
+            baseline_comparisons=comparisons,
         )
-
-    if expected.get("status") and expected["status"] != "PASS":
-        return _row_from_row(
-            row,
-            "FAIL",
-            f"baseline status {expected['status']} vs execution PASS",
-            numerical_regression="FAIL",
-        )
-
-    required = required_fields_for_case(metric, family)
-    comparisons: list[dict[str, Any]] = []
-
-    for field in required:
-        if field not in expected:
-            return _row_from_row(
-                row,
-                "FAIL",
-                f"baseline missing required field {field} for {case_id}",
-                numerical_regression="FAIL",
-            )
-        observed = row.get(field)
-        if observed is None:
-            return _row_from_row(
-                row,
-                "FAIL",
-                f"missing observed {field} for baseline comparison",
-                numerical_regression="FAIL",
-            )
-        try:
-            obs_f = float(observed)
-            exp_f = float(expected[field])
-        except (TypeError, ValueError):
-            return _row_from_row(
-                row,
-                "FAIL",
-                f"non-numeric baseline values for {field}",
-                numerical_regression="FAIL",
-            )
-        ok, detail = within_tolerance(field, obs_f, exp_f)
-        comparisons.append(detail)
-        if not ok:
-            return _row_from_row(
-                row,
-                "FAIL",
-                (
-                    f"baseline regression {field}: observed={obs_f} expected={exp_f} "
-                    f"abs_error={detail.get('abs_error')} abs_tol={detail.get('abs_tol')}"
-                ),
-                numerical_regression="FAIL",
-                baseline_comparisons=comparisons,
-            )
 
     row["numerical_regression"] = "PASS"
     row["baseline_comparisons"] = comparisons

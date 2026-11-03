@@ -91,6 +91,18 @@ python3 scripts/test_metric_numerical_conformance.py --profile smoke --approve-b
 
 Candidates include only metric fields selected per case, plus `learned_provenance` (CVQA checkpoint/profile SHA-256, CompressedVQA-HDR commit when available, CVVDP package versions). Approval fails if mandatory provenance is incomplete.
 
+### Verify before approval (`--compare-candidate`)
+
+Run the comprehensive suite read-only against a verified `.candidate.json` without approving it:
+
+```bash
+python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --strict \
+  --compare-candidate baselines/numerical_conformance/comprehensive.candidate.json \
+  --json reports/numerical_conformance_comprehensive.json
+```
+
+This adds `candidate_reproducibility: PASS|FAIL` (or `NOT_RUN` without the flag). It compares the **95 numerical metric cases** only (not the six internal-consistency rows), checks provenance identity, and leaves `numerical_regression: NOT_EVALUATED` until you `--approve-baseline`. The compare path is never overwritten; if it equals the default auto-save path, the suite skips regenerating that file during the compare run.
+
 Approved baselines are **never** overwritten by normal runs.
 
 ## Validation levels (do not conflate)
@@ -100,7 +112,7 @@ Approved baselines are **never** overwritten by normal runs.
 | **Execution conformance** | PixVQA exits 0; applicable mandatory cases yield finite parsed metrics. | Fails on mandatory `FAIL`; `NA` for unsupported product combinations. |
 | **Numerical regression** | Observed values vs an **approved** baseline (`tolerances.py`). | `NOT_EVALUATED` until a baseline is approved. |
 | **Internal numerical consistency** | Same-build PixVQA cross-path checks: HDR inferred vs explicit PSNR, raw vs compressed PSNR, CPU vs GPU PSNR, software vs NVDEC decode. | `NOT_RUN` on smoke / when checks are not executed. |
-| **Independent reference parity** | Comparison to an externally established reference implementation. | `NOT_EVALUATED` when no such comparison ran (default comprehensive run). |
+| **Candidate reproducibility** | Read-only `--compare-candidate` vs verified unapproved JSON (95 metric cases + provenance). | `NOT_RUN` without the flag; `PASS`/`FAIL` when comparing. |
 
 JSON reports expose all four under `validation_levels`. Internal consistency **PASS** does **not** imply independent reference parity.
 

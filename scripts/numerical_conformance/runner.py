@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from .baselines import audit_mandatory_baseline_coverage, compare_to_baseline, load_baseline, save_candidate
+from .baselines import audit_mandatory_baseline_coverage, baseline_path, compare_to_baseline, load_baseline, save_candidate
 from .berlin import run_berlin_optional
+from .candidate_compare import compare_run_to_candidate, load_candidate_file
 from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_failure, cvqa_assets_available
 from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
@@ -271,7 +272,17 @@ def run_suite(
     strict: bool = False,
     json_report: Path | None = None,
     force_fixtures: bool = False,
+    compare_candidate: Path | None = None,
 ) -> int:
+    compare_candidate_bytes: bytes | None = None
+    compare_candidate_payload: dict[str, Any] | None = None
+    if compare_candidate is not None:
+        if not compare_candidate.is_file():
+            print(f"FAIL compare-candidate not found: {compare_candidate}", file=sys.stderr)
+            return 1
+        compare_candidate_bytes = compare_candidate.read_bytes()
+        compare_candidate_payload = load_candidate_file(compare_candidate)
+
     env = discover()
     counts = {"PASS": 0, "FAIL": 0, "SKIP": 0, "NA": 0}
 
@@ -398,17 +409,24 @@ def run_suite(
         if r["status"] == "PASS" and "metric" in r and "family" in r
     }
     fixture_paths = {k: str(v.root) for k, v in fixtures.items()}
-    save_candidate(
-        profile,
-        candidate,
-        build_provenance(
-            pixvqa_version=env.pixvqa_version,
-            learned_python=invoke_ctx.learned_python,
-            learned_config=str(invoke_ctx.learned_config) if invoke_ctx.learned_config else None,
-            fixtures=fixture_paths,
-            device_note="cuda" if env.cuda_available else "cpu",
-        ),
+    run_meta = build_provenance(
+        pixvqa_version=env.pixvqa_version,
+        learned_python=invoke_ctx.learned_python,
+        learned_config=str(invoke_ctx.learned_config) if invoke_ctx.learned_config else None,
+        fixtures=fixture_paths,
+        device_note="cuda" if env.cuda_available else "cpu",
     )
+    default_candidate_path = baseline_path(profile).with_suffix(".candidate.json")
+    skip_default_candidate_write = (
+        compare_candidate is not None
+        and compare_candidate.resolve() == default_candidate_path.resolve()
+    )
+    if skip_default_candidate_write:
+        print(
+            f"NOTE skipping write to {default_candidate_path} while --compare-candidate targets the same file"
+        )
+    else:
+        save_candidate(profile, candidate, run_meta)
 
     exec_fail = sum(
         1
@@ -448,6 +466,25 @@ def run_suite(
     if overall_verdict_includes_reference_fail(reference_summary):
         verdict = "FAIL"
 
+    if compare_candidate is not None and compare_candidate_payload is not None:
+        immutability_ok = compare_candidate.read_bytes() == compare_candidate_bytes
+        repro_report = compare_run_to_candidate(
+            results,
+            compare_candidate_payload,
+            run_meta=run_meta,
+            candidate_path=compare_candidate,
+            immutability_ok=immutability_ok,
+        )
+        candidate_repro_level = repro_report.to_validation_level()
+    else:
+        candidate_repro_level = {
+            "verdict": "NOT_RUN",
+            "note": "Pass --compare-candidate PATH for read-only reproducibility check against an unapproved candidate.",
+        }
+
+    if candidate_repro_level.get("verdict") == "FAIL":
+        verdict = "FAIL"
+
     report = {
         "suite": "numerical-conformance",
         "profile": profile,
@@ -470,6 +507,7 @@ def run_suite(
             },
             "internal_numerical_consistency": internal_summary,
             "independent_reference_parity": reference_summary,
+            "candidate_reproducibility": candidate_repro_level,
         },
         "finished": datetime.now(timezone.utc).isoformat(),
         "environment": {
@@ -501,9 +539,12 @@ def run_suite(
     print(f"  numerical_regression: {reg_verdict}")
     print(f"  internal_numerical_consistency: {internal_summary['verdict']}")
     print(f"  independent_reference_parity: {reference_summary['verdict']}")
+    print(f"  candidate_reproducibility: {candidate_repro_level['verdict']}")
     if json_report:
         print(f"JSON report: {json_report}")
     if counts["FAIL"]:
+        return 1
+    if candidate_repro_level.get("verdict") == "FAIL":
         return 1
     if strict:
         mandatory_skip = sum(
