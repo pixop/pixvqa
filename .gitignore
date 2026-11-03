@@ -78,5 +78,12 @@ reports/*.txt
 
 /reports/release/
 
+# Numerical conformance fixture cache (auto-generated UHD media)
+.cache/pixvqa-numerical-fixtures/
+
+baselines/numerical_conformance/*.candidate.json
+baselines/numerical_conformance/smoke.json
+baselines/numerical_conformance/comprehensive.json
+
 # Python packaging metadata
 *.egg-info/

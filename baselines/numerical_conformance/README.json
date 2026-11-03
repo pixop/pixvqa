@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "approved": false,
+  "note": "Run suite on RTX, review reports/numerical_conformance.json, then --approve-baseline"
+}
