@@ -82,6 +82,55 @@ def parse_learned_toml_python(config_path: Path) -> str | None:
     return None
 
 
+def _resolve_toml_path(value: str, config_path: Path) -> Path:
+    if value.startswith("~/"):
+        return (Path.home() / value[2:]).resolve()
+    p = Path(value)
+    if not p.is_absolute() and "/" in value:
+        return (config_path.parent / p).resolve()
+    return p.expanduser().resolve()
+
+
+def parse_cvqa_asset_paths(config_path: Path) -> dict[str, Path]:
+    """Read [cvqa-hdr-nr] repository, checkpoint, profile from learned config."""
+    out: dict[str, Path] = {}
+    if not _readable(config_path):
+        return out
+    section = ""
+    for line in config_path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower()
+            continue
+        if section != "cvqa-hdr-nr":
+            continue
+        m = re.match(r"(\w+)\s*=\s*\"([^\"]+)\"", line)
+        if m and m.group(1) in ("repository", "checkpoint", "profile"):
+            out[m.group(1)] = _resolve_toml_path(m.group(2), config_path)
+    return out
+
+
+def cvqa_assets_available(ctx: InvokeContext) -> tuple[bool, str]:
+    if not ctx.learned_config or not _readable(ctx.learned_config):
+        return False, "cvqa-hdr-nr requires config/learned_metrics.local.toml with [cvqa-hdr-nr] assets"
+    paths = parse_cvqa_asset_paths(ctx.learned_config)
+    missing = []
+    for key in ("repository", "checkpoint", "profile"):
+        p = paths.get(key)
+        if p is None:
+            missing.append(f"{key} unset in learned config")
+        elif key == "repository":
+            if not (p / "NR" / "NR_model.py").is_file():
+                missing.append(f"repository missing NR/NR_model.py ({p})")
+        elif not p.is_file():
+            missing.append(f"{key} not found ({p})")
+    if missing:
+        return False, "; ".join(missing)
+    return True, ""
+
+
 def discover_learned_context(full_bin: Path) -> tuple[Path | None, str | None]:
     cfg_env = os.environ.get("PIXVQA_LEARNED_CONFIG", "").strip()
     if cfg_env.lower() == "none":
@@ -154,10 +203,16 @@ def cvvdp_display_for(family: Family) -> str | None:
 
 
 def frame_limit_for(metric: str) -> int | None:
+    if includes_cvqa(metric) and not includes_native(metric):
+        return None
     caps = selected_caps(metric)
     if any(not c.honors_frames for c in caps):
         return None
     return FRAMES
+
+
+def cvqa_only_invocation(metric: str) -> bool:
+    return includes_cvqa(metric) and not includes_native(metric)
 
 
 def build_pixvqa_command(
@@ -176,19 +231,22 @@ def build_pixvqa_command(
     mval = metric.split(":", 1)[1] if metric.startswith("group:") else metric
     names = expand_metrics(metric)
     notes: list[str] = []
+    nr_only = cvqa_only_invocation(metric)
 
     argv = [str(ctx.full_bin), "--metrics", mval]
-    if not no_reference:
+    if nr_only:
+        argv += ["-t", test, "-v", "1"]
+        notes.append("cvqa-hdr-nr-only: omit --fps and raw geometry")
+    elif not no_reference:
         argv += ["-r", ref, "-s", SIZE, "-f", CHROMA, "-t", test, "-s", SIZE, "-f", CHROMA]
+        argv += ["--fps", FPS, "-v", "1"]
     else:
-        argv += ["-t", test]
-
-    argv += ["--fps", FPS, "-v", "1"]
+        argv += ["-t", test, "--fps", FPS, "-v", "1"]
 
     nframes = frame_limit_for(metric)
     if nframes is not None:
         argv += ["-n", str(nframes)]
-    else:
+    elif includes_cvqa(metric):
         notes.append("omit --frames (cvqa-hdr-nr official sampler)")
 
     if needs_explicit_hdr_transfer(family, scenario, metric, force_explicit=explicit_hdr_transfer):
@@ -240,6 +298,7 @@ def classify_failure(proc_text: str, returncode: int, metric: str) -> tuple[str,
         "requires --model",
         "transfer is unspecified",
         "--frames is incompatible",
+        "is incompatible with cvqa-hdr-nr",
         "No module named pixvqa_cvvdp",
         "No module named pixvqa_cvqahdr",
         "could not execute CVVDP interpreter",

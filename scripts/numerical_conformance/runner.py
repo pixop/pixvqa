@@ -13,11 +13,11 @@ from typing import Any, Literal
 
 from .baselines import compare_to_baseline, load_baseline, save_candidate
 from .berlin import run_berlin_optional
-from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_failure
+from .cli_invoke import build_invoke_context, build_pixvqa_command, classify_failure, cvqa_assets_available
 from .config import CHROMA, SIZE
 from .environment import Environment, bin_runnable, discover
 from .fixtures import ensure_all_families
-from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvvdp, includes_learned, includes_native
+from .metric_caps import GROUP_METRICS, expand_metrics, includes_cvqa, includes_cvvdp, includes_learned, includes_native
 from .parse_metrics import parse_run
 from .registry import Scenario, cvvdp_skip_reason, incompatible_reason, resolve_media_paths
 from .tolerances import close
@@ -159,6 +159,15 @@ def _validate_parsed(case: NumericalCase, parsed, invoke, proc) -> str | None:
             return "missing cvqa-hdr-nr quality_score"
         if not math.isfinite(parsed.cvqa_quality):
             return "non-finite cvqa-hdr-nr quality_score"
+
+    if case.metric.startswith("group:") and includes_cvqa(case.metric):
+        if parsed.psnr_avg is None:
+            return "missing PSNR summary in group run"
+        if includes_cvvdp(case.metric):
+            if parsed.cvvdp_jod is None or not math.isfinite(parsed.cvvdp_jod):
+                return "missing CVVDP JOD in group run"
+        if parsed.cvqa_quality is None or not math.isfinite(parsed.cvqa_quality):
+            return "missing cvqa-hdr-nr quality_score in group run"
     return None
 
 
@@ -187,6 +196,11 @@ def execute_case(
             "learned metrics require PIXVQA_LEARNED_PYTHON or config/learned_metrics.local.toml [learned].python",
             [],
         )
+
+    if includes_cvqa(case.metric):
+        ok, detail = cvqa_assets_available(invoke_ctx)
+        if not ok:
+            return _row(case, "SKIP", f"cvqa-hdr-nr dependency: {detail}", [])
 
     ref, test, _ref_raw, _test_raw = resolve_media_paths(fx, case.scenario, case.metric)
     no_ref = metric_name == "cvqa-hdr-nr"

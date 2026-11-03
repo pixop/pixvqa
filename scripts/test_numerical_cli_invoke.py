@@ -62,6 +62,47 @@ def test_cvqa_omits_frames() -> None:
         no_reference=True,
     )
     assert "-n" not in inv.argv and "--frames" not in inv.argv
+    assert "--fps" not in inv.argv
+    assert "-s" not in inv.argv
+    assert "-f" not in inv.argv
+
+
+def test_group_sdr_keeps_fps_for_native_learned_mix() -> None:
+    ctx = build_invoke_context(ROOT / "build" / "full" / "pixvqa")
+    ctx.learned_python = "/learned/bin/python"
+    inv = build_pixvqa_command(
+        ctx,
+        family="sdr",
+        scenario="comp_comp",
+        metric="group:sdr",
+        ref="/ref.mkv",
+        test="/test.mp4",
+    )
+    assert "--fps" in inv.argv
+    assert "-s" in inv.argv
+
+
+def test_cvqa_preflight_missing_checkpoint() -> None:
+    import tempfile
+
+    from numerical_conformance.cli_invoke import cvqa_assets_available
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = Path(tmp) / "learned_metrics.local.toml"
+        cfg.write_text(
+            '[cvqa-hdr-nr]\nrepository = "/no/repo"\ncheckpoint = "/no.ckpt"\nprofile = "/no.npy"\n',
+            encoding="utf-8",
+        )
+        ctx = build_invoke_context(ROOT / "build" / "full" / "pixvqa")
+        ctx.learned_config = cfg
+        ok, detail = cvqa_assets_available(ctx)
+        assert not ok
+        assert "checkpoint" in detail or "repository" in detail
+
+
+def test_classify_fps_cvqa_is_fail_not_skip() -> None:
+    status, _ = classify_failure("pixvqa: --fps is incompatible with cvqa-hdr-nr", 2, "cvqa-hdr-nr")
+    assert status == "FAIL"
 
 
 def test_group_sdr_display_and_no_frames_with_cvqa() -> None:
@@ -155,9 +196,12 @@ def main() -> int:
         test_pq_vmaf_hdr_model,
         test_pu21_raw_explicit_transfer,
         test_cvqa_omits_frames,
+        test_group_sdr_keeps_fps_for_native_learned_mix,
         test_group_sdr_display_and_no_frames_with_cvqa,
         test_cvqa_only_no_cvvdp_cli_flags,
         test_cvvdp_only_no_cvqahdr_cli_flags,
+        test_cvqa_preflight_missing_checkpoint,
+        test_classify_fps_cvqa_is_fail_not_skip,
         test_cvvdp_raw_transfer,
         test_sdr_cvvdp_raw_skip_reason,
         test_classify_checkpoint_skip,
