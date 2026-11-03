@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -166,7 +167,7 @@ def test_provenance_mismatch() -> None:
                 "psnr_avg": 40.0,
             }
         },
-        meta=_meta(pixvqa_commit="other"),
+        meta=_meta(tolerance_profile="other_profile"),
     )
     errors = compare_provenance_identity(_meta(), cand["meta"])
     assert errors
@@ -179,6 +180,86 @@ def test_provenance_mismatch() -> None:
     )
     assert report.verdict == "FAIL"
     assert report.provenance_errors
+
+
+def test_commit_mismatch_infrastructure_accepted() -> None:
+    row = _row("pq.raw_comp.psnr", psnr_avg=40.0)
+    cand = _candidate(
+        {
+            "pq.raw_comp.psnr": {
+                "status": "PASS",
+                "metric": "psnr",
+                "family": "pq",
+                "psnr_avg": 40.0,
+            }
+        },
+        meta=_meta(pixvqa_commit="cand_sha"),
+    )
+    with mock.patch(
+        "numerical_conformance.candidate_compare.verify_pixvqa_commit_compatibility",
+    ) as verify:
+        from numerical_conformance.candidate_commit_compatibility import CommitCompatibilityResult
+
+        verify.return_value = CommitCompatibilityResult(
+            verified=True,
+            acceptable=True,
+            commits_match=False,
+            candidate_commit="cand_sha",
+            run_commit="run_sha",
+            changed_files=["scripts/numerical_conformance/runner.py"],
+        )
+        report = compare_run_to_candidate(
+            [row],
+            cand,
+            run_meta=_meta(pixvqa_commit="run_sha"),
+            candidate_path=Path("/tmp/candidate.json"),
+            immutability_ok=True,
+        )
+    assert report.verdict == "PASS"
+    assert report.commit_compatibility.get("compatibility_exception_accepted") is True
+    level = report.to_validation_level()
+    assert "compatibility_exception" in level
+    assert level["compatibility_exception"]["changed_files"] == [
+        "scripts/numerical_conformance/runner.py"
+    ]
+
+
+def test_commit_mismatch_disallowed_fails() -> None:
+    row = _row("pq.raw_comp.psnr", psnr_avg=40.0)
+    cand = _candidate(
+        {
+            "pq.raw_comp.psnr": {
+                "status": "PASS",
+                "metric": "psnr",
+                "family": "pq",
+                "psnr_avg": 40.0,
+            }
+        },
+        meta=_meta(pixvqa_commit="cand_sha"),
+    )
+    with mock.patch(
+        "numerical_conformance.candidate_compare.verify_pixvqa_commit_compatibility",
+    ) as verify:
+        from numerical_conformance.candidate_commit_compatibility import CommitCompatibilityResult
+
+        verify.return_value = CommitCompatibilityResult(
+            verified=True,
+            acceptable=False,
+            commits_match=False,
+            candidate_commit="cand_sha",
+            run_commit="run_sha",
+            changed_files=["src/metrics/foo.cpp"],
+            disallowed_files=["src/metrics/foo.cpp"],
+        )
+        report = compare_run_to_candidate(
+            [row],
+            cand,
+            run_meta=_meta(pixvqa_commit="run_sha"),
+            candidate_path=Path("/tmp/candidate.json"),
+            immutability_ok=True,
+        )
+    assert report.verdict == "FAIL"
+    assert any("outside infrastructure allowlist" in e for e in report.provenance_errors)
 
 
 def test_internal_rows_excluded() -> None:
@@ -231,6 +312,8 @@ def main() -> int:
         test_extra_candidate_case,
         test_unexpected_candidate_field,
         test_provenance_mismatch,
+        test_commit_mismatch_infrastructure_accepted,
+        test_commit_mismatch_disallowed_fails,
         test_internal_rows_excluded,
         test_candidate_immutability_flag,
         test_candidate_file_bytes_unchanged,

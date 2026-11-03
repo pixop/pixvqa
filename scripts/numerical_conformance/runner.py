@@ -540,6 +540,13 @@ def run_suite(
     print(f"  internal_numerical_consistency: {internal_summary['verdict']}")
     print(f"  independent_reference_parity: {reference_summary['verdict']}")
     print(f"  candidate_reproducibility: {candidate_repro_level['verdict']}")
+    exc = candidate_repro_level.get("compatibility_exception")
+    if exc:
+        print(
+            "  candidate commit compatibility exception: "
+            f"{exc.get('candidate_pixvqa_commit')} -> {exc.get('run_pixvqa_commit')} "
+            f"({len(exc.get('changed_files') or [])} files)"
+        )
     if json_report:
         print(f"JSON report: {json_report}")
     if counts["FAIL"]:

@@ -101,7 +101,9 @@ python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --s
   --json reports/numerical_conformance_comprehensive.json
 ```
 
-This adds `candidate_reproducibility: PASS|FAIL` (or `NOT_RUN` without the flag). It compares the **95 numerical metric cases** only (not the six internal-consistency rows), checks provenance identity, and leaves `numerical_regression: NOT_EVALUATED` until you `--approve-baseline`. The compare path is never overwritten; if it equals the default auto-save path, the suite skips regenerating that file during the compare run.
+This adds `candidate_reproducibility: PASS|FAIL` (or `NOT_RUN` without the flag). It compares the **95 numerical metric cases** only (not the six internal-consistency rows), checks strict artifact provenance (fixtures, learned-model hashes, dependency versions, tolerance profile), and leaves `numerical_regression: NOT_EVALUATED` until you `--approve-baseline`. The compare path is never overwritten; if it equals the default auto-save path, the suite skips regenerating that file during the compare run.
+
+When the candidate’s recorded `pixvqa_commit` differs from the current HEAD, reproducibility can still **PASS** only if a verified `git diff` shows that every changed path is on an explicit infrastructure allowlist (`candidate_commit_compatibility.py`, policy `numerical_conformance_infrastructure_allowlist_v1`). The JSON report records both commits, the changed-file list, and `compatibility_exception` — commit mismatch is never silent. Unresolved commits, diff failures, or any change outside the allowlist (metric code, decoders, fixtures, learned wrappers, unknown paths) **FAIL** closed. Extend the allowlist only with auditable harness changes; do not use broad `scripts/` prefixes.
 
 Approved baselines are **never** overwritten by normal runs.
 

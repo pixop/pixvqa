@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .baselines import compare_pass_row_to_reference, validate_baseline_cases
+from .candidate_commit_compatibility import (
+    POLICY_ID,
+    verify_pixvqa_commit_compatibility,
+)
+from .config import ROOT
 from .metric_fields import allowed_baseline_case_keys
 
 
@@ -45,12 +50,14 @@ PROVENANCE_PACKAGE_KEYS = (
 
 
 def compare_provenance_identity(run_meta: dict[str, Any], candidate_meta: dict[str, Any]) -> list[str]:
+    """Strict artifact provenance (Git commit handled separately via compatibility policy)."""
     errors: list[str] = []
-    for key in ("pixvqa_commit", "tolerance_profile"):
-        if run_meta.get(key) != candidate_meta.get(key):
-            errors.append(
-                f"provenance {key} mismatch: run={run_meta.get(key)!r} candidate={candidate_meta.get(key)!r}"
-            )
+    if run_meta.get("tolerance_profile") != candidate_meta.get("tolerance_profile"):
+        errors.append(
+            "provenance tolerance_profile mismatch: "
+            f"run={run_meta.get('tolerance_profile')!r} "
+            f"candidate={candidate_meta.get('tolerance_profile')!r}"
+        )
     run_fix = run_meta.get("fixture_manifest_sha256") or {}
     cand_fix = candidate_meta.get("fixture_manifest_sha256") or {}
     if run_fix != cand_fix:
@@ -95,10 +102,11 @@ class CandidateCompareReport:
     provenance_errors: list[str] = field(default_factory=list)
     case_errors: list[dict[str, Any]] = field(default_factory=list)
     comparisons: list[dict[str, Any]] = field(default_factory=list)
+    commit_compatibility: dict[str, Any] = field(default_factory=dict)
     note: str = ""
 
     def to_validation_level(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "verdict": self.verdict,
             "candidate_path": self.candidate_path,
             "immutability_ok": self.immutability_ok,
@@ -106,8 +114,17 @@ class CandidateCompareReport:
             "case_error_count": len(self.case_errors),
             "case_errors": self.case_errors,
             "comparisons": self.comparisons,
+            "commit_compatibility": self.commit_compatibility,
             "note": self.note,
         }
+        if self.commit_compatibility.get("compatibility_exception_accepted"):
+            out["compatibility_exception"] = {
+                "policy": self.commit_compatibility.get("policy", POLICY_ID),
+                "candidate_pixvqa_commit": self.commit_compatibility.get("candidate_pixvqa_commit"),
+                "run_pixvqa_commit": self.commit_compatibility.get("run_pixvqa_commit"),
+                "changed_files": self.commit_compatibility.get("changed_files", []),
+            }
+        return out
 
 
 def compare_run_to_candidate(
@@ -134,7 +151,34 @@ def compare_run_to_candidate(
     for err in validate_baseline_cases(cand_cases):
         case_errors.append({"kind": "invalid_candidate_case", "detail": err})
 
-    provenance_errors = compare_provenance_identity(run_meta, candidate.get("meta") or {})
+    candidate_meta = candidate.get("meta") or {}
+    provenance_errors = compare_provenance_identity(run_meta, candidate_meta)
+
+    compat = verify_pixvqa_commit_compatibility(
+        candidate_meta.get("pixvqa_commit"),
+        run_meta.get("pixvqa_commit"),
+        repo_root=ROOT,
+    )
+    commit_compatibility: dict[str, Any] = compat.to_report_dict()
+    if compat.commits_match:
+        commit_compatibility["compatibility_exception_accepted"] = False
+    elif compat.verified and compat.acceptable:
+        commit_compatibility["compatibility_exception_accepted"] = True
+        commit_compatibility["note"] = (
+            "pixvqa_commit differs; git diff confined to auditable numerical-conformance "
+            "infrastructure allowlist."
+        )
+    else:
+        commit_compatibility["compatibility_exception_accepted"] = False
+        if not compat.verified:
+            provenance_errors.extend(compat.errors)
+        elif compat.disallowed_files:
+            provenance_errors.append(
+                "pixvqa_commit mismatch with changes outside infrastructure allowlist: "
+                + ", ".join(compat.disallowed_files)
+            )
+        elif not compat.acceptable:
+            provenance_errors.append("pixvqa_commit mismatch could not be accepted")
 
     pass_by_id = {r["id"]: r for r in numerical_pass_rows(results)}
     mandatory_pass = {r["id"]: r for r in mandatory_numerical_pass_rows(results)}
@@ -197,5 +241,6 @@ def compare_run_to_candidate(
         provenance_errors=provenance_errors,
         case_errors=case_errors,
         comparisons=comparisons,
+        commit_compatibility=commit_compatibility,
         note=note,
     )
