@@ -93,15 +93,17 @@ Candidates include only metric fields selected per case, plus `learned_provenanc
 
 Approved baselines are **never** overwritten by normal runs.
 
-## Three validation levels (do not conflate)
+## Validation levels (do not conflate)
 
-| Level | Meaning | Pass criteria |
-|-------|---------|----------------|
-| **Execution conformance** | PixVQA exits 0; every applicable mandatory case yields finite values for all selected metrics (parsed from official stdout summaries). | No mandatory `FAIL`; `NA` for unsupported product combinations is expected. |
-| **Numerical regression** | Compare observed values to an **approved** baseline using explicit per-metric tolerances (`tolerances.py`). | `NOT_EVALUATED` until a baseline is approved; then every mandatory PASS case must match baseline fields with recorded abs error and tolerance. |
-| **Independent reference parity** | Cross-path agreement (raw vs comp PSNR, HDR inferred vs explicit, CPU vs GPU PSNR, SW vs NVDEC decode) and optional BerlinSeqs CVVDP JOD (`berlin.py`, wider tolerance). | Separate from baseline regression; optional Berlin requires `PIXVQA_BERLIN_REF` / `PIXVQA_BERLIN_TEST`. |
+| Level | Meaning | Verdict when not applicable |
+|-------|---------|------------------------------|
+| **Execution conformance** | PixVQA exits 0; applicable mandatory cases yield finite parsed metrics. | Fails on mandatory `FAIL`; `NA` for unsupported product combinations. |
+| **Numerical regression** | Observed values vs an **approved** baseline (`tolerances.py`). | `NOT_EVALUATED` until a baseline is approved. |
+| **Internal numerical consistency** | Same-build PixVQA cross-path checks: HDR inferred vs explicit PSNR, raw vs compressed PSNR, CPU vs GPU PSNR, software vs NVDEC decode. | `NOT_RUN` on smoke / when checks are not executed. |
+| **Independent reference parity** | Comparison to an externally established reference implementation. | `NOT_EVALUATED` when no such comparison ran (default comprehensive run). |
 
-JSON reports include `validation_levels` with separate verdicts. Successful execution alone is **not** full numerical regression conformance.
+JSON reports expose all four under `validation_levels`. Internal consistency **PASS** does **not** imply independent reference parity.
 
-Optional real-content CVVDP check (not part of portable fixtures): BerlinSeqs JOD
-5f=`8.788558959960938`, 60f=`9.17333984375`.
+### Optional BerlinSeqs CVVDP check
+
+Not part of portable fixtures. Enabled with `PIXVQA_BERLIN_REF` and `PIXVQA_BERLIN_TEST`. Compares PixVQA CVVDP JOD to **pinned constants** in `berlin.py` (5f=`8.788558959960938`, 60f=`9.17333984375`). This is an optional **reproducibility** check scoped to **CVVDP only**; constants are **not** documented as independently verified in the harness. Does not imply parity for PSNR, VMAF, CVQA, or other metrics.

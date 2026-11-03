@@ -12,6 +12,10 @@ from .tolerances import close
 BERLIN_5F = 8.788558959960938
 BERLIN_60F = 9.17333984375
 
+BERLIN_PROVENANCE_NOTE = (
+    "Pinned historical JOD constants in berlin.py; not independently verified by this harness."
+)
+
 
 def run_berlin_optional(env_full_bin: Path | None = None) -> dict | None:
     ref = os.environ.get("PIXVQA_BERLIN_REF")
@@ -49,6 +53,14 @@ def run_berlin_optional(env_full_bin: Path | None = None) -> dict | None:
                 "expected_jod": expected,
                 "actual_jod": parsed.cvvdp_jod,
                 "status": "PASS" if ok else "FAIL",
+                "metric": "cvvdp",
+                "field": "cvvdp_jod",
             }
         )
-    return {"berlin_cvvdp": rows}
+    return {
+        "berlin_cvvdp": rows,
+        "reference_scope": "cvvdp_jod",
+        "metrics": ["cvvdp"],
+        "provenance_note": BERLIN_PROVENANCE_NOTE,
+        "validation_level": "external_reference_reproducibility",
+    }

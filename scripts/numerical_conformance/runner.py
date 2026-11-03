@@ -23,6 +23,13 @@ from .parse_metrics import parse_run
 from .provenance import build_provenance
 from .registry import Scenario, incompatible_reason, not_applicable_reason, resolve_media_paths
 from .tolerances import close
+from .validation_levels import (
+    INTERNAL_NUMERICAL_CONSISTENCY,
+    overall_verdict_includes_internal_fail,
+    overall_verdict_includes_reference_fail,
+    summarize_independent_reference_parity,
+    summarize_internal_consistency,
+)
 
 Profile = Literal["smoke", "comprehensive"]
 
@@ -301,6 +308,8 @@ def run_suite(
         row = execute_case(case, env, fixtures, invoke_ctx=invoke_ctx)
         if case.tags and "hdr-equiv" in case.tags:
             inferred = hdr_inferred_psnr.get(case.family)
+            if inferred is not None and row.get("psnr_avg") is not None:
+                row["validation_level"] = INTERNAL_NUMERICAL_CONSISTENCY
             if row["status"] == "PASS" and inferred is not None and row.get("psnr_avg") is not None:
                 if not close("psnr_avg", inferred, row["psnr_avg"]):
                     row = _row(
@@ -308,9 +317,8 @@ def run_suite(
                         "FAIL",
                         f"HDR explicit PSNR {row['psnr_avg']} vs inferred-path {inferred}",
                         row.get("command", []),
+                        validation_level=INTERNAL_NUMERICAL_CONSISTENCY,
                     )
-                else:
-                    row["validation_level"] = "reference_parity"
         bl = compare_to_baseline(row, baseline)
         if bl is not None:
             row = bl
@@ -342,10 +350,15 @@ def run_suite(
         row2 = execute_case(ccase, env, fixtures, invoke_ctx=invoke_ctx)
         c2 = row2.get("psnr_avg")
         if row2["status"] == "PASS" and c1 is not None and c2 is not None:
+            row2["validation_level"] = INTERNAL_NUMERICAL_CONSISTENCY
             if not close("psnr_avg", c1, c2):
-                row2 = _row(ccase, "FAIL", f"PSNR raw_raw {c1} vs raw_comp {c2}", row2.get("command", []))
-            else:
-                row2["validation_level"] = "reference_parity"
+                row2 = _row(
+                    ccase,
+                    "FAIL",
+                    f"PSNR raw_raw {c1} vs raw_comp {c2}",
+                    row2.get("command", []),
+                    validation_level=INTERNAL_NUMERICAL_CONSISTENCY,
+                )
         results.append(row2)
         counts[row2["status"]] = counts.get(row2["status"], 0) + 1
 
@@ -360,7 +373,7 @@ def run_suite(
                     "status": "PASS" if ok else "FAIL",
                     "detail": "cpu/gpu agree" if ok else f"cpu {cpu['psnr_avg']} vs gpu {gpu['psnr_avg']}",
                     "mandatory": True,
-                    "validation_level": "reference_parity",
+                    "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
                 }
                 results.append(row)
                 counts[row["status"]] += 1
@@ -374,7 +387,7 @@ def run_suite(
                         "status": "PASS" if ok else "FAIL",
                         "detail": "decode paths agree" if ok else f"sw {sw['psnr_avg']} vs nvdec {nv['psnr_avg']}",
                         "mandatory": False,
-                        "validation_level": "reference_parity",
+                        "validation_level": INTERNAL_NUMERICAL_CONSISTENCY,
                     }
                 )
                 counts["PASS" if ok else "FAIL"] += 1
@@ -423,25 +436,16 @@ def run_suite(
     else:
         reg_verdict = "NOT_EVALUATED"
 
-    parity_rows = [r for r in results if r.get("validation_level") == "reference_parity"]
-    parity_rows.extend(
-        r
-        for r in results
-        if r["id"].endswith("consistency.psnr_raw_vs_comp") or "hdr.inferred_vs_explicit" in r["id"]
-    )
-    parity_fail = any(r.get("status") == "FAIL" for r in parity_rows)
     optional = run_berlin_optional(env.full_bin)
-    berlin_fail = False
-    if optional:
-        for row in optional["berlin_cvvdp"]:
-            if row["status"] == "FAIL":
-                berlin_fail = True
-    parity_verdict = "PASS" if not parity_fail and not berlin_fail else ("NOT_RUN" if not parity_rows and not optional else "FAIL")
+    internal_summary = summarize_internal_consistency(results)
+    reference_summary = summarize_independent_reference_parity(optional)
 
     verdict = exec_verdict
     if reg_verdict == "FAIL":
         verdict = "FAIL"
-    if parity_verdict == "FAIL":
+    if overall_verdict_includes_internal_fail(internal_summary):
+        verdict = "FAIL"
+    if overall_verdict_includes_reference_fail(reference_summary):
         verdict = "FAIL"
 
     report = {
@@ -464,10 +468,8 @@ def run_suite(
                     else "No approved baseline; regression not evaluated (execution-only)."
                 ),
             },
-            "independent_reference_parity": {
-                "verdict": parity_verdict,
-                "note": "Cross-path checks and optional BerlinSeqs CVVDP reference.",
-            },
+            "internal_numerical_consistency": internal_summary,
+            "independent_reference_parity": reference_summary,
         },
         "finished": datetime.now(timezone.utc).isoformat(),
         "environment": {
@@ -484,11 +486,9 @@ def run_suite(
     }
     if optional:
         report["optional"] = optional
-        if berlin_fail:
-            verdict = "FAIL"
+        if overall_verdict_includes_reference_fail(reference_summary):
             counts["FAIL"] = counts.get("FAIL", 0) + 1
     report["verdict"] = verdict
-    report["validation_levels"]["independent_reference_parity"]["berlin_ran"] = optional is not None
     if json_report:
         json_report.parent.mkdir(parents=True, exist_ok=True)
         json_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -499,7 +499,8 @@ def run_suite(
     )
     print(f"  execution_conformance: {exec_verdict}")
     print(f"  numerical_regression: {reg_verdict}")
-    print(f"  independent_reference_parity: {parity_verdict}")
+    print(f"  internal_numerical_consistency: {internal_summary['verdict']}")
+    print(f"  independent_reference_parity: {reference_summary['verdict']}")
     if json_report:
         print(f"JSON report: {json_report}")
     if counts["FAIL"]:

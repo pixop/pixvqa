@@ -107,7 +107,7 @@ REFERENCE_PARITY: dict[str, ToleranceSpec] = {
         0.02,
         None,
         "JOD",
-        "BerlinSeqs independent reference vs PixVQA CVVDP (optional asset).",
+        "Optional BerlinSeqs reproducibility vs pinned constants in berlin.py (CVVDP only).",
         "reference_parity",
     ),
 }
