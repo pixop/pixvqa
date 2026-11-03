@@ -130,7 +130,7 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
   }
 
   std::string family;
-  const char* family_source = nullptr;
+  std::string family_source;
   if (cvvdp.interpretation_set) {
     family = transfer_family_token(cvvdp.interpretation);
     family_source = "explicit --cvvdp-interpretation";
@@ -139,7 +139,7 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
     family_source = "explicit HDR transfer";
   } else if (!preset.empty()) {
     family = preset;
-    family_source = cli.preset_hdr ? "--preset hdr" : ("--metrics " + cli.metric_group).c_str();
+    family_source = cli.preset_hdr ? "--preset hdr" : "--metrics " + cli.metric_group;
   } else if (!cvvdp.interpretation.empty()) {
     family = transfer_family_token(cvvdp.interpretation);
     if (!family.empty()) family_source = "metric preset defaults";
@@ -194,7 +194,7 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
 
   if (cvvdp.interpretation.empty()) {
     cvvdp.interpretation = family;
-    log_resolution("interpretation", cvvdp.interpretation, family_source ? family_source : "default");
+    log_resolution("interpretation", cvvdp.interpretation, family_source.empty() ? "default" : family_source.c_str());
   }
 
   if (cvvdp.display.empty()) {

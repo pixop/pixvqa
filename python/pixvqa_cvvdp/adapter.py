@@ -262,15 +262,17 @@ def _validate_le10_sample_bytes(chunk: bytes) -> None:
 
 
 def _raw_sample_frame_indices(frames_in_file: int, nframes: int) -> list[int]:
+    """Bounded preflight: first up to 8 frames and last *processed* frame.
+
+    nframes <= 0 means the whole file; a positive cap limits the inspected
+    prefix. This check is intentionally not exhaustive for long sequences.
+    """
     if frames_in_file <= 0:
         return []
-    if nframes > 0:
-        count = min(nframes, frames_in_file, _MAX_RAW_SAMPLE_FRAMES)
-    else:
-        count = min(frames_in_file, 1)
-    indices = list(range(count))
-    last = frames_in_file - 1
-    if last not in indices and frames_in_file > count:
+    processed = min(frames_in_file, nframes) if nframes > 0 else frames_in_file
+    indices = list(range(min(processed, _MAX_RAW_SAMPLE_FRAMES)))
+    last = processed - 1
+    if last not in indices:
         indices.append(last)
     return indices
 

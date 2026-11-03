@@ -193,7 +193,14 @@ the display model supplies the EOTF. SDR raw YUV stays unsupported.
 PixVQA does not convert them. The official `YUVReader` expands limited-range
 codes itself: luma uses `(code - 64) / 876` and chroma uses `(code - 512) / 896`,
 then clips. Full-range samples are therefore not represented correctly. Codes
-outside the 10-bit range are rejected before ColorVideoVDP starts. Legal-range
+outside the 10-bit range are checked during a **bounded preflight sample**, not
+exhaustively across the file. PixVQA always checks the complete file size and
+frame alignment, then inspects the first up to eight processed frames and the
+last processed frame (at most nine inspected frames). With `--frames N`, the
+processed prefix is limited to N; without a cap, the last file frame is
+inspected. Invalid 10-bit codes in uninspected middle frames may therefore
+reach the official reader. This is a preflight speed/coverage tradeoff, not a
+guarantee that every code in a long video is valid. Legal-range
 limits (luma 64–940, chroma 64–960) are not enforced; the official reader clips
 the expanded result.
 

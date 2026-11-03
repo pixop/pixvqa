@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import time
 from pathlib import Path
@@ -116,10 +117,11 @@ def run_mixed_predict(
 
 
 def write_official_csv(csv_path: Path, test_path: str, ref_path: str, jod: float) -> None:
-    csv_path.write_text(
-        f"test, reference, cvvdp\n{test_path}, {ref_path}, {jod}\n",
-        encoding="utf-8",
-    )
+    # Preserve the official column names and order while quoting arbitrary paths.
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["test", "reference", "cvvdp"])
+        writer.writerow([test_path, ref_path, str(jod)])
 
 
 def _failure_record(prepared, interpretation, display, nframes, device, gpu_mem_gb, elapsed, torch, err):
