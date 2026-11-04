@@ -124,7 +124,7 @@ def run_cvvdp_metadata_inference(pixvqa: Path, label: str) -> None:
             fail(label, f"metric_resolve lacks FFmpeg at link/compile time:\n{proc.stderr[-600:]}")
         if proc.returncode != 0:
             fail(label, f"rc={proc.returncode}\n{proc.stderr}\n{proc.stdout}")
-        if "info: cvvdp interpretation pq" not in proc.stderr:
+        if "pixvqa-cvvdp: info: interpretation=pq" not in proc.stderr:
             fail(f"{label}-log", proc.stderr[-500:])
         ok(label)
 

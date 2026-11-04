@@ -19,7 +19,7 @@ bool coef_for(HdrMatrix matrix, Coef& c) {
     c = {0.2126, 0.7152, 0.0722};
     return true;
   }
-  if (matrix == HdrMatrix::Bt2020Ncl) {
+  if (matrix == HdrMatrix::Bt2020Ncl || matrix == HdrMatrix::Bt2020Cl) {
     c = {0.2627, 0.6780, 0.0593};
     return true;
   }
@@ -64,7 +64,8 @@ void ycbcr_to_rgb(const Coef& c, double y, double cb, double cr, double& r, doub
 bool is_hdr(HdrTransfer t) { return t == HdrTransfer::Pq || t == HdrTransfer::Hlg; }
 
 bool supported_color(HdrPrimaries primaries, HdrMatrix matrix) {
-  return (primaries == HdrPrimaries::Bt2020 && matrix == HdrMatrix::Bt2020Ncl) ||
+  return (primaries == HdrPrimaries::Bt2020 &&
+          (matrix == HdrMatrix::Bt2020Ncl || matrix == HdrMatrix::Bt2020Cl)) ||
          (primaries == HdrPrimaries::Bt709 && matrix == HdrMatrix::Bt709);
 }
 
@@ -133,6 +134,8 @@ const char* hdr_matrix_name(HdrMatrix v) {
       return "unspecified";
     case HdrMatrix::Bt709:
       return "bt709";
+    case HdrMatrix::Bt2020Cl:
+      return "bt2020c";
     case HdrMatrix::Bt2020Ncl:
       return "bt2020nc";
     case HdrMatrix::Bt601:
@@ -232,6 +235,10 @@ bool hdr_parse_primaries_token(const std::string& token, HdrPrimaries& out) {
 bool hdr_parse_matrix_token(const std::string& token, HdrMatrix& out) {
   if (token == "bt2020nc") {
     out = HdrMatrix::Bt2020Ncl;
+    return true;
+  }
+  if (token == "bt2020c") {
+    out = HdrMatrix::Bt2020Cl;
     return true;
   }
   if (token == "bt709") {
@@ -639,6 +646,20 @@ bool hdr_display_cdm2(HdrTransfer transfer, HdrMatrix matrix, double y, double c
                       double hlg_peak_nits, double& nits) {
   Coef c;
   if (!coef_for(matrix, c)) return false;
+  // Unlike NCL, CL Yc' is the transfer encoding of linear luminance.
+  // Reusing the NCL RGB inverse here produces incorrect chromatic luminance.
+  if (matrix == HdrMatrix::Bt2020Cl) {
+    HdrEffective eff;
+    eff.side.transfer = transfer;
+    eff.side.matrix = matrix;
+    eff.peak_nits = hlg_peak_nits;
+    eff.black_nits = 0.0;
+    eff.hlg_gamma = transfer == HdrTransfer::Hlg ? hdr_hlg_system_gamma(hlg_peak_nits) : 1.0;
+    double r = 0.0, g = 0.0, b = 0.0;
+    if (!hdr_display_rgb(eff, y, cb, cr, r, g, b)) return false;
+    nits = c.kr * r + c.kg * g + c.kb * b;
+    return std::isfinite(nits);
+  }
   double r = 0, g = 0, b = 0;
   ycbcr_to_rgb(c, y, cb, cr, r, g, b);
   if (transfer == HdrTransfer::Pq) {
@@ -684,49 +705,94 @@ bool hdr_codes_to_nominal(int bit_depth, HdrRange range, int y, int cb, int cr, 
                               static_cast<double>(cr), yn, cb_n, cr_n);
 }
 
-bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr, double& r_nits,
-                     double& g_nits, double& b_nits) {
+bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr,
+                     double& r_nits, double& g_nits, double& b_nits, bool* gamut_clamped) {
+  if (gamut_clamped) *gamut_clamped = false;
   Coef c;
   if (!coef_for(cfg.side.matrix, c)) return false;
-  double r = 0, g = 0, b = 0;
-  ycbcr_to_rgb(c, y, cb, cr, r, g, b);
+
+  const bool cl = cfg.side.matrix == HdrMatrix::Bt2020Cl;
+
+  double rp = 0.0, gp = 0.0, bp = 0.0;
+
+  if (cl) {
+    // BT.2020 Yc'CbcCrc: chroma differences are encoded nonlinearly,
+    // while Yc' is the transfer-encoded linear luminance.
+    rp = y + (cr <= 0.0 ? 1.7184 : 0.9936) * cr;
+    bp = y + (cb <= 0.0 ? 1.9404 : 1.5816) * cb;
+    if (gamut_clamped && (y < 0.0 || y > 1.0 || rp < 0.0 || rp > 1.0 ||
+                          bp < 0.0 || bp > 1.0)) *gamut_clamped = true;
+  } else {
+    ycbcr_to_rgb(c, y, cb, cr, rp, gp, bp);
+  }
+
   if (cfg.side.transfer == HdrTransfer::Pq) {
-    r_nits = pq_eotf(r);
-    g_nits = pq_eotf(g);
-    b_nits = pq_eotf(b);
+    r_nits = pq_eotf(rp);
+    b_nits = pq_eotf(bp);
+
+    if (cl) {
+      // Yc', R', B' must be linearized before recovering G.
+      const double yc_nits = pq_eotf(y);
+      g_nits = (yc_nits - c.kr * r_nits - c.kb * b_nits) / c.kg;
+      if (gamut_clamped && (g_nits < -1e-8 || g_nits > 10000.0 + 1e-8)) *gamut_clamped = true;
+      g_nits = std::clamp(g_nits, 0.0, 10000.0);
+    } else {
+      g_nits = pq_eotf(gp);
+    }
+
     if (cfg.pq_clip) {
       r_nits = std::min(r_nits, cfg.peak_nits);
       g_nits = std::min(g_nits, cfg.peak_nits);
       b_nits = std::min(b_nits, cfg.peak_nits);
     }
-    return std::isfinite(r_nits) && std::isfinite(g_nits) && std::isfinite(b_nits);
+
+    return std::isfinite(r_nits) && std::isfinite(g_nits) &&
+           std::isfinite(b_nits);
   }
+
   if (cfg.side.transfer == HdrTransfer::Hlg) {
-    if (!(cfg.peak_nits > cfg.black_nits) || !std::isfinite(cfg.hlg_gamma)) return false;
-    const double rs = hlg_inverse_oetf(r);
-    const double gs = hlg_inverse_oetf(g);
-    const double bs = hlg_inverse_oetf(b);
+    if (!(cfg.peak_nits > cfg.black_nits) ||
+        !std::isfinite(cfg.hlg_gamma)) return false;
+
+    const double rs = hlg_inverse_oetf(rp);
+    const double bs = hlg_inverse_oetf(bp);
+
+    double gs = 0.0;
+    if (cl) {
+      const double yc = hlg_inverse_oetf(y);
+      gs = (yc - c.kr * rs - c.kb * bs) / c.kg;
+      if (gamut_clamped && (gs < -1e-10 || gs > 1.0 + 1e-10)) *gamut_clamped = true;
+      gs = std::clamp(gs, 0.0, 1.0);
+    } else {
+      gs = hlg_inverse_oetf(gp);
+    }
+
     const double ys = c.kr * rs + c.kg * gs + c.kb * bs;
+
     if (!(ys > 0.0)) {
       r_nits = g_nits = b_nits = cfg.black_nits;
       return true;
     }
-    // BT.2100 reference OOTF. The black offset is added to each component.
-    // Lb = 0 keeps Rs * (Lw * Ys^gamma) / Ys, including the 1000 cd/m2 default.
+
     if (cfg.black_nits == 0.0) {
-      const double scale = cfg.peak_nits * std::pow(ys, cfg.hlg_gamma) / ys;
+      const double scale =
+          cfg.peak_nits * std::pow(ys, cfg.hlg_gamma) / ys;
       r_nits = rs * scale;
       g_nits = gs * scale;
       b_nits = bs * scale;
     } else {
       const double factor =
-          (cfg.peak_nits - cfg.black_nits) * std::pow(ys, cfg.hlg_gamma - 1.0);
+          (cfg.peak_nits - cfg.black_nits) *
+          std::pow(ys, cfg.hlg_gamma - 1.0);
       r_nits = rs * factor + cfg.black_nits;
       g_nits = gs * factor + cfg.black_nits;
       b_nits = bs * factor + cfg.black_nits;
     }
-    return std::isfinite(r_nits) && std::isfinite(g_nits) && std::isfinite(b_nits);
+
+    return std::isfinite(r_nits) && std::isfinite(g_nits) &&
+           std::isfinite(b_nits);
   }
+
   return false;
 }
 

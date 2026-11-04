@@ -139,10 +139,12 @@ bool encode_frame(const Frame& frame, const VideoFormat& fmt, const HdrEffective
         return false;
       }
       double rn = 0, gn = 0, bn = 0;
-      if (!hdr_display_rgb(hdr, yn, cbn, crn, rn, gn, bn)) {
-        err = "no display transform for this transfer";
+      bool gamut_clamped = false;
+      if (!hdr_display_rgb(hdr, yn, cbn, crn, rn, gn, bn, &gamut_clamped)) {
+        err = "no valid display transform for this transfer/sample";
         return false;
       }
+      if (gamut_clamped) out.clamped = true;
       const double lum = kr * rn + kg * gn + kb * bn;
       auto encode_one = [&](double nits) {
         if (nits < kLMin || nits > kLMax) out.clamped = true;

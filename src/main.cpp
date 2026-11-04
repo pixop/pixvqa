@@ -1,3 +1,4 @@
+#include "backend_log.hpp"
 #include "pixvqa/cpu_dispatch.hpp"
 #include "pixvqa/hdr.hpp"
 #include "pixvqa/metric_resolve.hpp"
@@ -130,9 +131,8 @@ const char* chroma_token(ChromaFormat c) {
   return "yuv";
 }
 
-// Historical display token for the PQ transfer. The stored name stays st2084.
+// Display the configured transfer token without renaming ST 2084.
 const char* transfer_display(const std::string& tf) {
-  if (tf == "st2084") return "st2048";
   return tf.c_str();
 }
 
@@ -176,6 +176,7 @@ void print_input_summary(const Options& opt, const HdrSide& ref_meta, const HdrS
     if (!any) os << " (no color metadata in container)";
     std::printf("  %s\n", os.str().c_str());
 #else
+    (void)meta;  // Color metadata is unavailable in the CPU-only build.
     std::printf("  %s: compressed\n", label);
 #endif
   };
@@ -185,8 +186,8 @@ void print_input_summary(const Options& opt, const HdrSide& ref_meta, const HdrS
     if (!opt.color_space_set && !opt.ref_color_set && !opt.dist_color_set && !opt.transfer_set &&
         !opt.ref_transfer_set && !opt.dist_transfer_set) {
       std::printf(
-          "  legacy --cs/--tf defaults: %s %s (bundled color options; see HDR: for PQ/HLG "
-          "processing)\n",
+          "  sample-domain --cs/--tf defaults: %s %s (not embedded stream metadata; "
+          "see Color interpretation for effective transfer)\n",
           opt.color_space.c_str(), transfer_display(opt.transfer));
     }
   }
@@ -248,14 +249,14 @@ void usage(const char* argv0) {
       "  --metrics LIST       Required: sdr, pq, hlg, all, or comma-separated metrics.\n"
       "                       psnr, xpsnr, ssim, msssim, vmaf, pu21-psnr,\n"
       "                       pu21-ssim, pu21-msssim, cvvdp, cvqa-hdr-nr.\n"
-      "  --model PATH         VMAF model JSON (groups may select one automatically).\n"
+      "  --model PATH|auto    VMAF model JSON; auto is the default (SDR/PQ 1080p/2160p).\n"
       "  --qcs                Report temporal quality consistency (docs/QCS.md).\n"
       "\n"
       "Execution and display\n"
       "  --device auto|cpu|gpu  Per-metric GPU preference with auto; VMAF uses CPU.\n"
       "  --decode auto|cpu|gpu  Independent decode selection; gpu requires NVDEC.\n"
       "  --hdr-transfer auto|pq|hlg|sdr|linear  HDR/SDR transfer interpretation.\n"
-      "  --cvvdp-display NAME  CVVDP display model; required explicitly for SDR.\n"
+      "  --cvvdp-display NAME  Override display (SDR: standard_fhd; PQ: standard_hdr_pq; HLG: standard_hdr_hlg).\n"
       "  --cvvdp-gpu-mem GB   Optional CVVDP GPU memory budget (decimal GB).\n"
       "\n"
       "General\n"
@@ -265,7 +266,7 @@ void usage(const char* argv0) {
       "  --version            Print version and build capabilities.\n"
       "\n"
       "Examples\n"
-      "  pixvqa --metrics sdr -r ref.mp4 -t test.mp4 --cvvdp-display standard_fhd\n"
+      "  pixvqa --metrics sdr -r ref.mp4 -t test.mp4\n"
       "  pixvqa --metrics pq -r ref.mp4 -t test.mp4 --qcs\n"
       "  pixvqa --metrics hlg -r ref.mp4 -t test.mp4 --qcs\n"
       "See docs/CLI_USAGE.md and docs/PU21.md for detailed usage.\n",
@@ -375,7 +376,7 @@ std::string fmt_mse(double v) {
 }
 
 void print_psnr(const PlaneScore& psnr, const PlaneScore& mse) {
-  std::printf("[ PSNR  y:%s u:%s v:%s avg:%s ] [ MSE  y:%s u:%s v:%s avg:%s ] ",
+  std::printf("[ PSNR y:%s u:%s v:%s avg:%s ] [ MSE y:%s u:%s v:%s avg:%s ] ",
               fmt_psnr(psnr.y).c_str(), fmt_psnr(psnr.u).c_str(), fmt_psnr(psnr.v).c_str(),
               fmt_psnr(psnr.avg).c_str(), fmt_mse(mse.y).c_str(), fmt_mse(mse.u).c_str(),
               fmt_mse(mse.v).c_str(), fmt_mse(mse.avg).c_str());
@@ -391,7 +392,7 @@ std::string fmt_pu21_psnr(double v) {
 // avg is the pooled RGB value: PSNR of the mean square error over all three
 // components, not the mean of the component PSNR values.
 void print_pu21_psnr(const Pu21FrameScore& s) {
-  std::printf("[ PU21-PSNR     r:%s g:%s b:%s avg:%s ] ",
+  std::printf("[ PU21-PSNR r:%s g:%s b:%s avg:%s ] ",
               fmt_pu21_psnr(s.psnr_r).c_str(), fmt_pu21_psnr(s.psnr_g).c_str(), fmt_pu21_psnr(s.psnr_b).c_str(),
               fmt_pu21_psnr(s.psnr).c_str());
 }
@@ -401,7 +402,7 @@ void print_pu21_psnr(const Pu21FrameScore& s) {
 // chroma plane is evaluated.
 void print_pu21_luma_metric(const char* name, double value) {
   const std::string shown = fmt_pu21_psnr(value);
-  std::printf("[ %-13s y:%s u:n/a v:n/a avg:%s ] ", name, shown.c_str(), shown.c_str());
+  std::printf("[ %s y:%s u:n/a v:n/a avg:%s ] ", name, shown.c_str(), shown.c_str());
 }
 
 void print_pu21_scores(const Options& opt, const Pu21FrameScore& score) {
@@ -411,10 +412,40 @@ void print_pu21_scores(const Options& opt, const Pu21FrameScore& score) {
 }
 
 void print_metric(const char* name, const PlaneScore& s) {
-  std::printf("[ %s  y:%.6f u:%.6f v:%.6f avg:%.6f ] ", name, s.y, s.u, s.v, s.avg);
+  std::printf("[ %s y:%.6f u:%.6f v:%.6f avg:%.6f ] ", name, s.y, s.u, s.v, s.avg);
 }
 
 void print_msssim(const PlaneScore& s) { print_metric("MS-SSIM", s); }
+
+// Summary has one metric per line; per-frame logs keep their compact layout.
+void print_summary_psnr(const PlaneScore& psnr, const PlaneScore& mse) {
+  std::printf("[ PSNR y:%s u:%s v:%s avg:%s ]\n",
+              fmt_psnr(psnr.y).c_str(), fmt_psnr(psnr.u).c_str(), fmt_psnr(psnr.v).c_str(),
+              fmt_psnr(psnr.avg).c_str());
+  std::printf("[ MSE y:%s u:%s v:%s avg:%s ]\n",
+              fmt_mse(mse.y).c_str(), fmt_mse(mse.u).c_str(), fmt_mse(mse.v).c_str(),
+              fmt_mse(mse.avg).c_str());
+}
+
+void print_summary_metric(const char* name, const PlaneScore& s) {
+  std::printf("[ %s y:%.6f u:%.6f v:%.6f avg:%.6f ]\n", name, s.y, s.u, s.v, s.avg);
+}
+
+void print_summary_pu21(const Options& opt, const Pu21FrameScore& score) {
+  if (opt.enable_pu21_psnr) {
+    std::printf("[ PU21-PSNR r:%s g:%s b:%s avg:%s ]\n",
+                fmt_pu21_psnr(score.psnr_r).c_str(), fmt_pu21_psnr(score.psnr_g).c_str(),
+                fmt_pu21_psnr(score.psnr_b).c_str(), fmt_pu21_psnr(score.psnr).c_str());
+  }
+  if (opt.enable_pu21_ssim) {
+    const std::string v = fmt_pu21_psnr(score.ssim);
+    std::printf("[ PU21-SSIM y:%s u:n/a v:n/a avg:%s ]\n", v.c_str(), v.c_str());
+  }
+  if (opt.enable_pu21_msssim) {
+    const std::string v = fmt_pu21_psnr(score.msssim);
+    std::printf("[ PU21-MS-SSIM y:%s u:n/a v:n/a avg:%s ]\n", v.c_str(), v.c_str());
+  }
+}
 
 PlaneScore score_msssim(const Frame& ref, const Frame& test, const VideoFormat& fmt, double peak,
                       int threads) {
@@ -444,8 +475,6 @@ void trim_ascii_space(std::string& s) {
 
 constexpr unsigned kQcsCvqaHdrNrBit = 1u << 8;
 constexpr unsigned kQcsCvvdpBit = 1u << 9;
-constexpr const char* kHdrVmafModel = "model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json";
-constexpr const char* kSdrVmafModel = "model/vmaf_v1.0.16_3d0h.json";
 
 bool assign_qcs_range(Options& opt, const std::string& spec) {
   const auto eq = spec.find('=');
@@ -625,6 +654,12 @@ void print_vmaf_meta(const VmafMeta& m) {
       "hfr_temporal=%s color_ref=%s color_dist=%s\n",
       m.libvmaf_commit.c_str(), m.zimg_version.c_str(), m.backend.c_str(), m.conversion.c_str(),
       m.display_short_side, temporal, m.color_ref.c_str(), m.color_dist.c_str());
+  // Human-facing diagnostics go to stderr. Preserve the established VMAF-EXT
+  // stdout record used by metric parsers and numerical regression baselines.
+  std::fprintf(stderr,
+               "pixvqa-vmaf: info: backend=%s conversion=%s display=%d "
+               "hfr_temporal=%s\n",
+               m.backend.c_str(), m.conversion.c_str(), m.display_short_side, temporal);
 }
 #endif
 
@@ -1143,12 +1178,6 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
       opt.hdr.color_inferred = true;
     }
   }
-  if (opt.enable_vmaf && opt.vmaf_model_path.empty() && kind != "hlg") {
-    const std::string rel = kind == "pq" ? kHdrVmafModel : kSdrVmafModel;
-    const std::string beside = readable_file(rel) ? "" : locate_beside_executable(rel);
-    opt.vmaf_model_path = beside.empty() ? rel : beside;
-    opt.vmaf_model_from_model = true;
-  }
   if (cvvdp.selected) {
     if (cvvdp.interpretation.empty()) cvvdp.interpretation = kind;
     else if (cvvdp.interpretation != kind) {
@@ -1159,18 +1188,15 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
     const char* display = nullptr;
     if (kind == "pq") display = "standard_hdr_pq";
     else if (kind == "hlg") display = "standard_hdr_hlg";
+    else if (kind == "sdr") display = "standard_fhd";
     if (display) {
       if (cvvdp.display.empty()) cvvdp.display = display;
-      else if (cvvdp.display != display) {
-        std::fprintf(stderr, "pixvqa: %s uses --cvvdp-display %s\n", who.c_str(), display);
+      else if (cvvdp.display != display &&
+               !(kind == "sdr" && cvvdp.display == "standard_4k")) {
+        std::fprintf(stderr, "pixvqa: %s uses --cvvdp-display %s%s\n", who.c_str(),
+                     display, kind == "sdr" ? " or standard_4k" : "");
         return false;
       }
-    } else if (cvvdp.display.empty()) {
-      std::fprintf(stderr,
-                   "pixvqa: %s needs --cvvdp-display standard_fhd or standard_4k "
-                   "(the SDR display model is not inferred from resolution)\n",
-                   who.c_str());
-      return false;
     }
   }
   return true;
@@ -1411,6 +1437,10 @@ BackendProcess run_backend_process(const char* label, std::vector<std::string> a
   pollfd fds[2] = {{out_pipe[0], POLLIN, 0}, {err_pipe[0], POLLIN, 0}};
   int open_fds = 2;
   char buffer[4096];
+  backend_log::Relay stderr_relay(label);
+  auto emit_stderr = [](const std::string& log_line) {
+    write_all(STDERR_FILENO, log_line.data(), log_line.size());
+  };
   while (open_fds > 0) {
     if (poll(fds, 2, -1) < 0) {
       if (errno == EINTR) continue;
@@ -1427,9 +1457,10 @@ BackendProcess run_backend_process(const char* label, std::vector<std::string> a
         continue;
       }
       if (i == 0) proc.out.append(buffer, static_cast<size_t>(n));
-      else write_all(STDERR_FILENO, buffer, static_cast<size_t>(n));
+      else stderr_relay.consume(buffer, static_cast<size_t>(n), emit_stderr);
     }
   }
+  stderr_relay.finish(emit_stderr);
   for (pollfd& p : fds) {
     if (p.fd >= 0) close(p.fd);
   }
@@ -1598,10 +1629,9 @@ bool prepare_cvvdp_learned_inputs(LearnedPlan& plan, SideSpec& ref, SideSpec& te
     plan.cvvdp_raw_test = false;
     return true;
   }
-  if (plan.cvvdp.interpretation != "pq" && plan.cvvdp.interpretation != "hlg") {
-    std::fprintf(stderr,
-                 "pixvqa: cvvdp raw YUV supports only --cvvdp-interpretation pq or hlg; "
-                 "SDR raw YUV is unsupported\n");
+  if (plan.cvvdp.interpretation != "sdr" && plan.cvvdp.interpretation != "pq" &&
+      plan.cvvdp.interpretation != "hlg") {
+    std::fprintf(stderr, "pixvqa: cvvdp raw YUV requires SDR, PQ, or HLG interpretation\n");
     return false;
   }
   if (!adopt_cvvdp_fps(plan.opt, ref, test)) return false;
@@ -2596,6 +2626,49 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
     dist.chroma_loc_conflict = false;
     dist.chroma_loc_unsupported = false;
   }
+  // CL Yc'CbcCrc requires its own display inverse. PU21 uses that inverse;
+  // direct sample-domain metrics are safe only for matching CL/CL signals.
+  // There is no implemented CL->NCL conversion for VMAF or learned metrics.
+  const bool ref_cl = ref.matrix == HdrMatrix::Bt2020Cl;
+  const bool dist_cl = dist.matrix == HdrMatrix::Bt2020Cl;
+
+  if (ref_cl || dist_cl) {
+    if (!ref_cl || !dist_cl) {
+      std::fprintf(stderr,
+                   "pixvqa: incompatible BT.2020 matrices: "
+                   "bt2020c and non-bt2020c cannot be compared "
+                   "directly in the sample domain\n");
+      return 2;
+    }
+
+    if (ref.transfer != dist.transfer ||
+        (ref.transfer != HdrTransfer::Pq &&
+         ref.transfer != HdrTransfer::Hlg) ||
+        ref.primaries != HdrPrimaries::Bt2020 ||
+        dist.primaries != HdrPrimaries::Bt2020 ||
+        ref.range != dist.range ||
+        ref.range == HdrRange::Unspecified) {
+      std::fprintf(stderr,
+                   "pixvqa: bt2020c sample comparison requires "
+                   "matching PQ/HLG transfer, BT.2020 primaries, "
+                   "and matching explicit range\n");
+      return 2;
+    }
+
+    if (opt.enable_vmaf) {
+      std::fprintf(stderr,
+                   "pixvqa: bt2020c is unsupported by VMAF: the model requires "
+                   "bt2020nc and no CL-to-NCL conversion is implemented\n");
+      return 2;
+    }
+    if (g_learned) {
+      std::fprintf(stderr,
+                   "pixvqa: bt2020c is unsupported by the selected learned "
+                   "metric(s); CL conversion is not validated\n");
+      return 2;
+    }
+  }
+
   const std::string why = hdr_reject_reason(ref, dist, opt.hlg_peak_set, opt.hlg_peak);
   if (!why.empty()) {
     std::fprintf(stderr, "pixvqa: HDR interpretation rejected: %s\n", why.c_str());
@@ -2621,6 +2694,17 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   if (opt.enable_vmaf && bundled_hdr_model) {
     if (opt.format.chroma != ChromaFormat::YUV420 || opt.format.bit_depth != 10) {
       std::fprintf(stderr, "pixvqa: HDR VMAF supports limited-range YUV420p10 only\n");
+      return 2;
+    }
+    // The bundled HDR model assumes BT.2020 non-constant luminance.
+    // Relabeling constant-luminance samples would be incorrect.
+    if (ref_stream.matrix == HdrMatrix::Bt2020Cl ||
+        dist_stream.matrix == HdrMatrix::Bt2020Cl ||
+        ref.matrix == HdrMatrix::Bt2020Cl ||
+        dist.matrix == HdrMatrix::Bt2020Cl) {
+      std::fprintf(stderr,
+                   "pixvqa: HDR VMAF rejects bt2020c: the bundled model "
+                   "requires bt2020nc; no CL-to-NCL conversion is implemented\n");
       return 2;
     }
     // These model-specific labels are passed only to libvmaf. ref_eff and
@@ -2668,12 +2752,25 @@ int report_hdr(const HdrSide& ref_stream, const HdrSide& dist_stream, const Opti
   if (ref_out) *ref_out = ref_eff;
   if (dist_out) *dist_out = dist_eff;
   if (!emit) return 0;
-  std::printf("HDR:\n  %s\n  %s\n", hdr_side_line("reference", ref_eff.side).c_str(),
+  const auto is_sdr_transfer = [](HdrTransfer value) {
+    return value == HdrTransfer::Sdr || value == HdrTransfer::Bt709 ||
+           value == HdrTransfer::Bt2020_10 || value == HdrTransfer::Smpte170m;
+  };
+  const bool both_sdr = is_sdr_transfer(ref_eff.side.transfer) &&
+                        is_sdr_transfer(dist_eff.side.transfer);
+  const bool both_pq = ref_eff.side.transfer == HdrTransfer::Pq &&
+                       dist_eff.side.transfer == HdrTransfer::Pq;
+  const bool both_hlg = ref_eff.side.transfer == HdrTransfer::Hlg &&
+                        dist_eff.side.transfer == HdrTransfer::Hlg;
+  const char* color_mode = both_sdr ? "SDR" : both_pq ? "HDR PQ" :
+                           both_hlg ? "HDR HLG" : "mixed or unspecified";
+  std::printf("Color interpretation (%s):\n  %s\n  %s\n", color_mode,
+              hdr_side_line("reference", ref_eff.side).c_str(),
               hdr_side_line("distorted", dist_eff.side).c_str());
   for (const std::string& note : ref_eff.notices) std::printf("  notice: reference %s\n", note.c_str());
   for (const std::string& note : dist_eff.notices) std::printf("  notice: distorted %s\n", note.c_str());
-  const std::string ref_display = hdr_display_text("reference", ref_eff);
-  const std::string dist_display = hdr_display_text("distorted", dist_eff);
+  const std::string ref_display = pu21_selected(opt) ? hdr_display_text("reference", ref_eff) : "";
+  const std::string dist_display = pu21_selected(opt) ? hdr_display_text("distorted", dist_eff) : "";
   if (!ref_display.empty()) std::printf("  %s\n", ref_display.c_str());
   if (!dist_display.empty()) std::printf("  %s\n", dist_display.c_str());
   if (!ref_display.empty() || !dist_display.empty()) {
@@ -2754,7 +2851,7 @@ int parse_hdr_option(Options& opt, const std::string& flag, const std::string& v
   }
   if (body == "matrix") {
     HdrMatrix parsed;
-    if (!hdr_parse_matrix_token(value, parsed)) return bad("expects auto, bt2020nc, or bt709");
+    if (!hdr_parse_matrix_token(value, parsed)) return bad("expects auto, bt2020nc, bt2020c, or bt709");
     slot->matrix_set = true;
     slot->color_inferred = false;
     slot->matrix = value;
@@ -2988,6 +3085,115 @@ int adopt_frame_rate(Options& opt, const SideSpec& ref, const SideSpec& test) {
   std::fprintf(stderr, "pixvqa: xpsnr using frame rate %d/%d from the compressed input\n",
                opt.fps_num, opt.fps_den);
   return 0;
+}
+
+// Automatic model choice is intentionally restricted to validated picture formats.
+// Explicit --model / --vmaf-model paths are passed through unchanged.
+bool resolve_auto_vmaf_model(Options& opt, const SideSpec& ref, const SideSpec& test) {
+  if (!opt.enable_vmaf) return true;
+  if (!opt.vmaf_model_path.empty() && opt.vmaf_model_path != "auto") {
+    std::fprintf(stderr, "pixvqa-vmaf: info: model selection=explicit model=%s\n",
+                 opt.vmaf_model_path.c_str());
+    return true;
+  }
+
+  const std::pair<bool, std::string> declared[] = {
+      {opt.transfer_set, opt.transfer},
+      {opt.ref_transfer_set, opt.ref_transfer},
+      {opt.dist_transfer_set, opt.dist_transfer},
+      {opt.hdr.transfer_set || opt.hdr.transfer_inferred, opt.hdr.transfer},
+      {opt.ref_hdr.transfer_set || opt.ref_hdr.transfer_inferred, opt.ref_hdr.transfer},
+      {opt.dist_hdr.transfer_set || opt.dist_hdr.transfer_inferred, opt.dist_hdr.transfer},
+  };
+  std::string family;
+  for (const auto& entry : declared) {
+    if (!entry.first) continue;
+    const std::string candidate = transfer_family(entry.second);
+    if (candidate.empty() || (!family.empty() && family != candidate)) {
+      std::fprintf(stderr, "pixvqa: VMAF auto model needs consistent SDR or PQ transfer; "
+                           "unsupported/conflicting transfer %s\n", entry.second.c_str());
+      return false;
+    }
+    family = candidate;
+  }
+  // When the user has not chosen an interpretation, inspect stream metadata.
+  // Do not infer HDR from bit depth or silently classify an untagged stream as SDR.
+  if (family.empty()) {
+#ifdef PIXVQA_HAS_FFMPEG
+    for (const SideSpec* side : {&ref, &test}) {
+      if (!side->compressed) continue;
+      HdrSide hdr;
+      std::string error;
+      if (!probe_stream_hdr(side->path, hdr, error)) {
+        std::fprintf(stderr, "pixvqa: VMAF auto model cannot probe transfer for %s: %s\n",
+                     side->path.c_str(), error.c_str());
+        return false;
+      }
+      std::string observed;
+      if (hdr.transfer == HdrTransfer::Pq) observed = "pq";
+      else if (hdr.transfer == HdrTransfer::Hlg) observed = "hlg";
+      else if (hdr.transfer == HdrTransfer::Sdr || hdr.transfer == HdrTransfer::Bt709 ||
+               hdr.transfer == HdrTransfer::Bt2020_10 || hdr.transfer == HdrTransfer::Smpte170m)
+        observed = "sdr";
+      if (observed.empty() || (!family.empty() && family != observed)) {
+        std::fprintf(stderr, "pixvqa: VMAF auto model needs matching explicit SDR/PQ transfer tags "
+                             "on compressed inputs; use --hdr-transfer or --model PATH\n");
+        return false;
+      }
+      family = observed;
+    }
+#endif
+    if (family.empty()) {
+      std::fprintf(stderr, "pixvqa: VMAF auto model needs an explicit transfer "
+                           "(--hdr-transfer sdr|pq), stream metadata, or --metrics sdr|pq\n");
+      return false;
+    }
+  }
+  if (family == "hlg") {
+    std::fprintf(stderr, "pixvqa: VMAF automatic model selection is unsupported for HLG\n");
+    return false;
+  }
+  const int width = opt.format.width;
+  const int height = opt.format.height;
+  const bool hd = width == 1920 && height == 1080;
+  const bool uhd = width == 3840 && height == 2160;
+  if (!hd && !uhd) {
+    std::fprintf(stderr, "pixvqa: VMAF auto model supports only 1920x1080 or 3840x2160 "
+                         "(got %dx%d); use --model PATH to override\n", width, height);
+    return false;
+  }
+  int num = opt.fps_num, den = opt.fps_den;
+  if (!opt.fps_set || num <= 0 || den <= 0) {
+    const SideSpec* source = ref.compressed ? &ref : (test.compressed ? &test : nullptr);
+    if (source && source->rate == FrameRateKind::Constant && source->fps_num > 0 && source->fps_den > 0) {
+      num = source->fps_num;
+      den = source->fps_den;
+    }
+  }
+  if (num <= 0 || den <= 0) {
+    std::fprintf(stderr, "pixvqa: VMAF auto model requires a known constant frame rate "
+                         "(--fps for raw input); use --model PATH to override\n");
+    return false;
+  }
+  if (ref.compressed && test.compressed && ref.rate == FrameRateKind::Constant &&
+      test.rate == FrameRateKind::Constant && !same_rate(ref, test) && !opt.fps_set) {
+    std::fprintf(stderr, "pixvqa: VMAF auto model requires matching input frame rates "
+                         "or explicit --fps\n");
+    return false;
+  }
+  const bool hfr = static_cast<long long>(num) > 30LL * den;
+  const std::string prefix = family == "pq" ? "hdr_vmaf_v1.1.8" : "vmaf_v1.0.16";
+  const std::string stem = prefix + (hfr ? "_hfr" : "") +
+                           (uhd ? "_1d5h_2160" : "_3d0h") + ".json";
+  const std::string rel = (family == "pq" ? "model/" + prefix + (hfr ? "_hfr/" : "/") : "model/") + stem;
+  const std::string beside = readable_file(rel) ? "" : locate_beside_executable(rel);
+  opt.vmaf_model_path = beside.empty() ? rel : beside;
+  std::fprintf(stderr,
+               "pixvqa-vmaf: info: model selection=auto model=%s transfer=%s "
+               "resolution=%dx%d fps=%d/%d viewing_distance=%s\n",
+               opt.vmaf_model_path.c_str(), family.c_str(), width, height, num, den,
+               uhd ? "1.5H" : "3.0H");
+  return true;
 }
 
 }  // namespace
@@ -3490,8 +3696,10 @@ int run_cli(int argc, char** argv) {
   if (resolve_execution(opt) != 0) return 2;
   if (opt.vmaf_cpu_notice) {
     std::fprintf(stderr,
-                 "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.\n");
+                 "pixvqa-vmaf: warning: VMAF CUDA computation is unavailable; using CPU libvmaf.\n");
   }
+  if (adopt_frame_rate(opt, ref_side, test_side) != 0) return 2;
+  if (!resolve_auto_vmaf_model(opt, ref_side, test_side)) return 2;
   if (opt.enable_vmaf) {
 #ifndef PIXVQA_HAS_VMAF
     std::fprintf(stderr,
@@ -3499,12 +3707,6 @@ int run_cli(int argc, char** argv) {
                  "(build deps with scripts/build_libvmaf.sh)\n");
     return 2;
 #else
-    if (opt.vmaf_model_path.empty()) {
-      std::fprintf(stderr,
-                   "pixvqa: vmaf requires --model <path-to-vmaf-model.json> "
-                   "(example: --model model/vmaf_v1.0.16_3d0h.json)\n");
-      return 2;
-    }
     auto explicit_hdr = [](bool set, const std::string& token) {
       return set && (token == "st2084" || token == "stdb67" || token == "pq" || token == "hlg");
     };
@@ -3554,7 +3756,6 @@ int run_cli(int argc, char** argv) {
     std::fprintf(stderr, "pixvqa: --model and --vmaf-model require vmaf in --metrics\n");
     return 2;
   }
-  if (adopt_frame_rate(opt, ref_side, test_side) != 0) return 2;
   if (opt.enable_xpsnr && !xpsnr_geometry_supported(opt.format.width, opt.format.height)) {
     std::fprintf(stderr,
                  "pixvqa: XPSNR does not support %dx%d (odd luma edge above 2048*1152 "
@@ -3579,7 +3780,6 @@ int run_cli(int argc, char** argv) {
   }
   opt.peak = (1 << opt.format.bit_depth) - 1;
   const double L = opt.peak;
-  const int bd = opt.format.bit_depth;
 
   try {
     YuvReader ref_rd, test_rd;
@@ -3837,7 +4037,8 @@ int run_cli(int argc, char** argv) {
         }
         if (pu21.clamped && !pu21_clamp_noted) {
           std::fprintf(stderr,
-                       "pixvqa: PU21 clamped samples outside [0.005, 10000] cd/m2\n");
+                       "pixvqa: PU21 clipped out-of-gamut CL components or samples "
+                       "outside [0.005, 10000] cd/m2\n");
           pu21_clamp_noted = true;
         }
         if (opt.enable_pu21_psnr) {
@@ -3988,24 +4189,23 @@ int run_cli(int argc, char** argv) {
     if (opt.enable_psnr) {
       auto summary = psnr_from_mean_mse(sum_mse_y / nframes, sum_mse_u / nframes,
                                         sum_mse_v / nframes, opt.format.chroma, opt.peak);
-      print_psnr(summary.psnr, summary.mse);
-      std::printf("\n");
+      print_summary_psnr(summary.psnr, summary.mse);
     }
     if (opt.enable_ssim) {
       PlaneScore s{sum_ssim.y / nframes, sum_ssim.u / nframes, sum_ssim.v / nframes,
                    sum_ssim.avg / nframes};
-      print_metric("SSIM", s);
-      std::printf("\n");
+      print_summary_metric("SSIM", s);
     }
     if (opt.enable_msssim) {
       PlaneScore s{sum_msssim.y / nframes, sum_msssim.u / nframes, sum_msssim.v / nframes,
                    sum_msssim.avg / nframes};
-      print_msssim(s);
-      std::printf("\n");
+      print_summary_metric("MS-SSIM", s);
     }
     if (opt.enable_xpsnr) {
-      print_xpsnr(xpsnr.summary().score);
-      std::printf("\n");
+      const XpsnrFrame x = xpsnr.summary().score;
+      std::printf("[ XPSNR y:%s u:%s v:%s avg:%s min:%s ]\n",
+                  fmt_xpsnr(x.y).c_str(), fmt_xpsnr(x.u).c_str(), fmt_xpsnr(x.v).c_str(),
+                  fmt_xpsnr(x.avg).c_str(), fmt_xpsnr(x.min_score).c_str());
     }
     if (pu21_selected(opt)) {
       Pu21FrameScore summary;
@@ -4022,8 +4222,7 @@ int run_cli(int argc, char** argv) {
       }
       summary.ssim = sum_pu_ssim / nframes;
       summary.msssim = sum_pu_msssim / nframes;
-      print_pu21_scores(opt, summary);
-      std::printf("\n");
+      print_summary_pu21(opt, summary);
     }
 #ifdef PIXVQA_HAS_VMAF
     if (opt.enable_vmaf) {
@@ -4046,7 +4245,11 @@ int run_cli(int argc, char** argv) {
       if (opt.enable_pu21_msssim) print_qcs("PU21-MS-SSIM-QCS", qcs_pu21_msssim);
       if (g_learned) print_learned_qcs(*g_learned);
     }
-    std::printf("\nTotal frames:%d  fps:%.2f\n\n", nframes, nframes / std::max(sec, 1e-9));
+    const double evaluation_sec = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t0).count();
+    std::printf("\nTotal frames:%d  native fps:%.2f  evaluation fps:%.2f\n\n",
+                nframes, nframes / std::max(sec, 1e-9),
+                nframes / std::max(evaluation_sec, 1e-9));
     if (prof) {
       std::fprintf(stderr, "[PIXVQA_PROFILE] io=%.1fms compute=%.1fms\n", io_s * 1e3, compute_s * 1e3);
     }

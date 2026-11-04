@@ -82,7 +82,7 @@ def check_device(requested: str, report_auto_fallback: bool) -> str:
         raise PreflightError(str(exc)) from exc
     notice = auto_notice(requested, effective)
     if notice and report_auto_fallback:
-        print(f"pixvqa-cvvdp: {notice}", file=sys.stderr)
+        print(f"pixvqa-cvvdp: warning: {notice}", file=sys.stderr)
     return effective
 
 
@@ -112,10 +112,13 @@ def check_mixed_api_runtime() -> None:
         ) from exc
 
 
-def is_mixed_raw_compressed(raw_record: dict | None) -> bool:
+def uses_python_video_source(raw_record: dict | None, interpretation: str) -> bool:
+    """Use independent input readers for mixed formats and SDR raw/raw."""
     if not raw_record:
         return False
-    return bool(raw_record.get("reference_is_raw")) != bool(raw_record.get("test_is_raw"))
+    ref_raw = bool(raw_record.get("reference_is_raw"))
+    test_raw = bool(raw_record.get("test_is_raw"))
+    return (ref_raw != test_raw) or (interpretation == "sdr" and ref_raw and test_raw)
 
 
 def installed_distribution(*names: str) -> dict:
@@ -191,6 +194,38 @@ def probe_video(path: str) -> dict:
     }
 
 
+def resolve_sdr_metadata(meta: dict, label: str) -> None:
+    """Infer only missing SDR tags when an explicit BT.709 matrix is present.
+
+    This is intentionally an interpretation-scoped fallback, not a claim that
+    BT.709 matrix coefficients uniquely determine primaries or transfer. The
+    FFmpeg decoder continues to use the original stream's matrix metadata.
+    """
+    if meta.get("color_space") != "bt709":
+        raise AdapterError(f"{label} SDR requires a BT.709 matrix")
+    if meta.get("color_range") not in ("tv", "mpeg"):
+        raise AdapterError(f"{label} SDR requires explicit limited-range signaling")
+    if meta.get("color_transfer") not in ("bt709", "iec61966-2-1", "unknown", "unspecified"):
+        raise AdapterError(f"{label} has conflicting SDR transfer {meta['color_transfer']!r}")
+    if meta.get("color_primaries") not in ("bt709", "unknown", "unspecified"):
+        raise AdapterError(f"{label} has conflicting SDR primaries {meta['color_primaries']!r}")
+    inferred = {}
+    if meta["color_transfer"] in ("unknown", "unspecified"):
+        inferred["color_transfer"] = "bt709"
+    if meta["color_primaries"] in ("unknown", "unspecified"):
+        inferred["color_primaries"] = "bt709"
+    if inferred:
+        meta["original_color_metadata"] = {
+            key: meta[key] for key in ("color_space", "color_transfer", "color_primaries", "color_range")
+        }
+        meta.update(inferred)
+        meta["inferred_sdr_metadata"] = inferred
+        print(
+            f"pixvqa-cvvdp: info: {label} SDR BT.709 matrix; assuming unspecified "
+            f"{', '.join(inferred)} as BT.709", file=sys.stderr,
+        )
+
+
 def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None:
     if (ref["width"], ref["height"]) != (test["width"], test["height"]):
         raise AdapterError("resolution mismatch between reference and test")
@@ -210,11 +245,15 @@ def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None
                     f"{label} has {count} frames, fewer than requested {nframes}"
                 )
     for label, meta in (("reference", ref), ("test", test)):
+        if meta.get("color_space") == "bt2020c":
+            raise AdapterError(f"{label} is tagged bt2020c; CVVDP has no validated CL-to-NCL conversion")
         if interpretation == "pq":
-            if meta["color_transfer"] != "smpte2084" or meta["color_primaries"] != "bt2020":
+            if (meta["color_transfer"] != "smpte2084" or meta["color_primaries"] != "bt2020"
+                    or meta["color_space"] != "bt2020nc"
+                    or meta["color_range"] not in ("tv", "mpeg")):
                 raise AdapterError(
-                    f"{label} is not explicitly BT.2020 PQ; PQ is not inferred from bit depth, "
-                    "resolution, or filename"
+                    f"{label} is not explicitly limited-range BT.2020 NCL PQ "
+                    "(smpte2084, bt2020, bt2020nc, tv); CL is unsupported"
                 )
         elif interpretation == "hlg":
             if (meta["color_transfer"] != "arib-std-b67" or meta["color_primaries"] != "bt2020"
@@ -224,8 +263,7 @@ def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None
                     "(arib-std-b67, bt2020, bt2020nc, tv); HLG is not inferred from PQ or SDR tags"
                 )
         elif interpretation == "sdr":
-            if meta["color_transfer"] not in ("bt709", "iec61966-2-1"):
-                raise AdapterError(f"{label} is not explicitly SDR (bt709 or iec61966-2-1)")
+            resolve_sdr_metadata(meta, label)
         else:
             raise AdapterError(f"unsupported interpretation {interpretation!r}; use sdr, pq, or hlg")
 
@@ -320,10 +358,12 @@ def fps_token(encoded: float) -> str:
     return f"{encoded:.3f}".rstrip("0").rstrip(".")
 
 
-def yuv_metadata_name(role: str, width: int, height: int, encoded_fps: float) -> str:
+def yuv_metadata_name(role: str, width: int, height: int, encoded_fps: float,
+                      interpretation: str = "pq") -> str:
     if role not in ("reference", "test"):
         raise AdapterError(f"unsupported raw role {role!r}")
-    return f"{role}_{width}x{height}_10b_420_2020_{fps_token(encoded_fps)}fps.yuv"
+    matrix_token = "709" if interpretation == "sdr" else "2020"
+    return f"{role}_{width}x{height}_10b_420_{matrix_token}_{fps_token(encoded_fps)}fps.yuv"
 
 
 def strict_decode_video_props(fname: str) -> dict:
@@ -492,13 +532,14 @@ def parse_result_csv(path: Path) -> float:
 
 def raw_metadata(path: str, width: int, height: int, frames: int, num: int, den: int,
                  interpretation: str) -> dict:
-    # The YUV filename carries the matrix (2020). The EOTF is the display model's:
-    # standard_hdr_pq applies PQ, standard_hdr_hlg applies HLG. ffprobe spells
-    # limited range "tv"; the raw reader expands limited-range codes.
+    # The filename carries the YCbCr matrix (709 for SDR; 2020 for HDR).
+    # The display model applies the interpretation-specific transfer.
+    is_sdr = interpretation == "sdr"
     return {
         "path": path, "codec": "rawvideo", "pix_fmt": "yuv420p10le", "width": width, "height": height,
-        "color_transfer": "arib-std-b67" if interpretation == "hlg" else "smpte2084",
-        "color_primaries": "bt2020", "color_space": "bt2020nc",
+        "color_transfer": "bt709" if is_sdr else ("arib-std-b67" if interpretation == "hlg" else "smpte2084"),
+        "color_primaries": "bt709" if is_sdr else "bt2020",
+        "color_space": "bt709" if is_sdr else "bt2020nc",
         "color_range": "tv", "nb_frames": str(frames), "r_frame_rate": f"{num}/{den}",
         "storage": "little-endian uint16, 10-bit codes in the low 10 bits",
     }
@@ -525,7 +566,7 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
             raise
         except AdapterError as exc:
             raise PreflightError(str(exc)) from exc
-        if is_mixed_raw_compressed(prepared.get("raw_record")):
+        if uses_python_video_source(prepared.get("raw_record"), interpretation):
             check_mixed_api_runtime()
         if check_only:
             if temporal:
@@ -544,7 +585,7 @@ def _raw_side(role: str, path: str, width: int, height: int, encoded_fps: float,
               interpretation: str, nframes: int, links: TemporarySymlinkDir, expected: dict,
               decode_video_props) -> tuple[str, dict, dict, int]:
     frames = validate_raw_yuv(path, width, height, max(nframes, 0))
-    link_path = links.symlink(path, yuv_metadata_name(role, width, height, encoded_fps))
+    link_path = links.symlink(path, yuv_metadata_name(role, width, height, encoded_fps, interpretation))
     verified = verify_yuv_filename(link_path, expected, decode_video_props)
     meta = raw_metadata(path, width, height, frames, num, den, interpretation)
     return link_path, meta, verified, frames
@@ -568,16 +609,13 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
             test_is_raw = legacy_both if legacy_both else bool(raw_test)
             if not ref_is_raw and not test_is_raw:
                 raise PreflightError("raw YUV geometry was supplied without marking a raw side")
-            if interpretation not in ("pq", "hlg"):
-                raise PreflightError(
-                    "raw YUV SDR is unsupported; the official raw reader applies BT.601 coefficients "
-                    "on its BT.709 path"
-                )
+            if interpretation not in ("sdr", "pq", "hlg"):
+                raise PreflightError(f"unsupported raw YUV interpretation {interpretation!r}")
             encoded_fps = encode_fps(raw_fps_num, raw_fps_den)
             links = TemporarySymlinkDir()
             expected = {
                 "width": raw_width, "height": raw_height, "bit_depth": 10, "chroma_ss": "420",
-                "color_space": "2020", "fps": encoded_fps,
+                "color_space": "709" if interpretation == "sdr" else "2020", "fps": encoded_fps,
             }
             if ref_is_raw:
                 ref_path, ref_meta, ref_verified, ref_frames = _raw_side(
@@ -596,7 +634,8 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
                 test_verified = None
                 test_frames = None
             raw_record = {
-                "pix_fmt": "yuv420p10le", "range": "limited", "matrix": "bt2020nc",
+                "pix_fmt": "yuv420p10le", "range": "limited",
+                "matrix": "bt709" if interpretation == "sdr" else "bt2020nc",
                 "transfer": interpretation, "width": raw_width, "height": raw_height,
                 "fps_requested": raw_fps_num / raw_fps_den, "fps_encoded": encoded_fps,
                 "storage": "little-endian uint16 with 10-bit codes in the low bits (0..1023)",
@@ -635,7 +674,7 @@ def make_features_dir() -> Path:
 def execute(prepared: dict, interpretation: str, display: str, nframes: int, device: str,
             output_json: str, temporal: bool = False) -> dict:
     out = Path(output_json)
-    if is_mixed_raw_compressed(prepared.get("raw_record")):
+    if uses_python_video_source(prepared.get("raw_record"), interpretation):
         from pixvqa_cvvdp.python_api import run_mixed_predict
 
         features_dir = make_features_dir() if temporal else None

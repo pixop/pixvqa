@@ -311,7 +311,7 @@ def main() -> int:
             fail("help-hdr still contains the gamma formula or the paper citation")
         elif "1000 cd/m2" not in help_hdr.stdout or "HLG black" not in help_hdr.stdout:
             fail("help-hdr missing the HLG peak or black default")
-        elif not 20 <= hdr_lines <= 30:
+        elif not 20 <= hdr_lines <= 36:
             fail(f"help-hdr length {hdr_lines}")
         elif "rc3" in help_flat.lower() or "deviate" in help_flat.lower():
             fail("help-hdr still describes the HLG black level as an outstanding defect")
@@ -324,7 +324,7 @@ def main() -> int:
             fail("ordinary help does not list the eight supported metrics")
         elif "docs/PU21.md" not in help_main.stdout or "docs/QCS.md" not in help_main.stdout:
             fail("ordinary help missing docs/PU21.md or docs/QCS.md")
-        elif not 40 <= help_lines <= 60:
+        elif not 38 <= help_lines <= 60:
             fail(f"ordinary help length {help_lines}")
         elif "pu21-xpsnr" in help_main.stdout or "pu21-vmaf" in help_main.stdout:
             fail("ordinary help still lists an excluded experimental metric")

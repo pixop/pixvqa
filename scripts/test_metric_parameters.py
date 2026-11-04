@@ -104,27 +104,27 @@ def test_cli_inference() -> None:
         proc = subprocess.run(base, capture_output=True, text=True, env=env, timeout=60)
         if proc.returncode != 0:
             fail("cvvdp-inferred-pq", f"rc={proc.returncode}\n{proc.stderr}\n{proc.stdout}")
-        if "info: cvvdp interpretation pq" not in proc.stderr:
+        if "pixvqa-cvvdp: info: interpretation=pq" not in proc.stderr:
             fail("cvvdp-inferred-pq-log", proc.stderr[-500:])
-        if "info: cvvdp display standard_hdr_pq" not in proc.stderr:
+        if "pixvqa-cvvdp: info: display=standard_hdr_pq" not in proc.stderr:
             fail("cvvdp-inferred-display", proc.stderr[-500:])
         assert_cvvdp_json(proc.stdout, interpretation="pq", display="standard_hdr_pq")
         ok("cvvdp-inferred-pq")
 
         override = subprocess.run([*base, "--hdr-transfer", "hlg"], capture_output=True, text=True, env=env,
                                     timeout=60)
-        if override.returncode != 0 or "info: cvvdp interpretation hlg" not in override.stderr:
+        if override.returncode != 0 or "pixvqa-cvvdp: info: interpretation=hlg" not in override.stderr:
             fail("cvvdp-hdr-transfer-override", override.stderr[-400:])
-        if "info: cvvdp display standard_hdr_hlg" not in override.stderr:
+        if "pixvqa-cvvdp: info: display=standard_hdr_hlg" not in override.stderr:
             fail("cvvdp-hdr-transfer-display", override.stderr[-400:])
         assert_cvvdp_json(override.stdout, interpretation="hlg", display="standard_hdr_hlg")
         ok("cvvdp-hdr-transfer-overrides-metadata")
 
         tf_override = subprocess.run([*base, "--tf", "stdb67"], capture_output=True, text=True, env=env,
                                      timeout=60)
-        if tf_override.returncode != 0 or "info: cvvdp interpretation hlg" not in tf_override.stderr:
+        if tf_override.returncode != 0 or "pixvqa-cvvdp: info: interpretation=hlg" not in tf_override.stderr:
             fail("cvvdp-tf-override", tf_override.stderr[-400:])
-        if "info: cvvdp display standard_hdr_hlg" not in tf_override.stderr:
+        if "pixvqa-cvvdp: info: display=standard_hdr_hlg" not in tf_override.stderr:
             fail("cvvdp-tf-override-display", tf_override.stderr[-400:])
         ok("cvvdp-tf-overrides-metadata")
 
@@ -135,9 +135,9 @@ def test_cli_inference() -> None:
             env=env,
             timeout=60,
         )
-        if per_side.returncode != 0 or "info: cvvdp interpretation hlg" not in per_side.stderr:
+        if per_side.returncode != 0 or "pixvqa-cvvdp: info: interpretation=hlg" not in per_side.stderr:
             fail("cvvdp-dist-hdr-transfer-override", per_side.stderr[-400:])
-        if "info: cvvdp display standard_hdr_hlg" not in per_side.stderr:
+        if "pixvqa-cvvdp: info: display=standard_hdr_hlg" not in per_side.stderr:
             fail("cvvdp-dist-hdr-transfer-display", per_side.stderr[-400:])
         ok("cvvdp-dist-hdr-transfer-overrides-metadata")
 
@@ -202,7 +202,7 @@ def test_cli_inference() -> None:
                 "native-cvvdp-inferred-pq",
                 f"rc={native_inferred.returncode}\n{native_inferred.stderr}\n{native_inferred.stdout}",
             )
-        if "info: cvvdp interpretation pq" not in native_inferred.stderr:
+        if "pixvqa-cvvdp: info: interpretation=pq" not in native_inferred.stderr:
             fail("native-cvvdp-inferred-pq-log", native_inferred.stderr[-500:])
         assert_native_hdr_inferred(native_inferred.stdout)
         assert_input_summary_legacy_defaults(native_inferred.stdout)
@@ -217,9 +217,9 @@ def test_cli_inference() -> None:
             env=env,
             timeout=60,
         )
-        if native_override.returncode != 0 or "info: cvvdp interpretation hlg" not in native_override.stderr:
+        if native_override.returncode != 0 or "pixvqa-cvvdp: info: interpretation=hlg" not in native_override.stderr:
             fail("native-cvvdp-hdr-transfer", native_override.stderr[-500:] + native_override.stdout[-500:])
-        if "info: cvvdp display standard_hdr_hlg" not in native_override.stderr:
+        if "pixvqa-cvvdp: info: display=standard_hdr_hlg" not in native_override.stderr:
             fail("native-cvvdp-hdr-transfer-display", native_override.stderr[-400:])
         if "transfer=hlg (override)" not in native_override.stdout:
             fail("native-cvvdp-hdr-transfer-override", native_override.stdout[-800:])

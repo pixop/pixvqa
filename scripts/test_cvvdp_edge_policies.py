@@ -50,9 +50,14 @@ def test_adapter_transfer_tags() -> None:
     untagged = dict(tagged, color_transfer='unspecified')
     mismatched = dict(tagged, color_transfer='arib-std-b67')
     for reference, test in ((tagged, untagged), (untagged, tagged)):
-        expect_error(lambda: check_pair(reference, test, 'pq', 0), 'not explicitly BT.2020 PQ')
-    expect_error(lambda: check_pair(tagged, mismatched, 'pq', 0), 'not explicitly BT.2020 PQ')
-    print('OK   cvvdp-strict-per-side-transfer-tags')
+        expect_error(lambda: check_pair(reference, test, 'pq', 0), 'not explicitly limited-range BT.2020 NCL PQ')
+    expect_error(lambda: check_pair(tagged, mismatched, 'pq', 0), 'not explicitly limited-range BT.2020 NCL PQ')
+    cl = dict(tagged, color_space='bt2020c')
+    expect_error(lambda: check_pair(cl, tagged, 'pq', 0), 'no validated CL-to-NCL')
+    expect_error(lambda: check_pair(tagged, cl, 'pq', 0), 'no validated CL-to-NCL')
+    ncl_full = dict(tagged, color_range='pc')
+    expect_error(lambda: check_pair(tagged, ncl_full, 'pq', 0), 'limited-range')
+    print('OK   cvvdp-strict-per-side-transfer-tags-and-matrix')
 
 
 def test_mixed_reader_length_policy() -> None:

@@ -29,7 +29,7 @@ def resolve_ffmpeg() -> str:
 
 
 FFMPEG = resolve_ffmpeg()
-WARN = "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf."
+WARN = "pixvqa-vmaf: warning: VMAF CUDA computation is unavailable; using CPU libvmaf."
 TOL = 1e-4
 HDR = [
     "--hdr-transfer", "pq",

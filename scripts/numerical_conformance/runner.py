@@ -275,6 +275,7 @@ def run_suite(
     json_report: Path | None = None,
     force_fixtures: bool = False,
     compare_candidate: Path | None = None,
+    case_ids: tuple[str, ...] | None = None,
 ) -> int:
     compare_candidate_bytes: bytes | None = None
     compare_candidate_payload: dict[str, Any] | None = None
@@ -310,6 +311,15 @@ def run_suite(
     invoke_ctx = build_invoke_context(env.full_bin)
 
     cases = build_cases(profile)
+    if case_ids is not None:
+        available = {c.id for c in cases}
+        unknown = set(case_ids) - available
+        if unknown:
+            print(f"Unknown numerical case IDs: {sorted(unknown)}", file=sys.stderr)
+            return 2
+        selected = set(case_ids)
+        cases = [c for c in cases if c.id in selected]
+        print(f"PARTIAL validation: {len(cases)} selected cases", flush=True)
     results: list[dict[str, Any]] = []
     consistency_cache: dict[str, float] = {}
     baseline = load_baseline(profile)
@@ -356,7 +366,7 @@ def run_suite(
         ):
             hdr_inferred_psnr[case.family] = row["psnr_avg"]
 
-    for family in ("sdr", "pq", "hlg"):
+    for family in (() if case_ids is not None else ("sdr", "pq", "hlg")):
         cid = f"{family}.consistency.psnr_raw_vs_comp"
         c1 = consistency_cache.get(f"{family}.raw_raw")
         ccase = NumericalCase(cid, family, "raw_comp", "psnr", tags=("consistency",))
@@ -375,7 +385,7 @@ def run_suite(
         results.append(row2)
         counts[row2["status"]] = counts.get(row2["status"], 0) + 1
 
-    if profile == "comprehensive":
+    if profile == "comprehensive" and case_ids is None:
         for family in ("sdr", "pq", "hlg"):
             cpu = next((r for r in results if r["id"] == f"{family}.backend.psnr_cpu"), None)
             gpu = next((r for r in results if r["id"] == f"{family}.backend.psnr_gpu"), None)
@@ -427,7 +437,9 @@ def run_suite(
         compare_candidate is not None
         and compare_candidate.resolve() == default_candidate_path.resolve()
     )
-    if skip_default_candidate_write:
+    if case_ids is not None:
+        print("NOTE: partial run; complete-suite candidate not modified")
+    elif skip_default_candidate_write:
         print(
             f"NOTE skipping write to {default_candidate_path} while --compare-candidate targets the same file"
         )
@@ -442,7 +454,10 @@ def run_suite(
     exec_verdict = "PASS" if exec_fail == 0 else "FAIL"
 
     if baseline.get("approved"):
-        missing_cases = audit_mandatory_baseline_coverage(results, baseline)
+        missing_cases = (
+            [] if case_ids is not None
+            else audit_mandatory_baseline_coverage(results, baseline)
+        )
         for mid in missing_cases:
             results.append(
                 {
@@ -491,8 +506,12 @@ def run_suite(
     if candidate_repro_level.get("verdict") == "FAIL":
         verdict = "FAIL"
 
+    if case_ids is not None and verdict == "PASS":
+        verdict = "PARTIAL_PASS"
     report = {
         "suite": "numerical-conformance",
+        "scope": "partial" if case_ids is not None else "full",
+        "selected_case_ids": list(case_ids) if case_ids is not None else None,
         "profile": profile,
         "strict": strict,
         "verdict": verdict,

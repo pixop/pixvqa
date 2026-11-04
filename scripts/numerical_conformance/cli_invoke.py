@@ -279,9 +279,9 @@ def build_pixvqa_command(
             if includes_cvvdp(metric):
                 env["PIXVQA_CVVDP_PYTHON"] = ctx.learned_python
                 argv += ["--cvvdp-python", ctx.learned_python]
-            if includes_cvqa(metric):
-                env["PIXVQA_CVQAHDR_PYTHON"] = ctx.learned_python
-                argv += ["--cvqahdr-python", ctx.learned_python]
+            # CVQA-HDR-NR resolves its dedicated Python interpreter
+            # from learned_metrics.local.toml [cvqa-hdr-nr].
+            # Do not override it with the shared CVVDP interpreter.
     else:
         env["PIXVQA_LEARNED_CONFIG"] = "none"
 

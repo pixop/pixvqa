@@ -43,6 +43,7 @@ def run_mixed_predict(
         display_photometry=display,
         frames=frame_cap,
         fps=float(raw["fps_requested"]),
+        interpretation=interpretation,
     )
     metric_kwargs: dict = {
         "display_name": display,

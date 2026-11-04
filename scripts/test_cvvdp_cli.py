@@ -324,6 +324,15 @@ def test_mixed_input_prepare() -> None:
             )
             if not os.path.islink(prepared_both["ref_path"]) or not os.path.islink(prepared_both["test_path"]):
                 raise SystemExit("both-raw layout wrong")
+            prepared_sdr_both = prepare_inputs(
+                str(raw_ref2), str(raw_test2), "sdr", "standard_fhd", 2, str(script),
+                64, 64, 24, 1, None, raw_ref=True, raw_test=True,
+            )
+            if not (os.path.islink(prepared_sdr_both["ref_path"])
+                    and os.path.islink(prepared_sdr_both["test_path"])):
+                raise SystemExit("SDR raw/raw symlinks missing")
+            if not prepared_sdr_both["ref_path"].endswith("_709_24fps.yuv"):
+                raise SystemExit("SDR raw/raw reference should be BT.709")
             prepared_cc = prepare_inputs(
                 "/tmp/ref.mp4", "/tmp/dist.mp4", "pq", "standard_hdr_pq", 2, str(script),
                 None, None, None, None, None, raw_ref=False, raw_test=False,
@@ -333,6 +342,7 @@ def test_mixed_input_prepare() -> None:
             prepared["links"].cleanup()
             prepared2["links"].cleanup()
             prepared_both["links"].cleanup()
+            prepared_sdr_both["links"].cleanup()
     finally:
         adapter.probe_video = real_probe
         os.environ.pop("TMPDIR", None)
@@ -344,14 +354,16 @@ def test_mixed_routing() -> None:
     from unittest.mock import patch
 
     import pixvqa_cvvdp.adapter as adapter
-    from pixvqa_cvvdp.adapter import is_mixed_raw_compressed
+    from pixvqa_cvvdp.adapter import uses_python_video_source
 
-    if not is_mixed_raw_compressed({"reference_is_raw": True, "test_is_raw": False}):
-        raise SystemExit("is_mixed_raw_compressed ref-raw")
-    if is_mixed_raw_compressed({"reference_is_raw": True, "test_is_raw": True}):
-        raise SystemExit("is_mixed_raw_compressed both raw")
-    if is_mixed_raw_compressed(None):
-        raise SystemExit("is_mixed_raw_compressed none")
+    if not uses_python_video_source({"reference_is_raw": True, "test_is_raw": False}, "sdr"):
+        raise SystemExit("python source ref-raw")
+    if not uses_python_video_source({"reference_is_raw": True, "test_is_raw": True}, "sdr"):
+        raise SystemExit("python source SDR raw/raw")
+    if uses_python_video_source({"reference_is_raw": True, "test_is_raw": True}, "pq"):
+        raise SystemExit("PQ raw/raw must use upstream source")
+    if uses_python_video_source(None, "sdr"):
+        raise SystemExit("python source without raw metadata")
 
     prepared = {
         "binary": "/bin/false",
@@ -388,73 +400,162 @@ def test_mixed_routing() -> None:
     print("OK   cvvdp-mixed-python-routing")
 
 
+def test_sdr_metadata_fallback() -> None:
+    sys.path.insert(0, str(ROOT / "python"))
+    from pixvqa_cvvdp.adapter import AdapterError, check_pair
+
+    def meta(transfer="unknown", primaries="unknown", matrix="bt709", range_="tv"):
+        return {"width": 16, "height": 16, "r_frame_rate": "30/1", "nb_frames": "3",
+                "color_space": matrix, "color_transfer": transfer,
+                "color_primaries": primaries, "color_range": range_}
+
+    ref, test = meta("bt709", "bt709"), meta()
+    check_pair(ref, test, "sdr", 0)
+    if (test["color_transfer"], test["color_primaries"]) != ("bt709", "bt709"):
+        raise SystemExit("SDR fallback did not resolve unspecified tags")
+    if set(test.get("inferred_sdr_metadata", {})) != {"color_transfer", "color_primaries"}:
+        raise SystemExit("SDR fallback missing provenance")
+    if test["original_color_metadata"]["color_transfer"] != "unknown":
+        raise SystemExit("SDR fallback overwrote original color metadata")
+    # A partially tagged stream is resolved without overwriting an explicit tag.
+    partial = meta("bt709", "unspecified")
+    check_pair(meta("bt709", "bt709"), partial, "sdr", 0)
+    if partial.get("inferred_sdr_metadata") != {"color_primaries": "bt709"}:
+        raise SystemExit("SDR partial fallback failed")
+    for name, invalid in (
+        ("explicit PQ transfer", meta("smpte2084", "unknown")),
+        ("conflicting primaries", meta("bt709", "bt2020")),
+        ("unknown matrix", meta(matrix="unknown")),
+        ("HDR matrix", meta(matrix="bt2020nc")),
+        ("full range", meta(range_="pc")),
+    ):
+        try:
+            check_pair(meta("bt709", "bt709"), invalid, "sdr", 0)
+        except AdapterError:
+            pass
+        else:
+            raise SystemExit(f"SDR accepted {name}")
+    # PQ and HLG retain strict transfer/primaries checks.
+    for mode in ("pq", "hlg"):
+        try:
+            check_pair(meta("bt709", "bt709"), meta(), mode, 0)
+        except AdapterError:
+            pass
+        else:
+            raise SystemExit(f"{mode} accepted unspecified transfer")
+    print("OK   sdr-bt709-metadata-fallback")
+
+
 def main() -> int:
+    test_sdr_metadata_fallback()
     test_official_csv()
     test_csv_parse_failure_record()
     test_raw_yuv()
     test_mixed_input_prepare()
     test_mixed_routing()
+
     if not PIXVQA.is_file():
         print(f"missing pixvqa: {PIXVQA}", file=sys.stderr)
         return 2
-    base = ["--metrics", "cvvdp", "-r", "reference.mkv", "-t", "distorted.mkv"]
-    expect_fail("missing-interpretation", [*base, "--cvvdp-display", "standard_hdr_pq"],
-                "--cvvdp-interpretation")
-    expect_fail("invalid-interpretation", [*base, "--cvvdp-interpretation", "rec709",
-                                            "--cvvdp-display", "standard_hdr_pq"],
-                "expects sdr, pq, or hlg")
-    # Mixed runs validate native inputs before any backend starts.
-    expect_fail("mixed-metrics", ["--metrics", "psnr,cvvdp", "-r", "r", "-t", "d",
-                                   "--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq"],
-                "cannot open reference")
-    expect_fail("mixed-metrics-repeated-native-first", ["--metrics", "psnr", "--metrics", "cvvdp",
-                                                         "-r", "r", "-t", "d",
-                                                         "--cvvdp-interpretation", "pq",
-                                                         "--cvvdp-display", "standard_hdr_pq"],
-                "cannot open reference")
-    expect_fail("mixed-metrics-repeated-cvvdp-first", ["--metrics", "cvvdp", "--metrics", "psnr",
-                                                        "-r", "r", "-t", "d",
-                                                        "--cvvdp-interpretation", "pq",
-                                                        "--cvvdp-display", "standard_hdr_pq"],
-                "cannot open reference")
-    expect_fail("qcs-range-requires-qcs", [*base, "--cvvdp-interpretation", "pq",
-                                           "--cvvdp-display", "standard_hdr_pq",
-                                           "--qcs-range", "cvvdp=7:10"],
-                "--qcs-range requires --qcs")
-    expect_fail("native-option-incompatible", [*base, "--cvvdp-interpretation", "pq",
-                                                "--cvvdp-display", "standard_hdr_pq", "--threads", "2"],
-                "incompatible")
-    expect_fail("options-without-cvvdp", ["--metrics", "psnr", "-r", "r", "-t", "d",
-                                          "--cvvdp-display", "standard_hdr_pq"],
-                "require --metrics cvvdp")
-    expect_fail("missing-interpreter", [*base, "--cvvdp-interpretation", "pq",
-                                        "--cvvdp-display", "standard_hdr_pq",
-                                        "--cvvdp-python", "/no/such/python"],
-                "could not execute CVVDP interpreter")
-    raw = ["-r", "reference.yuv", "-t", "reconstructed.yuv"]
-    expect_fail("raw-unsupported-format", ["--metrics", "cvvdp", *raw, "-s", "16x16", "-f", "420p:8",
-                                           "--fps", "60", "--cvvdp-interpretation", "pq",
-                                           "--cvvdp-display", "standard_hdr_pq"],
-                "YUV420p10le")
-    expect_fail("raw-odd-size", ["--metrics", "cvvdp", *raw, "-s", "15x16", "-f", "420p:10",
-                                 "--fps", "60", "--cvvdp-interpretation", "pq",
-                                 "--cvvdp-display", "standard_hdr_pq"],
-                "even width")
-    expect_fail("raw-missing-geometry", ["--metrics", "cvvdp", "-r", "reference.yuv", "-t", "reconstructed.yuv",
-                                       "--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq"],
-                "requires -s and -f")
-    expect_fail("raw-missing-fps", ["--metrics", "cvvdp", *raw, "-s", "16x16", "-f", "420p:10",
-                                    "--cvvdp-interpretation", "pq",
-                                    "--cvvdp-display", "standard_hdr_pq"],
-                "requires --fps")
-    expect_fail("raw-sdr-rejected", ["--metrics", "cvvdp", *raw, "-s", "16x16", "-f", "420p:10",
-                                     "--fps", "60", "--cvvdp-interpretation", "sdr",
-                                     "--cvvdp-display", "standard_fhd"],
-                "SDR raw YUV is unsupported")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        package = Path(tmp) / "pixvqa_cvvdp"
-        package.mkdir()
+    # All input fixtures are local to the test run; nothing depends on a
+    # workstation-specific dataset or an FFmpeg encoder installation.
+    with tempfile.TemporaryDirectory(prefix="pixvqa_cvvdp_cli_") as tmp:
+        fixture_dir = Path(tmp)
+        raw_ref = fixture_dir / "reference.yuv"
+        raw_dist = fixture_dir / "reconstructed.yuv"
+        # One 16x16 YUV420p10le frame = 16*16*3 bytes (16-bit samples).
+        sample_frame = bytes(16 * 16 * 3)
+        raw_ref.write_bytes(sample_frame)
+        raw_dist.write_bytes(sample_frame)
+        raw = ["-r", str(raw_ref), "-t", str(raw_dist)]
+        raw_options = ["-s", "16x16", "-f", "420p:10", "--fps", "60"]
+        pq_options = ["--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq"]
+        sdr_options = ["--cvvdp-interpretation", "sdr", "--cvvdp-display", "standard_fhd"]
+        missing_compressed = ["--metrics", "cvvdp", "-r", "reference.mkv", "-t", "distorted.mkv"]
+
+        # Nonexistent names are intentional in these validation-order tests.
+        expect_fail(
+            "missing-input-before-interpretation",
+            [*missing_compressed, "--cvvdp-display", "standard_hdr_pq"],
+            "cannot open test file",
+        )
+        expect_fail(
+            "invalid-interpretation",
+            [*missing_compressed, "--cvvdp-interpretation", "rec709", "--cvvdp-display", "standard_hdr_pq"],
+            "expects sdr, pq, or hlg",
+        )
+
+        # Mixed runs validate native inputs before starting the learned backend.
+        mixed = ["-r", "r", "-t", "d", *pq_options]
+        expect_fail(
+            "mixed-metrics",
+            ["--metrics", "psnr,cvvdp", *mixed],
+            "cannot open reference",
+        )
+        expect_fail(
+            "mixed-metrics-repeated-native-first",
+            ["--metrics", "psnr", "--metrics", "cvvdp", *mixed],
+            "cannot open reference",
+        )
+        expect_fail(
+            "mixed-metrics-repeated-cvvdp-first",
+            ["--metrics", "cvvdp", "--metrics", "psnr", *mixed],
+            "cannot open reference",
+        )
+        expect_fail(
+            "qcs-range-requires-qcs",
+            [*missing_compressed, *pq_options, "--qcs-range", "cvvdp=7:10"],
+            "--qcs-range requires --qcs",
+        )
+        expect_fail(
+            "native-option-incompatible",
+            [*missing_compressed, *pq_options, "--threads", "2"],
+            "incompatible",
+        )
+        expect_fail(
+            "options-without-cvvdp",
+            ["--metrics", "psnr", "-r", "r", "-t", "d", "--cvvdp-display", "standard_hdr_pq"],
+            "require --metrics cvvdp",
+        )
+
+        # Exercise interpreter validation using generated, valid raw files.
+        # No hardcoded /mnt/d/... video or external encoder is required.
+        expect_fail(
+            "missing-interpreter",
+            [
+                "--metrics", "cvvdp", *raw, *raw_options, *sdr_options,
+                "--cvvdp-python", str(fixture_dir / "no-such-python"),
+            ],
+            "could not execute CVVDP interpreter",
+        )
+
+        expect_fail(
+            "raw-unsupported-format",
+            ["--metrics", "cvvdp", *raw, "-s", "16x16", "-f", "420p:8", "--fps", "60", *pq_options],
+            "YUV420p10le",
+        )
+        expect_fail(
+            "raw-odd-size",
+            ["--metrics", "cvvdp", *raw, "-s", "15x16", "-f", "420p:10", "--fps", "60", *pq_options],
+            "even width",
+        )
+        expect_fail(
+            "raw-missing-geometry",
+            ["--metrics", "cvvdp", *raw, *pq_options],
+            "requires -s and -f",
+        )
+        expect_fail(
+            "raw-missing-fps",
+            ["--metrics", "cvvdp", *raw, "-s", "16x16", "-f", "420p:10", *pq_options],
+            "requires --fps",
+        )
+
+        # Mock only the learned backend process. The compiled C++ frontend and
+        # its raw/raw argument dispatch still run for real.
+        mock_dir = fixture_dir / "mock"
+        package = mock_dir / "pixvqa_cvvdp"
+        package.mkdir(parents=True)
         (package / "__init__.py").write_text("", encoding="utf-8")
         (package / "__main__.py").write_text(
             """
@@ -488,57 +589,108 @@ print(json.dumps({"metric":"cvvdp","jod":9.5,"display":args[args.index("--displa
             encoding="utf-8",
         )
         env = os.environ.copy()
-        env["PYTHONPATH"] = tmp + os.pathsep + env.get("PYTHONPATH", "")
-        output = Path(tmp) / "result.json"
-        result = run([
-            "--metrics", "cvvdp", "-r", "-reference.mkv", "-t", "-distorted.mkv",
-            "--frames", "7", "--metric-device", "cpu", "--cvvdp-interpretation", "pq",
-            "--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq",
-            "--cvvdp-display", "standard_hdr_pq", "--cvvdp-python", sys.executable,
-            "--cvvdp-output-json", str(output),
-        ], env)
+        env["PYTHONPATH"] = str(mock_dir) + os.pathsep + env.get("PYTHONPATH", "")
+        output = fixture_dir / "result.json"
+
+        # These are successful frontend/backend-dispatch tests. Use real, tiny,
+        # generated raw inputs rather than nonexistent compressed placeholders.
+        # The mock module avoids pycvvdp inference and any dependence on FFmpeg.
+        result = run(
+            [
+                "--metrics", "cvvdp", *raw, *raw_options,
+                "--frames", "1", "--metric-device", "cpu",
+                "--cvvdp-interpretation", "sdr", "--cvvdp-interpretation", "sdr",
+                "--cvvdp-display", "standard_fhd", "--cvvdp-display", "standard_fhd",
+                "--cvvdp-python", sys.executable, "--cvvdp-output-json", str(output),
+            ],
+            env,
+        )
         if result.returncode != 0:
             raise SystemExit(f"mock-success: {result.stderr}")
         payload = json.loads(result.stdout)
-        if (payload["jod"] != 9.5 or payload["device"] != "cpu" or payload["reference"] != "-reference.mkv"
-                or payload["test"] != "-distorted.mkv" or not output.is_file()):
+        if (
+            payload["jod"] != 9.5
+            or payload["device"] != "cpu"
+            or payload["reference"] != str(raw_ref)
+            or payload["test"] != str(raw_dist)
+            or not output.is_file()
+        ):
             raise SystemExit(f"mock-success: bad payload {result.stdout!r}")
         print("OK   mocked-dispatch")
-        raw_dispatch = run([
-            "--metrics", "cvvdp", "-r", "reference.yuv", "-t", "reconstructed.yuv",
-            "-s", "1920x1080", "-f", "420p:10", "--fps", "60", "--cvvdp-interpretation", "pq",
-            "--cvvdp-display", "standard_hdr_pq", "--cvvdp-python", sys.executable,
-        ], env)
+
+        raw_dispatch = run(
+            [
+                "--metrics", "cvvdp", *raw, *raw_options, *pq_options,
+                "--cvvdp-python", sys.executable,
+            ],
+            env,
+        )
         if raw_dispatch.returncode != 0:
             raise SystemExit(f"raw-cli-dispatch: {raw_dispatch.stderr}")
         raw_payload = json.loads(raw_dispatch.stdout)
-        if (raw_payload["raw_width"] != "1920" or raw_payload["raw_height"] != "1080"
-                or raw_payload["raw_fps_num"] != "60" or raw_payload["raw_fps_den"] != "1"
-                or raw_payload["reference"] != "reference.yuv" or raw_payload["test"] != "reconstructed.yuv"):
+        if (
+            raw_payload["raw_width"] != "16"
+            or raw_payload["raw_height"] != "16"
+            or raw_payload["raw_fps_num"] != "60"
+            or raw_payload["raw_fps_den"] != "1"
+            or raw_payload["reference"] != str(raw_ref)
+            or raw_payload["test"] != str(raw_dist)
+        ):
             raise SystemExit(f"raw-cli-dispatch payload: {raw_dispatch.stdout!r}")
         print("OK   raw-cli-dispatch")
-        expect_fail("conflicting-repeated-display", [*base, "--cvvdp-interpretation", "pq",
-                                                      "--cvvdp-display", "standard_hdr_pq",
-                                                      "--cvvdp-display", "standard_fhd"],
-                    "conflicting --cvvdp-display", env)
-        transient = run([*base, "--cvvdp-interpretation", "pq",
-                         "--cvvdp-display", "standard_hdr_pq", "--cvvdp-python", sys.executable], env)
+
+        # Positive SDR raw/raw dispatch test: backend import is mocked, but
+        # both input files exist and frontend validation must accept them.
+        raw_sdr = run(
+            ["--metrics", "cvvdp", *raw, *raw_options, *sdr_options, "--cvvdp-python", sys.executable],
+            env,
+        )
+        if raw_sdr.returncode != 0:
+            raise SystemExit(f"raw-sdr-both-dispatched: {raw_sdr.stderr}")
+        sdr_payload = json.loads(raw_sdr.stdout)
+        if (
+            sdr_payload.get("jod") != 9.5
+            or sdr_payload.get("interpretation") != "sdr"
+            or sdr_payload.get("reference") != str(raw_ref)
+            or sdr_payload.get("test") != str(raw_dist)
+            or sdr_payload.get("raw_width") != "16"
+            or sdr_payload.get("raw_height") != "16"
+        ):
+            raise SystemExit(f"raw-sdr-both-dispatched: bad payload {raw_sdr.stdout!r}")
+        print("OK   raw-sdr-both-dispatched")
+
+        expect_fail(
+            "conflicting-repeated-display",
+            [*missing_compressed, *pq_options, "--cvvdp-display", "standard_fhd"],
+            "conflicting --cvvdp-display",
+            env,
+        )
+        transient = run(
+            ["--metrics", "cvvdp", *raw, *raw_options, *sdr_options,
+             "--cvvdp-python", sys.executable],
+            env,
+        )
         if transient.returncode != 0:
             raise SystemExit(f"transient-success: {transient.stderr}")
         transient_payload = json.loads(transient.stdout)
         if transient_payload["output_json"] is not None or Path(transient_payload["backend_record"]).exists():
             raise SystemExit(f"transient-success: output was retained {transient.stdout!r}")
         print("OK   temporary-output-cleanup-success")
+
         env["MOCK_CVVDP_FAIL"] = "1"
-        record_path_file = Path(tmp) / "failed-record-path"
+        record_path_file = fixture_dir / "failed-record-path"
         env["MOCK_CVVDP_RECORD_PATH_FILE"] = str(record_path_file)
-        expect_fail("backend-failure", [*base, "--cvvdp-interpretation", "pq",
-                                        "--cvvdp-display", "standard_hdr_pq",
-                                        "--cvvdp-python", sys.executable],
-                    "CVVDP backend exited 9", env)
+        expect_fail(
+            "backend-failure",
+            ["--metrics", "cvvdp", *raw, *raw_options, *sdr_options,
+             "--cvvdp-python", sys.executable],
+            "CVVDP backend exited 9",
+            env,
+        )
         if not record_path_file.is_file() or Path(record_path_file.read_text(encoding="utf-8")).exists():
             raise SystemExit("temporary output was not removed after backend failure")
         print("OK   temporary-output-cleanup")
+
     return 0
 
 
