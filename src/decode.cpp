@@ -95,6 +95,8 @@ HdrMatrix map_matrix(int v) {
       return HdrMatrix::Bt709;
     case AVCOL_SPC_BT2020_NCL:
       return HdrMatrix::Bt2020Ncl;
+    case AVCOL_SPC_BT2020_CL:
+      return HdrMatrix::Bt2020Cl;
     case AVCOL_SPC_SMPTE170M:
     case AVCOL_SPC_BT470BG:
       return HdrMatrix::Bt601;

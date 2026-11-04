@@ -18,7 +18,7 @@ enum class HdrTransfer {
   Other
 };
 enum class HdrPrimaries { Unspecified, Bt709, Bt2020, Bt601, Other };
-enum class HdrMatrix { Unspecified, Bt709, Bt2020Ncl, Bt601, Other };
+enum class HdrMatrix { Unspecified, Bt709, Bt2020Ncl, Bt2020Cl, Bt601, Other };
 enum class HdrRange { Unspecified, Limited, Full };
 enum class HdrSource { Absent, Stream, Override, Inferred, Assumption };
 enum class HdrChromaLoc { Left, Center, TopLeft, Unspecified };
@@ -135,8 +135,10 @@ bool hdr_parse_range_token(const std::string& token, HdrRange& out);
 // Lb = 0 reduces to Rs * (Lw * Ys^gamma) / Ys. A zero scene maps to black
 // on every channel.
 // Nonlinear components outside [0, 1] are clamped before the nonlinear step.
+// Optional gamut_clamped reports CL code excursions or negative reconstructed G;
+// callers must include it in their clipping warning (the output is still finite).
 bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr, double& r_nits,
-                     double& g_nits, double& b_nits);
+                     double& g_nits, double& b_nits, bool* gamut_clamped = nullptr);
 
 std::string hdr_display_text(const char* role, const HdrEffective& side);
 

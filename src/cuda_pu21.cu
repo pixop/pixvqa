@@ -38,6 +38,7 @@ constexpr double kPuPeak = 256.0;
 __constant__ double pu21_k64[kTaps];
 
 struct Pu21GpuHdr {
+  int constant_luminance = 0;
   int transfer = 0;  // 1 PQ, 2 HLG
   int full_range = 0;
   int bit_depth = 10;
@@ -250,42 +251,76 @@ __device__ void chroma_coord(const Pu21GpuHdr& h, int x, int y, double& cx, doub
   }
 }
 
-__device__ bool display_rgb(const Pu21GpuHdr& h, double y, double cb, double cr, double& r, double& g,
-                            double& b) {
-  const double rn = y + 2.0 * (1.0 - h.kr) * cr;
-  const double bn = y + 2.0 * (1.0 - h.kb) * cb;
-  const double gn = (y - h.kr * rn - h.kb * bn) / h.kg;
+__device__ bool display_rgb(const Pu21GpuHdr& h, double y, double cb,
+                            double cr, double& r, double& g, double& b, int* clipped) {
+  double rn = 0.0, gn = 0.0, bn = 0.0;
+
+  if (h.constant_luminance) {
+    rn = y + (cr <= 0.0 ? 1.7184 : 0.9936) * cr;
+    bn = y + (cb <= 0.0 ? 1.9404 : 1.5816) * cb;
+    if (y < 0.0 || y > 1.0 || rn < 0.0 || rn > 1.0 ||
+        bn < 0.0 || bn > 1.0) *clipped = 1;
+  } else {
+    rn = y + 2.0 * (1.0 - h.kr) * cr;
+    bn = y + 2.0 * (1.0 - h.kb) * cb;
+    gn = (y - h.kr * rn - h.kb * bn) / h.kg;
+  }
+
   if (h.transfer == 1) {
     r = pq_eotf(rn);
-    g = pq_eotf(gn);
     b = pq_eotf(bn);
+
+    if (h.constant_luminance) {
+      const double yc = pq_eotf(y);
+      g = (yc - h.kr * r - h.kb * b) / h.kg;
+      if (g < -1e-8 || g > 10000.0 + 1e-8) *clipped = 1;
+      g = fmin(10000.0, fmax(0.0, g));
+    } else {
+      g = pq_eotf(gn);
+    }
+
     if (h.pq_clip) {
       if (r > h.peak) r = h.peak;
       if (g > h.peak) g = h.peak;
       if (b > h.peak) b = h.peak;
     }
+
     return isfinite(r) && isfinite(g) && isfinite(b);
   }
+
   const double rs = hlg_inverse_oetf(rn);
-  const double gs = hlg_inverse_oetf(gn);
   const double bs = hlg_inverse_oetf(bn);
+
+  double gs = 0.0;
+  if (h.constant_luminance) {
+    const double yc = hlg_inverse_oetf(y);
+    gs = (yc - h.kr * rs - h.kb * bs) / h.kg;
+    if (gs < -1e-10 || gs > 1.0 + 1e-10) *clipped = 1;
+    gs = fmin(1.0, fmax(0.0, gs));
+  } else {
+    gs = hlg_inverse_oetf(gn);
+  }
+
   const double ys = h.kr * rs + h.kg * gs + h.kb * bs;
+
   if (!(ys > 0.0)) {
     r = g = b = h.black;
     return true;
   }
-  // Same BT.2100 split as hdr_display_rgb. Lb = 0 stays on the previous expression.
+
   if (h.black == 0.0) {
     const double scale = h.peak * dev_pow(ys, h.gamma) / ys;
     r = rs * scale;
     g = gs * scale;
     b = bs * scale;
   } else {
-    const double factor = (h.peak - h.black) * dev_pow(ys, h.gamma - 1.0);
+    const double factor =
+        (h.peak - h.black) * dev_pow(ys, h.gamma - 1.0);
     r = rs * factor + h.black;
     g = gs * factor + h.black;
     b = bs * factor + h.black;
   }
+
   return isfinite(r) && isfinite(g) && isfinite(b);
 }
 
@@ -312,9 +347,12 @@ __global__ void encode_kernel(const uint16_t* ry, const uint16_t* ru, const uint
       double yn = 0, cbn = 0, crn = 0;
       codes_to_nominal(hdr, static_cast<double>(yy[i]), cb, cr, yn, cbn, crn);
       double rn = 0, gn = 0, bn = 0;
-      display_rgb(hdr, yn, cbn, crn, rn, gn, bn);
-      const double lum = hdr.kr * rn + hdr.kg * gn + hdr.kb * bn;
       int flag = 0;
+      if (!display_rgb(hdr, yn, cbn, crn, rn, gn, bn, &flag)) {
+        flag = 1;
+        rn = gn = bn = 0.0;
+      }
+      const double lum = hdr.kr * rn + hdr.kg * gn + hdr.kb * bn;
       er = pu21_encode_d(rn, &flag);
       eg = pu21_encode_d(gn, &flag);
       eb = pu21_encode_d(bn, &flag);
@@ -524,6 +562,7 @@ void pack_plane(const uint16_t* src, int stride, int w, int h, uint16_t* dst) {
 Pu21GpuHdr pack_hdr(const HdrEffective& hdr, const VideoFormat& fmt) {
   Pu21GpuHdr h;
   h.transfer = hdr.side.transfer == HdrTransfer::Pq ? 1 : 2;
+  h.constant_luminance = hdr.side.matrix == HdrMatrix::Bt2020Cl ? 1 : 0;
   h.full_range = hdr.side.range == HdrRange::Full ? 1 : 0;
   h.bit_depth = fmt.bit_depth;
   h.chroma = fmt.chroma == ChromaFormat::YUV444 ? 2 : fmt.chroma == ChromaFormat::YUV422 ? 1 : 0;
@@ -568,7 +607,7 @@ std::string cuda_score_pu21(const Frame& ref, const Frame& dist, const VideoForm
   }
   auto usable = [](const HdrEffective& h) {
     const bool transfer = h.side.transfer == HdrTransfer::Pq || h.side.transfer == HdrTransfer::Hlg;
-    const bool matrix = h.side.matrix == HdrMatrix::Bt709 || h.side.matrix == HdrMatrix::Bt2020Ncl;
+    const bool matrix = h.side.matrix == HdrMatrix::Bt709 || h.side.matrix == HdrMatrix::Bt2020Ncl || h.side.matrix == HdrMatrix::Bt2020Cl;
     const bool range = h.side.range == HdrRange::Limited || h.side.range == HdrRange::Full;
     return transfer && matrix && range;
   };

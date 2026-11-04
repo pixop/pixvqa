@@ -98,10 +98,10 @@ def main(argv=None) -> int:
                     args.verify_decoded_frames,
                 )
     except PreflightError as exc:
-        print(f"pixvqa-cvqahdr: {exc}", file=sys.stderr)
+        print(f"pixvqa-cvqa-hdr-nr: error: {exc}", file=sys.stderr)
         return 2
     except AdapterError as exc:
-        print(f"pixvqa-cvqahdr: {exc}", file=sys.stderr)
+        print(f"pixvqa-cvqa-hdr-nr: error: {exc}", file=sys.stderr)
         return 1
     if args.check:
         print("pixvqa-check ok")

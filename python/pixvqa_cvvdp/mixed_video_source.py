@@ -12,6 +12,27 @@ import logging
 
 from pycvvdp.video_source import reshuffle_dims, video_source_dm
 from pycvvdp.video_source_yuv import YUVReader
+
+
+class PixvqaBt709YUVReader(YUVReader):
+    """Correct BT.709 limited-range YUV->RGB for SDR raw 4:2:0.
+
+    Upstream YUVReader uses BT.601 (1.402/1.772) for its 709 branch.
+    Keep its sample normalization and chroma interpolation, changing only
+    the inverse YCbCr matrix. Do not modify the installed upstream package.
+    """
+
+    def get_frame_rgb_tensor(self, frame_index, device):
+        import torch
+        y, u, v = self.get_frame_yuv(frame_index)
+        yuv = self._fixed2float_upscale(y, u, v, device)
+        matrix = torch.tensor(
+            [[1.0, 0.0, 1.5748],
+             [1.0, -0.1873242729306488, -0.4681242729306488],
+             [1.0, 1.8556, 0.0]],
+            device=device, dtype=yuv.dtype,
+        )
+        return (yuv @ matrix.transpose(1, 0)).clamp(0, 1)
 from pycvvdp.vq_exception import vq_exception
 
 
@@ -30,9 +51,12 @@ class PixvqaMixedVideoSource(video_source_dm):
         fps: float | None = None,
         ffmpeg_cc: bool = False,
         verbose: bool = False,
+        interpretation: str = "pq",
     ) -> None:
-        if ref_is_raw == test_is_raw:
-            raise ValueError("PixvqaMixedVideoSource requires one raw and one compressed side")
+        if not (ref_is_raw or test_is_raw):
+            raise ValueError("PixvqaMixedVideoSource requires at least one raw YUV input")
+        if ref_is_raw and test_is_raw and interpretation != "sdr":
+            raise ValueError("raw/raw PQ and HLG use the upstream CVVDP reader")
         self.test_path = test_path
         self.reference_path = reference_path
         self.ref_is_raw = ref_is_raw
@@ -41,6 +65,7 @@ class PixvqaMixedVideoSource(video_source_dm):
         self.fps = fps
         self.ffmpeg_cc = ffmpeg_cc
         self.verbose = verbose
+        self.interpretation = interpretation
         self._ref = None
         self._test = None
         self.frames = 0
@@ -51,16 +76,11 @@ class PixvqaMixedVideoSource(video_source_dm):
             return
         from pycvvdp.video_source_file import video_reader
 
-        if self.ref_is_raw:
-            self._ref = YUVReader(self.reference_path)
-            self._test = video_reader(
-                self.test_path, self.in_frames, verbose=self.verbose,
-            )
-        else:
-            self._ref = video_reader(
-                self.reference_path, self.in_frames, verbose=self.verbose,
-            )
-            self._test = YUVReader(self.test_path)
+        raw_reader = PixvqaBt709YUVReader if self.interpretation == "sdr" else YUVReader
+        self._ref = (raw_reader(self.reference_path) if self.ref_is_raw else
+                     video_reader(self.reference_path, self.in_frames, verbose=self.verbose))
+        self._test = (raw_reader(self.test_path) if self.test_is_raw else
+                      video_reader(self.test_path, self.in_frames, verbose=self.verbose))
 
         ref_count = int(self._ref.frames)
         test_count = int(self._test.frames)

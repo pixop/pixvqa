@@ -59,7 +59,7 @@ bool probe_side_family(const MetricSideProbe& side, std::string& family, std::st
 }
 
 void log_resolution(const char* field, const std::string& value, const char* source) {
-  std::fprintf(stderr, "pixvqa: info: cvvdp %s %s (%s)\n", field, value.c_str(), source);
+  std::fprintf(stderr, "pixvqa-cvvdp: info: %s=%s source=%s\n", field, value.c_str(), source);
 }
 
 }  // namespace
@@ -190,9 +190,9 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
 
   if (cvvdp.interpretation.empty()) {
     cvvdp.interpretation = family;
-    log_resolution("interpretation", cvvdp.interpretation, family_source.empty() ? "default" : family_source.c_str());
   }
 
+  const bool display_defaulted = cvvdp.display.empty();
   if (cvvdp.display.empty()) {
     const char* display = default_cvvdp_display_for_family(cvvdp.interpretation);
     if (!display) {
@@ -200,8 +200,14 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
       return false;
     }
     cvvdp.display = display;
-    log_resolution("display", cvvdp.display, "default for transfer");
   }
+
+  // Log the effective configuration even when supplied explicitly; this keeps
+  // diagnostics useful for reproducible metric campaigns.
+  log_resolution("interpretation", cvvdp.interpretation,
+                 family_source.empty() ? "default" : family_source.c_str());
+  log_resolution("display", cvvdp.display,
+                 display_defaulted ? "default for transfer" : "explicit --cvvdp-display");
 
   cvvdp.config_resolved = true;
   return true;

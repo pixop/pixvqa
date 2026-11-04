@@ -17,6 +17,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="PixVQA numerical SDR/PQ/HLG conformance")
     parser.add_argument("--profile", choices=("smoke", "comprehensive"), default="smoke")
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--case-id", action="append", default=[],
+                        help="Run one specified numerical case; repeatable.")
     parser.add_argument("--json", type=Path, default=ROOT / "reports" / "numerical_conformance.json")
     parser.add_argument("--force-fixtures", action="store_true")
     parser.add_argument(
@@ -34,12 +36,15 @@ def main() -> int:
     import os
 
     strict = args.strict or os.environ.get("PIXVQA_NUMERICAL_STRICT", "") in ("1", "true", "yes")
+    if args.case_id and args.json == ROOT / "reports" / "numerical_conformance.json":
+        args.json = ROOT / "reports" / "numerical_conformance_partial.json"
     return run_suite(
         profile=args.profile,
         strict=strict,
         json_report=args.json,
         force_fixtures=args.force_fixtures,
         compare_candidate=args.compare_candidate,
+        case_ids=tuple(args.case_id) if args.case_id else None,
     )
 
 

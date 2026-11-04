@@ -119,7 +119,26 @@ def sample_schedule(sampling: dict) -> list[dict]:
     return schedule
 
 
+def reject_unsupported_cl(path: str) -> None:
+    """The upstream NR preprocessing has no BT.2020 CL color conversion."""
+    ffprobe = os.environ.get("PIXVQA_CVQAHDR_FFPROBE", "ffprobe")
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=color_space", "-of", "json", path],
+            capture_output=True, text=True, check=True,
+        )
+        streams = json.loads(result.stdout).get("streams") or []
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        raise PreflightError(f"could not verify input color matrix with ffprobe: {exc}") from exc
+    if not streams:
+        raise PreflightError("ffprobe found no video stream for NR input")
+    if streams[0].get("color_space") == "bt2020c":
+        raise PreflightError("bt2020c is unsupported by CVQA-HDR-NR (no validated CL conversion)")
+
+
 def preflight_video(path: str) -> dict:
+    reject_unsupported_cl(path)
     try:
         import cv2
     except ImportError as exc:
@@ -272,7 +291,7 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
         raise PreflightError(str(exc)) from exc
     notice = auto_notice(device, effective)
     if notice and report_auto_fallback:
-        print(f"pixvqa-cvqahdr: {notice}", file=sys.stderr)
+        print(f"pixvqa-cvqa-hdr-nr: warning: {notice}", file=sys.stderr)
     sampling = preflight_video(test)
     calibration = load_calibration(profile)
     NR_model, VQA_NR = import_official(repository)
@@ -297,7 +316,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
     effective = context["device"]
     notice = auto_notice(device, effective)
     if notice:
-        print(f"pixvqa-cvqahdr: {notice}", file=sys.stderr)
+        print(f"pixvqa-cvqa-hdr-nr: warning: {notice}", file=sys.stderr)
     selected_device = torch.device(effective)
     if effective == "cuda":
         torch.cuda.reset_peak_memory_stats(selected_device)

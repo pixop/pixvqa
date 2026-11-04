@@ -95,10 +95,10 @@ def main(argv=None) -> int:
                 raw_test=True if args.raw_test else None,
             )
     except PreflightError as exc:
-        print(f"pixvqa-cvvdp: {exc}", file=sys.stderr)
+        print(f"pixvqa-cvvdp: error: {exc}", file=sys.stderr)
         return 2
     except AdapterError as exc:
-        print(f"pixvqa-cvvdp: {exc}", file=sys.stderr)
+        print(f"pixvqa-cvvdp: error: {exc}", file=sys.stderr)
         return 1
     if args.check:
         print("pixvqa-check ok")

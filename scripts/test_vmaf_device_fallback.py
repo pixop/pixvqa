@@ -26,7 +26,7 @@ HDR = [
     "--hdr-matrix", "bt2020nc",
     "--hdr-range", "limited",
 ]
-WARN = "pixvqa: warning: VMAF CUDA computation is unavailable; using CPU libvmaf."
+WARN = "pixvqa-vmaf: warning: VMAF CUDA computation is unavailable; using CPU libvmaf."
 
 
 def run(binary: Path, args: list[str]) -> subprocess.CompletedProcess[str]:

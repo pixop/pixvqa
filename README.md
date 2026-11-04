@@ -75,6 +75,15 @@ The ordinary installation smoke test and the dedicated metric-validation campaig
 
 The approved comprehensive regression reference is at [`baselines/numerical_conformance/comprehensive.json`](baselines/numerical_conformance/comprehensive.json) (95 cases). Baseline regression checks repeatability against recorded outputs; **they do not establish independent mathematical parity** with external metric implementations.
 
+**BT.2020 CL / PU21 source update:** `scripts/test_bt2020cl_numerical.py` runs independent
+forward-encoded CL/PQ/HLG scalar regressions; `scripts/test_bt2020cl_learned_guards.py`
+checks unsupported learned-metric paths. The reproducible 146-case 4K integration
+manifest is `reports/real_video_146_manifest.json` and its runner is
+`scripts/run_real_video_integration.py`. Only the original 48 Phase A cases
+have a recovered historical test definition; B--G are *proposed* coverage,
+not previously validated results. See [BT.2020 CL validation](docs/BT2020_CL_VALIDATION.md)
+and the [source-update changelog](reports/BT2020_CL_IMPLEMENTATION_CHANGELOG_2026-11-04.md).
+
 See [Validation Guide](docs/VALIDATION.md) for prerequisites, the five reported validation levels, and workflow caveats. Detailed fixture, tolerance, provenance, candidate and approval policies are in the [Numerical Conformance Reference](scripts/numerical_conformance/README.md). The historical [preflight report](reports/NUMERICAL_VALIDATION_PREFLIGHT.md) describes an earlier validation stage.
 
 ## Documentation

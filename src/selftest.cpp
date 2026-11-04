@@ -588,6 +588,98 @@ int main() {
       }
     }
 
+    // Independent *forward* BT.2020 Yc'CbcCrc analytical vectors. These use
+    // transfer OETF equations rather than reconstructing with the SUT inverse;
+    // check every chroma branch, saturated primaries, PQ and HLG OOTF.
+    {
+      auto pq_oetf_ref = [](double l) {
+        constexpr double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 32.0;
+        constexpr double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 128.0;
+        constexpr double c3 = 2392.0 / 128.0;
+        const double t = std::pow(l, m1);
+        return std::pow((c1 + c2*t) / (1.0 + c3*t), m2);
+      };
+      auto hlg_oetf_ref = [](double l) {
+        constexpr double a = 0.17883277;
+        const double b = 1.0 - 4.0*a;
+        const double c = 1.0 - a*std::log(12.0-b);
+        return l <= (1.0 / 12.0) ? std::sqrt(3.0*l) : a*std::log(12.0*l-b)+c;
+      };
+      struct Rgb { const char* label; double r, g, b; };
+      const Rgb rgb[] = {
+          {"black",0,0,0}, {"white",1,1,1}, {"neutral",.25,.25,.25},
+          {"red",1,0,0}, {"green",0,1,0}, {"blue",0,0,1},
+          {"positive_cr",.8,.1,.2}, {"negative_cr",.1,.7,.2},
+          {"positive_cb",.2,.1,.8}, {"negative_cb",.7,.2,.1},
+          {"mixed",.3,.8,.4}};
+      for (HdrTransfer transfer : {HdrTransfer::Pq, HdrTransfer::Hlg}) {
+        for (double peak : {1000.0, 4000.0}) {
+          if (transfer == HdrTransfer::Pq && peak == 4000.0) continue;
+          HdrSide side = pq;
+          side.transfer = transfer;
+          side.matrix = HdrMatrix::Bt2020Cl;
+          HdrKnobs config;
+          if (transfer == HdrTransfer::Hlg) { config.peak_set = true; config.peak_nits = peak; }
+          HdrEffective eff;
+          if (!hdr_resolve(side, config, eff).empty()) { fail("cl_resolve"); continue; }
+          const double gamma = hdr_hlg_system_gamma(peak);
+          for (const Rgb& v : rgb) {
+            const double yc = 0.2627*v.r + 0.6780*v.g + 0.0593*v.b;
+            const double rprime = transfer == HdrTransfer::Pq ? pq_oetf_ref(v.r) : hlg_oetf_ref(v.r);
+            const double bprime = transfer == HdrTransfer::Pq ? pq_oetf_ref(v.b) : hlg_oetf_ref(v.b);
+            const double yprime = transfer == HdrTransfer::Pq ? pq_oetf_ref(yc) : hlg_oetf_ref(yc);
+            const double dr = rprime - yprime, db = bprime - yprime;
+            const double cr = dr / (dr <= 0.0 ? 1.7184 : 0.9936);
+            const double cb = db / (db <= 0.0 ? 1.9404 : 1.5816);
+            double r = 0, g = 0, b = 0;
+            bool clipped = false;
+            const bool ok = hdr_display_rgb(eff, yprime, cb, cr, r, g, b, &clipped);
+            const double gain = transfer == HdrTransfer::Pq ? 10000.0 :
+                                (yc <= 0.0 ? 0.0 : peak * std::pow(yc, gamma - 1.0));
+            const double tol = transfer == HdrTransfer::Pq ? 2e-4 : 2e-8;
+            if (!ok || std::fabs(r - v.r*gain) > tol ||
+                std::fabs(g - v.g*gain) > tol || std::fabs(b - v.b*gain) > tol) {
+              std::fprintf(stderr, "FAIL cl_%s_%s_%g rgb=(%.12g,%.12g,%.12g) expected=(%.12g,%.12g,%.12g)\n",
+                           hdr_transfer_name(transfer), v.label, peak,
+                           r,g,b,v.r*gain,v.g*gain,v.b*gain);
+              ++g_fail;
+            }
+            double lum = 0;
+            if (!hdr_display_cdm2(transfer, HdrMatrix::Bt2020Cl, yprime, cb, cr,
+                                  peak, lum) ||
+                std::fabs(lum - yc*gain) > tol) {
+              std::fprintf(stderr, "FAIL cl_cdm2_%s_%s: %.12g vs %.12g\n",
+                           hdr_transfer_name(transfer), v.label, lum, yc*gain);
+              ++g_fail;
+            }
+          }
+        }
+      }
+      // Negative G is an invalid/out-of-gamut CL combination: it must be
+      // signalled to the PU21 caller, not silently discarded.
+      HdrSide bad = pq;
+      bad.matrix = HdrMatrix::Bt2020Cl;
+      HdrEffective eff;
+      if (!hdr_resolve(bad, HdrKnobs{}, eff).empty()) fail("cl_bad_resolve");
+      double r=0,g=0,b=0;
+      bool clipped=false;
+      if (!hdr_display_rgb(eff, .2, .3, .3, r, g, b, &clipped) ||
+          !clipped || g != 0.0) fail("cl_gamut_clipping_reported");
+      else std::printf("OK   cl_gamut_clipping_reported\n");
+      // Nominal code conversion must be independent of the CL chroma branch.
+      for (int bits : {8, 10, 12, 16}) for (HdrRange range : {HdrRange::Limited, HdrRange::Full}) {
+        const double scale = static_cast<double>(1 << (bits-8));
+        const double max_code = static_cast<double>((1 << bits)-1);
+        const double mid = range == HdrRange::Limited ? 128*scale : .5*max_code;
+        const double white = range == HdrRange::Limited ? 235*scale : max_code;
+        double y=0, cb=1, cr=1;
+        if (!hdr_codes_to_nominal(bits,range,white,mid,mid,y,cb,cr) ||
+            std::fabs(y-1.0) > 1e-12 || std::fabs(cb)>1e-12 || std::fabs(cr)>1e-12)
+          fail("cl_codes_white_chroma_center");
+      }
+      std::printf("OK   cl_analytical_vectors_pq_hlg_full_limited\n");
+    }
+
     VideoFormat fmt444;
     fmt444.width = 32;
     fmt444.height = 32;
