@@ -65,7 +65,7 @@ def test_prod_style_cli(path_ref: Path, path_test: Path):
     if done.returncode != 0:
         return fail(f"prod-style status {done.returncode} stderr={done.stderr}")
     out = done.stdout
-    if "Input: 64x64 yuv420 (10b,10b,10b) bt2020l st2048" not in out:
+    if "Input: 64x64 yuv420 (10b,10b,10b) bt2020l st2084" not in out:
         return fail(f"prod-style Input line mismatch: {out}")
     if "0  :[ PSNR" not in out or "[ SSIM" not in out:
         return fail(f"prod-style frame line mismatch: {out}")
