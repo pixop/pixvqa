@@ -489,7 +489,11 @@ def _hdr_cases() -> list:
                 return ""
             if grab(full.stdout, "[ PSNR") != grab(limited.stdout, "[ PSNR"):
                 problems.append("range changed PSNR")
-            if grab(full.stdout, "[ PU21-PSNR     r:") == grab(limited.stdout, "[ PU21-PSNR     r:"):
+            full_pu21 = grab(full.stdout, "[ PU21-PSNR r:")
+            limited_pu21 = grab(limited.stdout, "[ PU21-PSNR r:")
+            if not full_pu21 or not limited_pu21:
+                problems.append("missing PU21-PSNR output")
+            elif full_pu21 == limited_pu21:
                 problems.append("range did not change PU21")
             if "range=full (override)" not in full.stdout or "range=limited (override)" not in limited.stdout:
                 problems.append("range provenance")

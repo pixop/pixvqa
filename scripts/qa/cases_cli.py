@@ -249,7 +249,7 @@ def cases() -> list:
             (["--metrics", "psnr", "--qcs-range", "psnr=nan:1", *common], "invalid --qcs-range"),
             (["--metrics", "psnr", "--qcs-range", "psnr=40:55,", *common], "empty --qcs-range"),
             (["--metrics", "psnr", "--qcs-range", "psnr=40:55,psnr=30:50", *common], "conflicting --qcs-range"),
-            (["--metrics", "vmaf", "--qcs", *common], "--model"),
+            (["--metrics", "vmaf", "--qcs", *common], "VMAF auto model needs an explicit transfer"),
             (["--metrics", "psnr", "--model", "model.json", *common], "require vmaf"),
             (["--metrics", "psnr", "--tf", "st2084", "--hdr-transfer", "pq", *common], "--tf and --hdr-transfer both set"),
             (["--metrics", "psnr", "--hdr-peak-nits", "nan", *common], "expects auto or a number"),
