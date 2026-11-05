@@ -150,8 +150,8 @@ def compare(model_rel: str, ref: Path, dist: Path, w: int, h: int, label: str) -
 def expect_gpu_matches_cpu(ref: Path, dist: Path) -> bool:
     model = ROOT / "model" / "hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json"
     base = pix_cmd(model, ref, dist, 1920, 1080) + ["-v", "0"]
-    cpu = run(base + ["--metric-device", "cpu"])
-    gpu = run(base + ["--metric-device", "gpu"])
+    cpu = run(base + ["--device", "cpu"])
+    gpu = run(base + ["--device", "gpu"])
     pattern = r"\[ VMAF mean:[0-9.eE+-]+ harmonic:[0-9.eE+-]+ min:[0-9.eE+-]+ max:[0-9.eE+-]+ frames:\d+ \]"
     cpu_sum = re.search(pattern, cpu.stdout)
     gpu_sum = re.search(pattern, gpu.stdout)

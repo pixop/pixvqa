@@ -77,8 +77,8 @@ def compare(label, fmt, bits, distort, qcs):
               "-t", str(dist), "-s", f"{W}x{H}", "-f", tag]
     if qcs:
         common += ["--qcs"]
-    cpu = run(CPU, common + ["--metric-device", "cpu"])
-    gpu = run(CUDA, common + ["--metric-device", "gpu"])
+    cpu = run(CPU, common + ["--device", "cpu"])
+    gpu = run(CUDA, common + ["--device", "gpu"])
     if cpu.returncode != 0 or gpu.returncode != 0:
         fail(f"{label} rc cpu={cpu.returncode} gpu={gpu.returncode} {gpu.stderr[-240:]}")
     if "PSNR: gpu" not in gpu.stdout or "SSIM: gpu" not in gpu.stdout:
@@ -119,8 +119,8 @@ def main():
         dist.write_bytes(sequence(fmt, bits, True))
         common = ["--metrics", "msssim,xpsnr", "--fps", "30", "-v", "0", "-r", str(ref), "-s", f"{W}x{H}", "-f", tag,
                   "-t", str(dist), "-s", f"{W}x{H}", "-f", tag]
-        cpu = run(CPU, common + ["--metric-device", "cpu"])
-        gpu = run(CUDA, common + ["--metric-device", "gpu"])
+        cpu = run(CPU, common + ["--device", "cpu"])
+        gpu = run(CUDA, common + ["--device", "gpu"])
         if cpu.returncode != 0 or gpu.returncode != 0:
             fail(f"other metrics {bits} rc {cpu.returncode}/{gpu.returncode} {gpu.stderr[-200:]}")
         for token in ("[ MS-SSIM", "[ XPSNR"):
@@ -155,8 +155,8 @@ def compressed():
         tag = f"420p:{bits}"
         common = ["--metrics", "psnr,ssim", "--qcs", "-v", "1", "--decode", "cpu",
                   "-r", str(raw), "-s", f"{W}x{H}", "-f", tag, "-t", str(enc)]
-        cpu = run(full, common + ["--metric-device", "cpu"])
-        gpu = run(full, common + ["--metric-device", "gpu"])
+        cpu = run(full, common + ["--device", "cpu"])
+        gpu = run(full, common + ["--device", "gpu"])
         if cpu.returncode != 0 or gpu.returncode != 0:
             fail(f"compressed {bits} rc {cpu.returncode}/{gpu.returncode} {gpu.stderr[-240:]}")
         for token in ("[ PSNR", "[ SSIM", "PSNR-QCS", "SSIM-QCS"):

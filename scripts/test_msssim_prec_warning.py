@@ -64,12 +64,12 @@ def main() -> int:
             "-t", str(tst), "-s", "32x32", "-f", "420p:10",
             "-n", "2", "-v", "1"]
         cases = (
-            ("public-fp64", ["--metrics", "msssim", "--metric-device", "gpu"], None, False, None),
-            ("fp32", ["--metrics", "msssim", "--metric-device", "gpu"], "fp32", False, None),
-            ("mixed", ["--metrics", "msssim", "--metric-device", "gpu"], "mixed", False, None),
-            ("fp64", ["--metrics", "msssim", "--metric-device", "gpu"], "fp64", False, None),
-            ("psnr-only", ["--metrics", "psnr", "--metric-device", "gpu"], None, False, None),
-            ("psnr-fp32", ["--metrics", "psnr", "--metric-device", "gpu"], "fp32", False, None),
+            ("public-fp64", ["--metrics", "msssim", "--device", "gpu"], None, False, None),
+            ("fp32", ["--metrics", "msssim", "--device", "gpu"], "fp32", False, None),
+            ("mixed", ["--metrics", "msssim", "--device", "gpu"], "mixed", False, None),
+            ("fp64", ["--metrics", "msssim", "--device", "gpu"], "fp64", False, None),
+            ("psnr-only", ["--metrics", "psnr", "--device", "gpu"], None, False, None),
+            ("psnr-fp32", ["--metrics", "psnr", "--device", "gpu"], "fp32", False, None),
         )
         for name, extra, prec, expect, phrase in cases:
             done = run(CUDA, extra + common, prec)
@@ -101,8 +101,8 @@ def main() -> int:
         else:
             print("OK   cpu-msssim")
         # Score lines stay in the existing six-decimal form when the warning is on.
-        warned = run(CUDA, ["--metrics", "msssim,psnr", "--metric-device", "gpu", *common], "fp32")
-        quiet = run(CUDA, ["--metrics", "msssim,psnr", "--metric-device", "gpu", *common], "fp64")
+        warned = run(CUDA, ["--metrics", "msssim,psnr", "--device", "gpu", *common], "fp32")
+        quiet = run(CUDA, ["--metrics", "msssim,psnr", "--device", "gpu", *common], "fp64")
         if warned.returncode != 0 or quiet.returncode != 0:
             fail("score-format rc")
         else:

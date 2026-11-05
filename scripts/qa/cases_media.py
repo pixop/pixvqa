@@ -621,16 +621,16 @@ def _hardware_cases() -> list:
         ref, dist, size, fmt = _pair(world, 176, 176, "420", 10, 2)
         ref8, dist8, size8, fmt8 = _pair(world, 320, 240, "420", 8, 2)
         refv, distv, sizev, fmtv = _pair(world, 320, 240, "420", 10, 2)
-        cpu_run = run_cmd([str(cpu), "--metrics", "psnr,ssim,msssim", "--metric-device", "cpu", "-v", "0",
+        cpu_run = run_cmd([str(cpu), "--metrics", "psnr,ssim,msssim", "--device", "cpu", "-v", "0",
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
-        gpu_run = run_cmd([str(full), "--metrics", "psnr,ssim,msssim", "--metric-device", "gpu", "-v", "0",
+        gpu_run = run_cmd([str(full), "--metrics", "psnr,ssim,msssim", "--device", "gpu", "-v", "0",
                            "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt], timeout=90)
-        eight = run_cmd([str(full), "--metrics", "psnr,ssim", "--qcs", "--metric-device", "gpu", "-v", "0",
+        eight = run_cmd([str(full), "--metrics", "psnr,ssim", "--qcs", "--device", "gpu", "-v", "0",
                          "-r", str(ref8), "-s", size8, "-f", fmt8, "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=60)
-        only_vmaf = run_cmd([str(full), "--metrics", "vmaf", "--model", str(world.model), "--metric-device", "gpu",
+        only_vmaf = run_cmd([str(full), "--metrics", "vmaf", "--model", str(world.model), "--device", "gpu",
                              "-v", "0", "-r", str(ref8), "-s", size8, "-f", fmt8,
                              "-t", str(dist8), "-s", size8, "-f", fmt8], timeout=30)
-        mixed = run_cmd([str(full), "--metrics", "psnr,vmaf", "--model", str(world.model), "--metric-device", "gpu",
+        mixed = run_cmd([str(full), "--metrics", "psnr,vmaf", "--model", str(world.model), "--device", "gpu",
                          "-v", "0", "-r", str(refv), "-s", sizev, "-f", fmtv, "-t", str(distv), "-s", sizev, "-f", fmtv], timeout=180)
         problems = []
         if cpu_run.returncode != 0 or gpu_run.returncode != 0:
@@ -673,7 +673,7 @@ def _hardware_cases() -> list:
         if full is None:
             return Result("FAIL", "full binary is absent", "gpu-repeat")
         ref, dist, size, fmt = _pair(world, 176, 176, "420", 10, 2)
-        args = [str(full), "--metrics", "psnr", "--metric-device", "gpu", "-v", "0",
+        args = [str(full), "--metrics", "psnr", "--device", "gpu", "-v", "0",
                 "-r", str(ref), "-s", size, "-f", fmt, "-t", str(dist), "-s", size, "-f", fmt]
         first = run_cmd(args, timeout=60)
         for _ in range(2):

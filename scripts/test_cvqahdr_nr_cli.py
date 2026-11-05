@@ -115,7 +115,7 @@ print(json.dumps({"metric":"cvqa-hdr-nr","quality_score":7.409712345678,
         env["PYTHONPATH"] = tmp + os.pathsep + env.get("PYTHONPATH", "")
         output = Path(tmp) / "result.json"
         result = run([
-            *base, "--metric-device", "cpu", "--cvqahdr-python", sys.executable,
+            *base, "--device", "cpu", "--cvqahdr-python", sys.executable,
             "--cvqahdr-repo", "/upstream", "--cvqahdr-checkpoint", "/checkpoint.pth",
             "--cvqahdr-profile", "/profile.npy", "--cvqahdr-output-json", str(output),
         ], env)

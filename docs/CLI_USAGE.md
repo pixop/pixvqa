@@ -78,7 +78,7 @@ or reliable compressed-stream transfer metadata. The display model follows
 the selected PQ/HLG interpretation; SDR requires an explicit display.
 Compressed inputs must have valid per-side color metadata. Raw CVVDP inputs
 are limited to YUV420p10le PQ or HLG and require `-s`, `-f 420p:10`, and
-`--fps` when both sides are raw. See [ColorVideoVDP](COLORVIDEOVDP.md)
+`--fps` when both sides are raw. See [Learned metrics](LEARNED_METRICS.md)
 for the metadata and mixed-input contracts.
 
 ```bash
@@ -99,8 +99,7 @@ pixvqa --metrics cvvdp \
   --cvvdp-display standard_hdr_pq
 ```
 
-See [COLORVIDEOVDP.md](COLORVIDEOVDP.md) for isolated installation, supported
-displays, the JSON result record, and incompatible native options.
+See [Learned metrics](LEARNED_METRICS.md) for setup and examples.
 
 ### CompressedVQA-HDR NR (optional external backend)
 
@@ -123,8 +122,7 @@ pixvqa --metrics cvqa-hdr-nr \
   --cvqahdr-output-json result.cvqahdr.json
 ```
 
-See [COMPRESSEDVQA_HDR.md](COMPRESSEDVQA_HDR.md) for runtime pins, output
-metadata, clip-duration constraints, sampled-frame QCS, and validation.
+See [Learned metrics](LEARNED_METRICS.md) for setup and examples.
 
 ### Mixed native and learned metrics
 
@@ -143,7 +141,7 @@ pixvqa --metrics psnr,vmaf,cvvdp,cvqa-hdr-nr \
 
 The `--cvqahdr-*` and interpreter options can be omitted when
 `config/learned_metrics.local.toml` provides them; see
-[learned-metric config](LEARNED_METRICS_CONFIG.md).
+[Learned metrics](LEARNED_METRICS.md).
 
 **Reference rules.** `-t` is always required. `-r` is required when any
 full-reference metric is selected: every native metric and `cvvdp`. If
@@ -311,7 +309,7 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--metrics` | Comma-separated metric names. Native, `cvvdp`, and `cvqa-hdr-nr` can be mixed; repeated options accumulate. `all` selects every metric. `sdr`, `pq`, and `hlg` are [metric groups](#metric-groups) |
 | `--preset hdr` | HDR10/PQ master run. See [HDR master command](#hdr-master-command) |
 | `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
-| `--metric-device`, `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. The two spellings are aliases and must agree when both are given. `auto` runs each native metric on CUDA when the build, a visible device, and the input allow it, else on the CPU; the execution summary shows the device and any fallback reason. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. VMAF always uses CPU libvmaf. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
+| `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. `auto` runs each native metric on CUDA when the build, a visible device, and the input allow it, else on the CPU; the execution summary shows the device and any fallback reason. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. VMAF always uses CPU libvmaf. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
 | `--threads` | `auto` or a positive integer. Default `auto` |
 | `-s WxH` | Luma size. Required for raw YUV. Checked when set on compressed video |
 | `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10`. Required for raw YUV |
@@ -331,7 +329,7 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--cvqahdr-output-json` | Persistent CompressedVQA-HDR NR run record, including stage timings and sampling/chunk settings |
 | `--cvqa-nr-sample-interval-sec` | Seconds between NR samples (default `1`); effective cadence is rounded to whole source frames |
 | `--cvqa-nr-chunk-size-sec` | Nominal seconds of video represented by each NR GPU inference batch (default `8`) |
-| `--learned-config` | Learned-metric TOML config. Default `config/learned_metrics.local.toml` in the executable's checkout. See [learned-metric config](LEARNED_METRICS_CONFIG.md) |
+| `--learned-config` | Learned-metric TOML config. Default `config/learned_metrics.local.toml` in the executable's checkout. See [Learned metrics](LEARNED_METRICS.md) |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto`. Shared HDR transfer for native metrics, learned CVVDP resolution, and metric groups |
 | `--tf`, `--ref-tf`, `--dist-tf` | Legacy native transfer tokens: `sdr`, `linear`, `st2084` (PQ), `stdb67` (HLG). The unified CVVDP resolver maps these to the same families as `--hdr-transfer pq` / `hlg`. Use `--hdr-transfer pq|hlg` when you want the modern spelling |
 | `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |

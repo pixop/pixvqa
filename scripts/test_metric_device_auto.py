@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""--metric-device auto: CUDA per metric when supported, CPU otherwise, VMAF on CPU.
+"""--device auto: CUDA per metric when supported, CPU otherwise, VMAF on CPU.
 
 The CPU-build case always runs. The CUDA cases need build/full/pixvqa and a
 visible CUDA device of compute capability 8.9 or later. Without them the CUDA
@@ -98,15 +98,15 @@ def check_cuda(td: Path) -> None:
     every = ["--metrics", "psnr,xpsnr,ssim,msssim,pu21-psnr,pu21-ssim,pu21-msssim", "--fps", "60", *HDR, "-v", "0",
              *sides(ref, dist, "320x240", "420p:10")]
     auto = run(FULL, every)
-    gpu = run(FULL, ["--metric-device", "gpu", *every])
-    cpu = run(FULL, ["--metric-device", "cpu", *every])
+    gpu = run(FULL, ["--device", "gpu", *every])
+    cpu = run(FULL, ["--device", "cpu", *every])
     expect_devices("auto prefers CUDA for every supported metric", auto,
                    {name: "gpu" for name in CUDA_METRICS})
     if auto.returncode == 0 and gpu.returncode == 0:
         if scores(auto.stdout) != scores(gpu.stdout) or not scores(auto.stdout):
-            fail("auto scores differ from --metric-device gpu scores")
+            fail("auto scores differ from --device gpu scores")
         else:
-            print("OK   auto scores equal --metric-device gpu scores")
+            print("OK   auto scores equal --device gpu scores")
     if WARN in auto.stderr:
         fail("auto printed the VMAF warning without VMAF")
 
@@ -118,14 +118,14 @@ def check_cuda(td: Path) -> None:
         if "(auto: no usable CUDA device:" not in nodev.stdout:
             fail(f"no-device fallback reason missing\n{nodev.stdout[:900]}")
         elif scores(nodev.stdout) != scores(cpu.stdout):
-            fail("no-device auto scores differ from --metric-device cpu scores")
+            fail("no-device auto scores differ from --device cpu scores")
         else:
-            print("OK   no-device auto reports the reason and matches --metric-device cpu")
-    explicit = run(FULL, ["--metric-device", "gpu", *every], env=hidden)
+            print("OK   no-device auto reports the reason and matches --device cpu")
+    explicit = run(FULL, ["--device", "gpu", *every], env=hidden)
     if explicit.returncode == 0:
-        fail("--metric-device gpu with no visible device did not fail")
+        fail("--device gpu with no visible device did not fail")
     else:
-        print("OK   --metric-device gpu with no visible device still fails")
+        print("OK   --device gpu with no visible device still fails")
 
     if HDR_MODEL.is_file():
         with_vmaf = run(FULL, ["--metrics", "psnr,pu21-psnr,vmaf", "--model", str(HDR_MODEL), *HDR, "-v", "0",
@@ -145,14 +145,14 @@ def check_cuda(td: Path) -> None:
     expect_devices("odd-width 4:2:2 keeps PU21 on CPU", odd,
                    {"PSNR": "gpu", "PU21-PSNR": "cpu (auto: GPU PU21 needs even chroma geometry)"})
     if odd.returncode == 0:
-        odd_cpu = run(FULL, ["--metric-device", "cpu", "--metrics", "pu21-psnr", "--hdr-transfer", "pq", "-v", "0",
+        odd_cpu = run(FULL, ["--device", "cpu", "--metrics", "pu21-psnr", "--hdr-transfer", "pq", "-v", "0",
                              *sides(odd_r, odd_d, "45x32", "422p:10")])
         pu_auto = [line for line in scores(odd.stdout) if "PU21" in line]
         pu_cpu = [line for line in scores(odd_cpu.stdout) if "PU21" in line]
         if not pu_auto or pu_auto != pu_cpu:
-            fail("odd-width auto PU21 differs from --metric-device cpu")
+            fail("odd-width auto PU21 differs from --device cpu")
         else:
-            print("OK   odd-width auto PU21 equals --metric-device cpu")
+            print("OK   odd-width auto PU21 equals --device cpu")
 
 
 def main() -> int:

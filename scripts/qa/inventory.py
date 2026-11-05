@@ -136,13 +136,13 @@ CONSTRAINTS = [
         "id": "gpu-metrics",
         "file": "src/main.cpp",
         "needle": "no CPU substitute",
-        "rule": "--metric-device gpu does not fall back to the CPU for PSNR, SSIM, MS-SSIM, XPSNR, or PU21. Those metrics accept 8-bit and 10-bit. VMAF has no GPU implementation and uses CPU libvmaf, with a warning, including when it is the only metric.",
+        "rule": "--device gpu does not fall back to the CPU for PSNR, SSIM, MS-SSIM, XPSNR, or PU21. Those metrics accept 8-bit and 10-bit. VMAF has no GPU implementation and uses CPU libvmaf, with a warning, including when it is the only metric.",
     },
     {
         "id": "auto-metric-profile",
         "file": "src/main.cpp",
         "needle": "Auto prefers CUDA for each selected metric",
-        "rule": "--metric-device auto runs PSNR, SSIM, MS-SSIM, XPSNR, and PU21 on CUDA when the build has CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. Otherwise the metric runs on the CPU and the execution summary gives the reason. VMAF stays on CPU libvmaf without a warning.",
+        "rule": "--device auto runs PSNR, SSIM, MS-SSIM, XPSNR, and PU21 on CUDA when the build has CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. Otherwise the metric runs on the CPU and the execution summary gives the reason. VMAF stays on CPU libvmaf without a warning.",
     },
     {
         "id": "hdr-order",
@@ -217,7 +217,7 @@ def build_inventory(root: Path) -> dict:
         "defaults": {
             "--decode": "auto",
             "--input": "auto",
-            "--metric-device": "auto",
+            "--device": "auto",
             "--threads": "auto",
             "-f bits": "10",
             "-v": "1",
@@ -277,7 +277,7 @@ def check_inventory(root: Path) -> tuple:
     if inv["missing_needles"]:
         return False, "inventory needles missing: " + ", ".join(inv["missing_needles"])
     required = [
-        "--metrics", "--decode", "--input", "--metric-device", "--threads", "--model",
+        "--metrics", "--decode", "--input", "--device", "--threads", "--model",
         "--vmaf-model", "--qcs", "--qcs-range", "--fps", "--frames", "--hdr-transfer",
         "--help", "--version", "--help-hdr",
     ]

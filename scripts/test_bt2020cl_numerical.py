@@ -131,7 +131,7 @@ def write_yuv(path: Path, code: tuple[int, ...], bits: int) -> None:
 
 def run(exe: Path, ref: Path, dist: Path, bits: int, range_: str, mode: str,
         device: str, metrics: str = "pu21-psnr") -> tuple[subprocess.CompletedProcess[str], tuple[float,...] | None]:
-    cmd = [str(exe), "--metrics", metrics, "--metric-device", device,
+    cmd = [str(exe), "--metrics", metrics, "--device", device,
            "--hdr-transfer", mode, "--hdr-primaries", "bt2020",
            "--hdr-matrix", "bt2020c", "--hdr-range", range_,
            "-r", str(ref), "-s", "32x32", "-f", f"420p:{bits}",

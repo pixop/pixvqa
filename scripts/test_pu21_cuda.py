@@ -101,9 +101,9 @@ def main() -> int:
     if not CPU.is_file() or not GPU.is_file():
         print("missing binary", CPU, GPU, file=sys.stderr)
         return 2
-    refused = run(CPU, ["--metrics", "pu21-psnr", "--metric-device", "gpu", "--hdr-transfer", "pq"])
+    refused = run(CPU, ["--metrics", "pu21-psnr", "--device", "gpu", "--hdr-transfer", "pq"])
     if refused.returncode == 0:
-        fail("CPU build accepted --metric-device gpu")
+        fail("CPU build accepted --device gpu")
     else:
         print("OK   CPU build still refuses a GPU request")
 
@@ -142,8 +142,8 @@ def main() -> int:
             label = f"{bits}-bit {chroma} {transfer} {' '.join(extra) or 'default'} distorted"
             for qcs_on in (False, True):
                 args = base + (["--qcs"] if qcs_on else [])
-                cpu = run(CPU, ["--metric-device", "cpu", *args])
-                gpu = run(GPU, ["--metric-device", "gpu", *args])
+                cpu = run(CPU, ["--device", "cpu", *args])
+                gpu = run(GPU, ["--device", "gpu", *args])
                 if cpu.returncode != 0 or gpu.returncode != 0:
                     fail(f"{label} qcs={qcs_on} rc {cpu.returncode}/{gpu.returncode}\n{cpu.stderr[-300:]}\n{gpu.stderr[-300:]}")
                     continue
@@ -154,8 +154,8 @@ def main() -> int:
                 "-r", str(same), "-s", f"{w}x{h}", "-f", fmt,
                 "-t", str(same), "-s", f"{w}x{h}", "-f", fmt,
             ]
-            cpu = run(CPU, ["--metric-device", "cpu", *ident_args])
-            gpu = run(GPU, ["--metric-device", "gpu", *ident_args])
+            cpu = run(CPU, ["--device", "cpu", *ident_args])
+            gpu = run(GPU, ["--device", "gpu", *ident_args])
             if cpu.returncode != 0 or gpu.returncode != 0:
                 fail(f"identical {label} rc {cpu.returncode}/{gpu.returncode}")
             else:
@@ -168,8 +168,8 @@ def main() -> int:
         write_frame(dist, 64, 64, "420", 10, [(420, 512, 512), (480, 520, 500)])
         common = ["--hdr-transfer", "pq", "-r", str(ref), "-s", "64x64", "-f", "420p:10",
                   "-t", str(dist), "-s", "64x64", "-f", "420p:10"]
-        alone = run(GPU, ["--metrics", "psnr", "--metric-device", "gpu", *common])
-        both = run(GPU, ["--metrics", "psnr,pu21-psnr", "--metric-device", "gpu", *common])
+        alone = run(GPU, ["--metrics", "psnr", "--device", "gpu", *common])
+        both = run(GPU, ["--metrics", "psnr,pu21-psnr", "--device", "gpu", *common])
         pa = re.findall(r"\[ PSNR  y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", alone.stdout)
         pb = re.findall(r"\[ PSNR  y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", both.stdout)
         if alone.returncode != 0 or both.returncode != 0 or pa != pb:
@@ -192,8 +192,8 @@ def main() -> int:
                     "--hdr-peak-nits", "1000", *extra,
                     "-r", str(ref), "-s", "32x32", "-f", "444p:10",
                     "-t", str(dist), "-s", "32x32", "-f", "444p:10"]
-            cpu = run(CPU, ["--metric-device", "cpu", *args])
-            gpu = run(GPU, ["--metric-device", "gpu", *args])
+            cpu = run(CPU, ["--device", "cpu", *args])
+            gpu = run(GPU, ["--device", "gpu", *args])
             if cpu.returncode != 0 or gpu.returncode != 0:
                 fail(f"{label} rc {cpu.returncode}/{gpu.returncode}\n{cpu.stderr[-300:]}\n{gpu.stderr[-300:]}")
             else:
@@ -215,8 +215,8 @@ def main() -> int:
             if enc.returncode == 0:
                 args = ["--metrics", "pu21-psnr,pu21-ssim,pu21-msssim", "--hdr-transfer", "pq",
                         "-r", str(raw), "-s", "64x64", "-f", "420p:10", "-t", str(hevc), "--decode", "cpu"]
-                cpu = run(swdec, ["--metric-device", "cpu", *args])
-                gpu = run(full, ["--metric-device", "gpu", *args])
+                cpu = run(swdec, ["--device", "cpu", *args])
+                gpu = run(full, ["--device", "gpu", *args])
                 if cpu.returncode != 0 or gpu.returncode != 0:
                     fail(f"hevc rc {cpu.returncode}/{gpu.returncode}\n{gpu.stderr[-400:]}")
                 else:
@@ -236,9 +236,9 @@ def main() -> int:
                     "-r", str(ref), "-s", f"{w}x{h}", "-f", "420p:10",
                     "-t", str(dist), "-s", f"{w}x{h}", "-f", "420p:10"]
             for kind, binary, device in (("cpu", CPU, "cpu"), ("cuda", GPU, "gpu")):
-                run(binary, ["--metric-device", device, *args])
+                run(binary, ["--device", device, *args])
                 t0 = time.perf_counter()
-                proc = run(binary, ["--metric-device", device, *args])
+                proc = run(binary, ["--device", device, *args])
                 dt = time.perf_counter() - t0
                 if proc.returncode != 0:
                     fail(f"bench {w}x{h} {kind} rc {proc.returncode}")

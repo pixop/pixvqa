@@ -58,7 +58,7 @@ def compare_pair(name: str, w: int, h: int, chroma: str, bits: int, fps: str, n:
         if also_metrics:
             base = ["--metrics", "psnr,ssim", *base]
         cpu = run(CPU, ["--threads", "1", *base])
-        extra = ["--metric-device", "gpu" if backend_cuda else "cpu", *base]
+        extra = ["--device", "gpu" if backend_cuda else "cpu", *base]
         gpu = run(CUDA, extra)
     if cpu.returncode != 0:
         fail(f"{name}: cpu rc={cpu.returncode} {cpu.stderr[-300:]}")

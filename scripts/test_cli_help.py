@@ -76,7 +76,7 @@ def check_help(bin_path: Path, kind: str) -> None:
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
             return
-    for hidden in ("--preset hdr", "--metric-device", "--vmaf-model",
+    for hidden in ("--preset hdr", "--vmaf-model",
                    "--cvvdp-python", "--cvqahdr-checkpoint", "--qcs-range"):
         if hidden in text:
             fail(f"{kind} basic help exposes advanced option {hidden}")
@@ -89,7 +89,7 @@ def check_help(bin_path: Path, kind: str) -> None:
                    "--cvvdp-output-json", "--cvqahdr-output-json",
                    "--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile",
                    "--learned-config", "--qcs-range", "--threads", "--preset hdr",
-                   "--metric-device", "--vmaf-model", "--seek 0"):
+                   "--vmaf-model", "--seek 0"):
         if needle not in adv.stdout:
             fail(f"{kind} advanced help missing {needle}")
             return
@@ -235,10 +235,15 @@ def main() -> int:
         fail(f"unknown option rc={bad.returncode} {bad.stderr}")
     else:
         print("OK   unknown option")
-    cpu_cuda = run(CPU, ["--metric-device", "gpu", "--metrics", "psnr", "-r", "a", "-s", "16x16", "-f", "420p:10",
+    removed_alias = run(CPU, ["--metric-device", "cpu", "--metrics", "psnr"])
+    if removed_alias.returncode == 0:
+        fail("removed --metric-device alias was accepted")
+    else:
+        print("OK   removed metric-device alias rejected")
+    cpu_cuda = run(CPU, ["--device", "gpu", "--metrics", "psnr", "-r", "a", "-s", "16x16", "-f", "420p:10",
                          "-t", "b", "-s", "16x16", "-f", "420p:10"])
     if cpu_cuda.returncode == 0:
-        fail("CPU build accepted --metric-device gpu")
+        fail("CPU build accepted --device gpu")
     else:
         print("OK   cpu build rejects cuda kernel")
     blocks = examples()

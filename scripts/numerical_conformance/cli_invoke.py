@@ -267,7 +267,7 @@ def build_pixvqa_command(
             argv += ["--cvvdp-display", disp]
 
     if metric_device:
-        argv += ["--metric-device", metric_device]
+        argv += ["--device", metric_device]
     if decode:
         argv += ["--decode", decode]
 

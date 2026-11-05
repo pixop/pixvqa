@@ -64,7 +64,7 @@ def main() -> int:
         # select CPU libvmaf before that failure, rather than refusing the device.
         expect_fail(
             "gpu-vmaf-falls-back-then-feature-size",
-            ["--metrics", "vmaf", "--metric-device", "gpu", "--model", str(MODEL), *base],
+            ["--metrics", "vmaf", "--device", "gpu", "--model", str(MODEL), *base],
             "using CPU libvmaf",
         )
         expect_fail(

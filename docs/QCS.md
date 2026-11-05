@@ -71,7 +71,7 @@ QCS is never computed from a pooled video score, and frame scores are never fabr
   | `frame-count-mismatch` | The sequence length differs from the evaluated frame count |
   | `no-finite-samples` | No finite per-frame value was available |
 
-  See [ColorVideoVDP](COLORVIDEOVDP.md#per-frame-qcs).
+  See [ColorVideoVDP](LEARNED_METRICS.md).
 - **`cvqa-hdr-nr`: sampled frames, default [0, 10].** `--qcs` normalizes each calibrated sample into that band with the same integral as the native metrics. Override it with `--qcs-range cvqa-hdr-nr=lower:upper`. The adapter captures the official model's raw output for each sampled frame with a forward hook and calibrates each one with the official logistic. The default sampler keeps about one frame per second; PixVQA exposes a configurable sampling interval. QCS therefore describes consistency across selected frames, not necessarily every frame:
 
   ```text
@@ -88,7 +88,7 @@ QCS is never computed from a pooled video score, and frame scores are never fabr
   | `sample-count-mismatch` | The sample count differs from the sampling plan |
   | `no-finite-samples` | No finite calibrated sample was available |
 
-  Per-sample calibration extends the published model, which was trained and validated as a video-level predictor. It is not an officially validated per-frame quality predictor. See [CompressedVQA-HDR NR](COMPRESSEDVQA_HDR.md#sampled-frame-qcs).
+  Per-sample calibration extends the published model, which was trained and validated as a video-level predictor. It is not an officially validated per-frame quality predictor. See [CompressedVQA-HDR NR](LEARNED_METRICS.md).
 
 ## Reference implementation
 

@@ -67,7 +67,7 @@ def main() -> None:
         parity = next(c for c in items if c.phase == 'F')
         args = command(parity,executable,fixture.parent,3,'gpu',ROOT)
         assert args.count('--device') == 1 and args[args.index('--device')+1] == 'gpu'
-        assert '--metric-device' not in args
+        assert '--device' not in args
     print('PASS 146-case manifest, original A order, F device flag, PASS/FAIL/BLOCKED, resume invalidation')
 
 

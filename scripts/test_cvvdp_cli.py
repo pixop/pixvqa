@@ -598,7 +598,7 @@ print(json.dumps({"metric":"cvvdp","jod":9.5,"display":args[args.index("--displa
         result = run(
             [
                 "--metrics", "cvvdp", *raw, *raw_options,
-                "--frames", "1", "--metric-device", "cpu",
+                "--frames", "1", "--device", "cpu",
                 "--cvvdp-interpretation", "sdr", "--cvvdp-interpretation", "sdr",
                 "--cvvdp-display", "standard_fhd", "--cvvdp-display", "standard_fhd",
                 "--cvvdp-python", sys.executable, "--cvvdp-output-json", str(output),

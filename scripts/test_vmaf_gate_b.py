@@ -286,7 +286,7 @@ def compare_metric_pair(
 
 def cuda_metric_flags(include_xpsnr: bool) -> list[str]:
     flags = [
-        "--metric-device", "gpu",
+        "--device", "gpu",
         "--metrics", "psnr,ssim,msssim",
         "-v",
         "1"]
@@ -569,7 +569,7 @@ def main() -> int:
         dump = FIXTURE / "dist_nvdec_dump.yuv"
         if dump.is_file():
             dump.unlink()
-        # VMAF-only --metric-device gpu uses CPU libvmaf (see vmaf_gpu_uses_cpu).
+        # VMAF-only --device gpu uses CPU libvmaf (see vmaf_gpu_uses_cpu).
         # This path is NVDEC decode with host VMAF, so the metric device stays CPU.
         rc, out = run_pix(
             PIX_FULL,
@@ -743,7 +743,7 @@ def main() -> int:
             cuda_bin,
             [
                 "--metrics", "vmaf",
-                "--metric-device",
+                "--device",
                 "gpu",
                 "--model",
                 str(MODEL),
@@ -903,7 +903,7 @@ def main() -> int:
         include_x_cu = supports_cuda_xpsnr(PIX_CUDA)
         # Focused: at least one CUDA metric + CPU VMAF; also compare PSNR coexistence.
         base = [
-            "--metric-device", "gpu",
+            "--device", "gpu",
             "--metrics", "psnr",
             "-v",
             "1",

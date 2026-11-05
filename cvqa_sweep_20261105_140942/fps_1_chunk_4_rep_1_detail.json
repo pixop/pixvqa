@@ -1,0 +1,645 @@
+{
+  "adapter": "pixvqa_cvqahdr",
+  "metric": "cvqa-hdr-nr",
+  "upstream": {
+    "url": "https://github.com/sunwei925/CompressedVQA-HDR",
+    "repository": "/home/sergio/codeccomp/metrics/pixvqa/deps/CompressedVQA-HDR",
+    "expected_commit": "76bff6d5c078d51be06eddf1ed11591f3678145a",
+    "actual_commit": "76bff6d5c078d51be06eddf1ed11591f3678145a",
+    "commit_verified": true,
+    "working_tree_clean": false
+  },
+  "device": "cuda",
+  "device_requested": "auto",
+  "device_info": {
+    "requested": "auto",
+    "effective": "cuda",
+    "python": "3.11.15",
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "torch_version": "2.4.1+cu121",
+    "torch_cuda_build": "12.1",
+    "cuda_available": true,
+    "cpu_threads": 8,
+    "gpu": {
+      "name": "NVIDIA GeForce RTX 4070",
+      "capability": [
+        8,
+        9
+      ],
+      "total_memory_bytes": 12877955072,
+      "cudnn": 90100
+    }
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4070",
+    "capability": [
+      8,
+      9
+    ],
+    "total_memory_bytes": 12877955072,
+    "cudnn": 90100
+  },
+  "performance": {
+    "model_load_seconds": 3.9662876879956457,
+    "preprocessing_seconds": 19.10499650300335,
+    "inference_seconds": 0.9293503949957085,
+    "peak_rss_bytes": 2129862656,
+    "peak_cuda_allocated_bytes": 852640768,
+    "peak_cuda_reserved_bytes": 991952896,
+    "gpu_monitor": {
+      "samples": 120,
+      "peak_device_memory_mib": 2925,
+      "peak_gpu_utilization_percent": 97,
+      "mean_gpu_utilization_percent": 4.1,
+      "note": "Device-wide nvidia-smi samples (not process-exclusive); on multi-GPU systems samples aggregate all GPU rows and must be interpreted accordingly."
+    },
+    "chunks": [
+      {
+        "index": 1,
+        "start": 0,
+        "stop": 4,
+        "sample_count": 4,
+        "seconds": 0.3917462110039196
+      },
+      {
+        "index": 2,
+        "start": 4,
+        "stop": 8,
+        "sample_count": 4,
+        "seconds": 0.03831569999601925
+      },
+      {
+        "index": 3,
+        "start": 8,
+        "stop": 12,
+        "sample_count": 4,
+        "seconds": 0.03923948699957691
+      },
+      {
+        "index": 4,
+        "start": 12,
+        "stop": 16,
+        "sample_count": 4,
+        "seconds": 0.03805861600267235
+      },
+      {
+        "index": 5,
+        "start": 16,
+        "stop": 20,
+        "sample_count": 4,
+        "seconds": 0.03787448199727805
+      },
+      {
+        "index": 6,
+        "start": 20,
+        "stop": 24,
+        "sample_count": 4,
+        "seconds": 0.037787487999594305
+      },
+      {
+        "index": 7,
+        "start": 24,
+        "stop": 28,
+        "sample_count": 4,
+        "seconds": 0.03870951899443753
+      },
+      {
+        "index": 8,
+        "start": 28,
+        "stop": 32,
+        "sample_count": 4,
+        "seconds": 0.0380195069956244
+      },
+      {
+        "index": 9,
+        "start": 32,
+        "stop": 36,
+        "sample_count": 4,
+        "seconds": 0.03802467600326054
+      },
+      {
+        "index": 10,
+        "start": 36,
+        "stop": 40,
+        "sample_count": 4,
+        "seconds": 0.03831150699988939
+      },
+      {
+        "index": 11,
+        "start": 40,
+        "stop": 44,
+        "sample_count": 4,
+        "seconds": 0.038082314997154754
+      },
+      {
+        "index": 12,
+        "start": 44,
+        "stop": 48,
+        "sample_count": 4,
+        "seconds": 0.03864583300310187
+      },
+      {
+        "index": 13,
+        "start": 48,
+        "stop": 52,
+        "sample_count": 4,
+        "seconds": 0.038340472005074844
+      },
+      {
+        "index": 14,
+        "start": 52,
+        "stop": 56,
+        "sample_count": 4,
+        "seconds": 0.03834925000410294
+      },
+      {
+        "index": 15,
+        "start": 56,
+        "stop": 60,
+        "sample_count": 4,
+        "seconds": 0.038170870997419115
+      }
+    ]
+  },
+  "test": "/home/sergio/codeccomp/results/261104/hevc_nvenc_4070_sdk13_all/cbr/ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13/Bristol_1920x1080_60_F0-3599_420_10bit_sdr_bt709l_yuv_tbr10000_ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13.mp4",
+  "video_name": "/home/sergio/codeccomp/results/261104/hevc_nvenc_4070_sdk13_all/cbr/ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13/Bristol_1920x1080_60_F0-3599_420_10bit_sdr_bt709l_yuv_tbr10000_ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13.mp4",
+  "sampling": {
+    "opencv_frame_count": 3600,
+    "opencv_fps": 60.0,
+    "rounded_fps": 60,
+    "sample_offset_frames": 30,
+    "sample_interval_sec_requested": 1.0,
+    "sample_interval_frames": 60,
+    "sample_interval_sec_effective": 1.0,
+    "sampled_frames": 60,
+    "tail_frames": 0,
+    "chunk_size_sec_requested": 4.0,
+    "chunk_max_sampled_frames": 4,
+    "path": "/home/sergio/codeccomp/results/261104/hevc_nvenc_4070_sdk13_all/cbr/ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13/Bristol_1920x1080_60_F0-3599_420_10bit_sdr_bt709l_yuv_tbr10000_ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13.mp4"
+  },
+  "inference": {
+    "mode": "chunked",
+    "chunk_max_sampled_frames": 4,
+    "chunk_size_sec_requested": 4.0,
+    "chunk_count": 15
+  },
+  "quality_score": 8.318780179037049,
+  "raw_model_score": 0.29028084874153137,
+  "temporal": {
+    "basis": "sampled-frames",
+    "sample_count": 60,
+    "sampling_density_hz": 1.0,
+    "raw_dtype": "float32",
+    "calibration_dtype": "float64",
+    "pooled_parity": true,
+    "decoded_frame_count": null,
+    "padded_samples": null,
+    "qcs_eligible": false,
+    "note": "Per-sample scores apply the official logistic to each sampled frame's raw quality1 prediction. This is a PixVQA extension of the published video-level model, not an officially validated per-frame predictor. QCS from these samples describes sampled-frame consistency at the configured sampling interval, not frame-by-frame consistency.",
+    "samples": [
+      {
+        "index": 0,
+        "frame_index": 30,
+        "time_seconds": 0.5,
+        "raw_model_score": 0.9070963859558105,
+        "quality_score": 9.45640732195568
+      },
+      {
+        "index": 1,
+        "frame_index": 90,
+        "time_seconds": 1.5,
+        "raw_model_score": 0.7937283515930176,
+        "quality_score": 9.263827200745254
+      },
+      {
+        "index": 2,
+        "frame_index": 150,
+        "time_seconds": 2.5,
+        "raw_model_score": 0.6718065738677979,
+        "quality_score": 9.048752216673051
+      },
+      {
+        "index": 3,
+        "frame_index": 210,
+        "time_seconds": 3.5,
+        "raw_model_score": 0.5811858773231506,
+        "quality_score": 8.883358837290984
+      },
+      {
+        "index": 4,
+        "frame_index": 270,
+        "time_seconds": 4.5,
+        "raw_model_score": 0.5368844270706177,
+        "quality_score": 8.800738733149615
+      },
+      {
+        "index": 5,
+        "frame_index": 330,
+        "time_seconds": 5.5,
+        "raw_model_score": 0.5653848052024841,
+        "quality_score": 8.85402504600279
+      },
+      {
+        "index": 6,
+        "frame_index": 390,
+        "time_seconds": 6.5,
+        "raw_model_score": 0.5397409200668335,
+        "quality_score": 8.806101400413354
+      },
+      {
+        "index": 7,
+        "frame_index": 450,
+        "time_seconds": 7.5,
+        "raw_model_score": 0.5910224318504333,
+        "quality_score": 8.90154497417052
+      },
+      {
+        "index": 8,
+        "frame_index": 510,
+        "time_seconds": 8.5,
+        "raw_model_score": 0.6367654800415039,
+        "quality_score": 8.985367088538737
+      },
+      {
+        "index": 9,
+        "frame_index": 570,
+        "time_seconds": 9.5,
+        "raw_model_score": 0.6170486211776733,
+        "quality_score": 8.949387441932686
+      },
+      {
+        "index": 10,
+        "frame_index": 630,
+        "time_seconds": 10.5,
+        "raw_model_score": 0.6223888993263245,
+        "quality_score": 8.959154929938904
+      },
+      {
+        "index": 11,
+        "frame_index": 690,
+        "time_seconds": 11.5,
+        "raw_model_score": 0.61238032579422,
+        "quality_score": 8.940835321013992
+      },
+      {
+        "index": 12,
+        "frame_index": 750,
+        "time_seconds": 12.5,
+        "raw_model_score": 0.5565671920776367,
+        "quality_score": 8.837590969743928
+      },
+      {
+        "index": 13,
+        "frame_index": 810,
+        "time_seconds": 13.5,
+        "raw_model_score": 0.40417715907096863,
+        "quality_score": 8.5461115171247
+      },
+      {
+        "index": 14,
+        "frame_index": 870,
+        "time_seconds": 14.5,
+        "raw_model_score": 0.5978927612304688,
+        "quality_score": 8.914213100370603
+      },
+      {
+        "index": 15,
+        "frame_index": 930,
+        "time_seconds": 15.5,
+        "raw_model_score": 0.5340731739997864,
+        "quality_score": 8.795456203547815
+      },
+      {
+        "index": 16,
+        "frame_index": 990,
+        "time_seconds": 16.5,
+        "raw_model_score": 0.5953788757324219,
+        "quality_score": 8.909581009253316
+      },
+      {
+        "index": 17,
+        "frame_index": 1050,
+        "time_seconds": 17.5,
+        "raw_model_score": 0.6772400140762329,
+        "quality_score": 9.058517059588553
+      },
+      {
+        "index": 18,
+        "frame_index": 1110,
+        "time_seconds": 18.5,
+        "raw_model_score": 0.57774817943573,
+        "quality_score": 8.876989581971202
+      },
+      {
+        "index": 19,
+        "frame_index": 1170,
+        "time_seconds": 19.5,
+        "raw_model_score": 0.6899410486221313,
+        "quality_score": 9.08127680661164
+      },
+      {
+        "index": 20,
+        "frame_index": 1230,
+        "time_seconds": 20.5,
+        "raw_model_score": 0.17900606989860535,
+        "quality_score": 8.088532239633423
+      },
+      {
+        "index": 21,
+        "frame_index": 1290,
+        "time_seconds": 21.5,
+        "raw_model_score": 0.09472866356372833,
+        "quality_score": 7.908609320385153
+      },
+      {
+        "index": 22,
+        "frame_index": 1350,
+        "time_seconds": 22.5,
+        "raw_model_score": 0.03830248862504959,
+        "quality_score": 7.7854064851221665
+      },
+      {
+        "index": 23,
+        "frame_index": 1410,
+        "time_seconds": 23.5,
+        "raw_model_score": 0.09015148878097534,
+        "quality_score": 7.89869800678116
+      },
+      {
+        "index": 24,
+        "frame_index": 1470,
+        "time_seconds": 24.5,
+        "raw_model_score": -0.018279455602169037,
+        "quality_score": 7.6596112157672
+      },
+      {
+        "index": 25,
+        "frame_index": 1530,
+        "time_seconds": 25.5,
+        "raw_model_score": 0.1340082436800003,
+        "quality_score": 7.9930705583876716
+      },
+      {
+        "index": 26,
+        "frame_index": 1590,
+        "time_seconds": 26.5,
+        "raw_model_score": 0.1994897425174713,
+        "quality_score": 8.131534704643514
+      },
+      {
+        "index": 27,
+        "frame_index": 1650,
+        "time_seconds": 27.5,
+        "raw_model_score": -0.00402480736374855,
+        "quality_score": 7.691517470412691
+      },
+      {
+        "index": 28,
+        "frame_index": 1710,
+        "time_seconds": 28.5,
+        "raw_model_score": 0.13773781061172485,
+        "quality_score": 8.00103506570133
+      },
+      {
+        "index": 29,
+        "frame_index": 1770,
+        "time_seconds": 29.5,
+        "raw_model_score": 0.17265601456165314,
+        "quality_score": 8.075143904005131
+      },
+      {
+        "index": 30,
+        "frame_index": 1830,
+        "time_seconds": 30.5,
+        "raw_model_score": 0.32000571489334106,
+        "quality_score": 8.378911197392881
+      },
+      {
+        "index": 31,
+        "frame_index": 1890,
+        "time_seconds": 31.5,
+        "raw_model_score": 0.5599195957183838,
+        "quality_score": 8.843844578252742
+      },
+      {
+        "index": 32,
+        "frame_index": 1950,
+        "time_seconds": 32.5,
+        "raw_model_score": 0.4617385268211365,
+        "quality_score": 8.657885640090967
+      },
+      {
+        "index": 33,
+        "frame_index": 2010,
+        "time_seconds": 33.5,
+        "raw_model_score": 0.5840924978256226,
+        "quality_score": 8.888738658305215
+      },
+      {
+        "index": 34,
+        "frame_index": 2070,
+        "time_seconds": 34.5,
+        "raw_model_score": 0.5553736686706543,
+        "quality_score": 8.835362936861884
+      },
+      {
+        "index": 35,
+        "frame_index": 2130,
+        "time_seconds": 35.5,
+        "raw_model_score": 0.6016604900360107,
+        "quality_score": 8.921148542243941
+      },
+      {
+        "index": 36,
+        "frame_index": 2190,
+        "time_seconds": 36.5,
+        "raw_model_score": 0.4573194086551666,
+        "quality_score": 8.649377319355153
+      },
+      {
+        "index": 37,
+        "frame_index": 2250,
+        "time_seconds": 37.5,
+        "raw_model_score": 0.399564653635025,
+        "quality_score": 8.537065351127353
+      },
+      {
+        "index": 38,
+        "frame_index": 2310,
+        "time_seconds": 38.5,
+        "raw_model_score": 0.3964553773403168,
+        "quality_score": 8.530959813837171
+      },
+      {
+        "index": 39,
+        "frame_index": 2370,
+        "time_seconds": 39.5,
+        "raw_model_score": 0.31089964509010315,
+        "quality_score": 8.360551101584747
+      },
+      {
+        "index": 40,
+        "frame_index": 2430,
+        "time_seconds": 40.5,
+        "raw_model_score": 0.9287286996841431,
+        "quality_score": 9.492365485119763
+      },
+      {
+        "index": 41,
+        "frame_index": 2490,
+        "time_seconds": 41.5,
+        "raw_model_score": 0.923650860786438,
+        "quality_score": 9.483947282456711
+      },
+      {
+        "index": 42,
+        "frame_index": 2550,
+        "time_seconds": 42.5,
+        "raw_model_score": 0.9833122491836548,
+        "quality_score": 9.581995024911862
+      },
+      {
+        "index": 43,
+        "frame_index": 2610,
+        "time_seconds": 43.5,
+        "raw_model_score": 0.7300025224685669,
+        "quality_score": 9.15246124554119
+      },
+      {
+        "index": 44,
+        "frame_index": 2670,
+        "time_seconds": 44.5,
+        "raw_model_score": 0.6669740080833435,
+        "quality_score": 9.040052948970697
+      },
+      {
+        "index": 45,
+        "frame_index": 2730,
+        "time_seconds": 45.5,
+        "raw_model_score": 0.5705468654632568,
+        "quality_score": 8.86362445639054
+      },
+      {
+        "index": 46,
+        "frame_index": 2790,
+        "time_seconds": 46.5,
+        "raw_model_score": 0.5029172897338867,
+        "quality_score": 8.73659259555484
+      },
+      {
+        "index": 47,
+        "frame_index": 2850,
+        "time_seconds": 47.5,
+        "raw_model_score": 0.6282401084899902,
+        "quality_score": 8.969837747182623
+      },
+      {
+        "index": 48,
+        "frame_index": 2910,
+        "time_seconds": 48.5,
+        "raw_model_score": 0.5205072164535522,
+        "quality_score": 8.769897894035694
+      },
+      {
+        "index": 49,
+        "frame_index": 2970,
+        "time_seconds": 49.5,
+        "raw_model_score": 0.5758737325668335,
+        "quality_score": 8.873513710597194
+      },
+      {
+        "index": 50,
+        "frame_index": 3030,
+        "time_seconds": 50.5,
+        "raw_model_score": -0.8232583999633789,
+        "quality_score": 5.60044243485379
+      },
+      {
+        "index": 51,
+        "frame_index": 3090,
+        "time_seconds": 51.5,
+        "raw_model_score": -0.8148099780082703,
+        "quality_score": 5.624912583601599
+      },
+      {
+        "index": 52,
+        "frame_index": 3150,
+        "time_seconds": 52.5,
+        "raw_model_score": -0.7472519874572754,
+        "quality_score": 5.818238761238376
+      },
+      {
+        "index": 53,
+        "frame_index": 3210,
+        "time_seconds": 53.5,
+        "raw_model_score": -0.7085898518562317,
+        "quality_score": 5.927018541291773
+      },
+      {
+        "index": 54,
+        "frame_index": 3270,
+        "time_seconds": 54.5,
+        "raw_model_score": -0.8568236231803894,
+        "quality_score": 5.502570802509126
+      },
+      {
+        "index": 55,
+        "frame_index": 3330,
+        "time_seconds": 55.5,
+        "raw_model_score": -0.7690775394439697,
+        "quality_score": 5.756236251264113
+      },
+      {
+        "index": 56,
+        "frame_index": 3390,
+        "time_seconds": 56.5,
+        "raw_model_score": -0.664681077003479,
+        "quality_score": 6.04894625075508
+      },
+      {
+        "index": 57,
+        "frame_index": 3450,
+        "time_seconds": 57.5,
+        "raw_model_score": -0.7625577449798584,
+        "quality_score": 5.774802990726471
+      },
+      {
+        "index": 58,
+        "frame_index": 3510,
+        "time_seconds": 58.5,
+        "raw_model_score": -0.7517105340957642,
+        "quality_score": 5.805607828086977
+      },
+      {
+        "index": 59,
+        "frame_index": 3570,
+        "time_seconds": 59.5,
+        "raw_model_score": -0.6944015026092529,
+        "quality_score": 5.966604026737173
+      }
+    ]
+  },
+  "calibration_profile": {
+    "path": "/home/sergio/codeccomp/metrics/pixvqa/build/full/../../config/../deps/CompressedVQA-HDR/ckpts/NR_HDR_VQA.npy",
+    "sha256": "601a7314e802a6867c33784355587bd892ad49990d2074cc64fe1bd7cdf6d49f",
+    "values": [
+      14.629637463164919,
+      -1011.7835670175239,
+      -15.402168936769426,
+      3.085792815920812
+    ]
+  },
+  "checkpoint": {
+    "path": "/home/sergio/codeccomp/metrics/pixvqa/build/full/../../config/../deps/CompressedVQA-HDR/ckpts/NR_HDR_VQA.pth",
+    "sha256": "b37659902ce96e2f49de22e5e0c865c694921e3b8e3e55b770adc3be7cac8b88"
+  },
+  "runtime": {
+    "opencv": "4.11.0",
+    "torch": "2.4.1+cu121",
+    "torchvision": "0.19.1+cu121",
+    "open_clip_torch": "3.3.0",
+    "timm": "1.0.31",
+    "numpy": "1.25.2"
+  },
+  "elapsed_seconds": 24.84753347699734
+}

@@ -108,7 +108,7 @@ def main():
         write_yuv(tp, *test_a)
         cpu, _ = run(CPU, rp, tp, w, h, [ ])
         for prec in precs:
-            gpu, _ = run(CUDA, rp, tp, w, h, ["--metric-device", "gpu"], prec)
+            gpu, _ = run(CUDA, rp, tp, w, h, ["--device", "gpu"], prec)
             for metric in ("psnr", "ssim"):
                 delta = [abs(a - b) for a, b in zip(cpu[metric], gpu[metric])]
                 # PSNR is printed at 2 decimals; compare the printed values.

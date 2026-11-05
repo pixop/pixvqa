@@ -311,7 +311,6 @@ void print_help_advanced() {
       "  --preset hdr         Legacy PQ shortcut; without --metrics selects all\n"
       "                       metrics and applies PQ defaults, not an exact alias\n"
       "                       for --metrics pq.\n"
-      "  --metric-device      Alias for --device.\n"
       "  --vmaf-model         Alias for --model; both must agree if given.\n"
       "  --cs, --tf, --ref-cs, --dist-cs, --ref-tf, --dist-tf\n"
       "                       Legacy color/transfer overrides (see --help-hdr).\n"
@@ -2161,7 +2160,7 @@ int resolve_execution(Options& opt) {
   const bool pu21_ok = gpu_depth_ok;
 
   auto refuse_gpu = [](const char* metric, const char* why) {
-    std::fprintf(stderr, "pixvqa: --metric-device gpu cannot run %s (%s); no CPU substitute\n",
+    std::fprintf(stderr, "pixvqa: --device gpu cannot run %s (%s); no CPU substitute\n",
                  metric, why);
   };
 
@@ -2187,7 +2186,7 @@ int resolve_execution(Options& opt) {
     // That does not require a CUDA build and does not substitute for another metric.
     const bool vmaf_only = opt.enable_vmaf && !other && !pu21;
     if (!cuda && !vmaf_only) {
-      std::fprintf(stderr, "pixvqa: this build has no GPU metrics; refusing --metric-device gpu\n");
+      std::fprintf(stderr, "pixvqa: this build has no GPU metrics; refusing --device gpu\n");
       return 2;
     }
     if (other) {
@@ -3218,7 +3217,7 @@ int run_cli(int argc, char** argv) {
   // First option that only native metrics read; an error when no native metric is selected.
   std::string native_only_option;
   std::string learned_config_path;
-  std::string metric_device_flag;
+  bool device_flag_seen = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -3264,7 +3263,7 @@ int run_cli(int argc, char** argv) {
         std::fprintf(stderr, "pixvqa: --learned-config expects a path\n");
         return 2;
       }
-    } else if (a == "--metric-device" || a == "--device") {
+    } else if (a == "--device") {
       const auto v = need(a.c_str());
       DeviceChoice choice = DeviceChoice::Auto;
       if (!parse_device_choice(v, choice)) {
@@ -3272,13 +3271,13 @@ int run_cli(int argc, char** argv) {
                      v.c_str());
         return 2;
       }
-      if (!metric_device_flag.empty() && choice != opt.metric_device) {
-        std::fprintf(stderr, "pixvqa: conflicting %s %s and %s %s\n", metric_device_flag.c_str(),
-                     device_choice_name(opt.metric_device), a.c_str(), v.c_str());
+      if (device_flag_seen && choice != opt.metric_device) {
+        std::fprintf(stderr, "pixvqa: conflicting --device %s and --device %s\n",
+                     device_choice_name(opt.metric_device), v.c_str());
         return 2;
       }
       opt.metric_device = choice;
-      metric_device_flag = a;
+      device_flag_seen = true;
     } else if (a == "--cvvdp-interpretation") {
       cvvdp.options_seen = true;
       if (!assign_cvvdp_value(cvvdp.interpretation, "--cvvdp-interpretation",
@@ -3360,7 +3359,7 @@ int run_cli(int argc, char** argv) {
     } else if (a == "--kernel" || a == "--strip" || a == "--cuda-prec" || a == "--simd" ||
                a == "--xpsnr-backend" || a == "--vmaf-backend" || a == "--cuda-info") {
       std::fprintf(stderr,
-                   "pixvqa: %s was removed; use --decode, --metric-device, and --threads\n",
+                   "pixvqa: %s was removed; use --decode, --device, and --threads\n",
                    a.c_str());
       return 2;
     } else if (a == "--qcs") {

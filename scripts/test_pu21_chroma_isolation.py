@@ -222,7 +222,7 @@ def score_native(ref: Path, dist: Path) -> dict[str, object]:
     env = dict(os.environ, PIXVQA_QCS_TRACE="1")
     result = run([
         str(PIXVQA), "--metrics", "psnr,ssim,msssim,pu21-psnr,pu21-ssim,pu21-msssim",
-        "--metric-device", "cpu", "--qcs", "--hdr-transfer", "pq", "--hdr-primaries", "bt2020",
+        "--device", "cpu", "--qcs", "--hdr-transfer", "pq", "--hdr-primaries", "bt2020",
         "--hdr-matrix", "bt2020nc", "--hdr-range", "limited", "-v", "0",
         "-r", str(ref), "-s", f"{W}x{H}", "-f", "444p:10",
         "-t", str(dist), "-s", f"{W}x{H}", "-f", "444p:10",

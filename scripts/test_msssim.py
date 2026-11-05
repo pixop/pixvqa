@@ -403,7 +403,7 @@ def run_cuda(ref, tst, w, h, chroma, bits, prec, extra=None):
     env = os.environ.copy()
     env["PIXVQA_MSSSIM_DEBUG"] = "1"
     env["PIXVQA_CUDA_PREC"] = prec
-    cmd = [str(CUDA_BIN), "--threads", "1", "--metric-device", "gpu",
+    cmd = [str(CUDA_BIN), "--threads", "1", "--device", "gpu",
            *(extra or ["--metrics", "msssim"]), "-r", str(ref), "-s", f"{w}x{h}", "-f", fmt,
            "-t", str(tst), "-s", f"{w}x{h}", "-f", fmt]
     return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=600)
@@ -437,10 +437,10 @@ def check_cuda_leaves_other_metrics() -> None:
                 "-r", str(ref), "-s", f"{w}x{h}", "-f", "420p:10", "-t", str(tst), "-s", f"{w}x{h}",
                 "-f", "420p:10"]
         env = os.environ.copy()
-        alone = subprocess.run([str(CUDA_BIN), "--metric-device", "gpu", *base],
+        alone = subprocess.run([str(CUDA_BIN), "--device", "gpu", *base],
                                capture_output=True, text=True, env=env, timeout=300)
         both = subprocess.run(
-            [str(CUDA_BIN), "--metric-device", "gpu", *base, "--metrics", "msssim"],
+            [str(CUDA_BIN), "--device", "gpu", *base, "--metrics", "msssim"],
             capture_output=True, text=True, env=env, timeout=300)
     if alone.returncode or both.returncode:
         fail(f"combined cuda rc {alone.returncode} {both.returncode} {both.stderr[-200:]}")

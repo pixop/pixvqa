@@ -249,7 +249,7 @@ def check_vmaf_and_pu21() -> None:
                 else:
                     print("OK   hdr_score_not_clipped_before_qcs")
             if CUDA.exists() and hdr_default.returncode == 0:
-                gpu = run(hdr_args + ["--metric-device", "gpu"], ref, dist, "320x240", "420p:10",
+                gpu = run(hdr_args + ["--device", "gpu"], ref, dist, "320x240", "420p:10",
                           bin_path=CUDA, env=env, timeout=300)
                 if gpu.returncode != 0 or "using CPU libvmaf" not in gpu.stderr:
                     fail(f"gpu vmaf qcs rc={gpu.returncode} {gpu.stderr[-300:]}")
@@ -512,14 +512,14 @@ def main() -> int:
                 print(f"OK   list reject {needle}")
         if CUDA.exists():
             cpu = run(["--metrics", "psnr", "--qcs"], ref, tst, size, "444p:10")
-            gpu = run(["--metric-device", "gpu", "--metrics", "psnr", "--qcs"],
+            gpu = run(["--device", "gpu", "--metrics", "psnr", "--qcs"],
                       ref, tst, size, "444p:10", bin_path=CUDA)
             if qcs_map(cpu.stdout)["PSNR-QCS"] != qcs_map(gpu.stdout)["PSNR-QCS"]:
                 fail(f"cuda qcs {qcs_map(gpu.stdout)} cpu {qcs_map(cpu.stdout)}")
             else:
                 print("OK   cuda_psnr_qcs")
             cpu_id = run(["--metrics", "psnr", "--qcs"], ref, ref, size, "444p:10")
-            gpu_id = run(["--metric-device", "gpu", "--metrics", "psnr", "--qcs"],
+            gpu_id = run(["--device", "gpu", "--metrics", "psnr", "--qcs"],
                          ref, ref, size, "444p:10", bin_path=CUDA)
             if "999.99" not in cpu_id.stdout or "999.99" not in gpu_id.stdout:
                 fail("identical PSNR lost 999.99 on cpu or cuda")
@@ -529,7 +529,7 @@ def main() -> int:
                 print("OK   cuda_identical_psnr_qcs")
             for metric, label in (("ssim", "SSIM-QCS"), ("msssim", "MS-SSIM-QCS")):
                 cpu_m = run(["--metrics", metric, "--qcs"], ref, tst, size, "444p:10")
-                gpu_m = run(["--metric-device", "gpu", "--metrics", metric, "--qcs"],
+                gpu_m = run(["--device", "gpu", "--metrics", metric, "--qcs"],
                             ref, tst, size, "444p:10", bin_path=CUDA)
                 if cpu_m.returncode or gpu_m.returncode:
                     fail(f"cuda {metric} rc cpu={cpu_m.returncode} gpu={gpu_m.returncode} {gpu_m.stderr[-200:]}")
@@ -538,7 +538,7 @@ def main() -> int:
                 else:
                     print(f"OK   cuda_{metric}_qcs")
             cpu_x = run(["--fps", "30", "--metrics", "xpsnr", "--qcs"], ref, tst, size, "444p:10")
-            gpu_x = run(["--metric-device", "gpu", "--fps", "30", "--metrics", "xpsnr", "--qcs"],
+            gpu_x = run(["--device", "gpu", "--fps", "30", "--metrics", "xpsnr", "--qcs"],
                         ref, tst, size, "444p:10", bin_path=CUDA)
             if cpu_x.returncode or gpu_x.returncode:
                 fail(f"cuda xpsnr rc cpu={cpu_x.returncode} gpu={gpu_x.returncode} {gpu_x.stderr[-200:]}")

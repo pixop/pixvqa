@@ -13,10 +13,10 @@
 #
 # Values are quoted strings. "~/" expands to $HOME. Relative paths are relative
 # to this file's directory. A value without "/" is a command looked up on PATH.
-# See docs/LEARNED_METRICS_CONFIG.md.
+# See docs/LEARNED_METRICS.md.
 
 [learned]
-# One interpreter for both metrics (docs/LEARNED_ENVIRONMENT.md).
+# One interpreter for both metrics (docs/LEARNED_METRICS.md).
 python = "~/pixvqa-learned-env/bin/python"
 # Directory holding the pixvqa_cvvdp and pixvqa_cvqahdr adapter packages.
 # Appended to PYTHONPATH, so an explicit PYTHONPATH still wins.

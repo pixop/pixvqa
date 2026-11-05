@@ -106,7 +106,7 @@ def cases() -> list:
                 return Result("FAIL", f"help missing {needle}", command)
         if advanced.returncode != 0:
             return Result("FAIL", "advanced help failed", f"{path} --help-advanced")
-        for needle in ("--metric-device", "--threads", "--qcs-range", "--vmaf-model"):
+        for needle in ("--threads", "--qcs-range", "--vmaf-model"):
             if needle not in advanced.stdout:
                 return Result("FAIL", f"advanced help missing {needle}", f"{path} --help-advanced")
         if "NVIDIA" in help_run.stdout or "GeForce" in help_run.stdout:
@@ -237,7 +237,7 @@ def cases() -> list:
             (["--metrics", "psnr", "--seek", "abc", *common], "--seek"),
             (["--metrics", "psnr", "--seek", "3", *common], "nonzero --seek"),
             (["--metrics", "psnr", "--decode", "both", *common], "unsupported --decode"),
-            (["--metrics", "psnr", "--metric-device", "metal", *common], "unsupported --metric-device"),
+            (["--metrics", "psnr", "--device", "metal", *common], "unsupported --device"),
             (["--metrics", "psnr", "--input", "tape", *common], "unsupported --input"),
             (["--metrics", "psnr", "-f", "nv12", "-r", str(ref), "-s", size, "-t", str(dist), "-s", size, "-f", fmt], "unsupported -f"),
             (["--metrics", "psnr", "-r", str(ref), "-s", size, "-f", "rgb24", "-t", str(dist), "-s", size, "-f", "rgb24"], "unsupported -f"),
@@ -393,7 +393,7 @@ def cases() -> list:
             return Result("FAIL", "executable is absent", "")
         version = run_cmd([str(path), "--version"])
         profile = installation_profile(version.stdout)
-        args = ["--metric-device", "gpu", *_base(world)]
+        args = ["--device", "gpu", *_base(world)]
         proc, cmd = _run(world, "cpu", args)
         # A CUDA installation implements GPU metrics. The rejection applies
         # only to the CPU-only and software-decoding executables.

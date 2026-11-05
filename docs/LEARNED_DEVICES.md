@@ -1,13 +1,12 @@
 # Learned metrics on CPU and CUDA
 
 `cvvdp` and `cvqa-hdr-nr` run on either the CPU or an NVIDIA GPU through
-PyTorch, from the one [shared environment](LEARNED_ENVIRONMENT.md). This page
+PyTorch, using the [learned-metrics setup](LEARNED_METRICS.md). This page
 covers device selection, CPU-vs-CUDA agreement, speed, and platform support.
 
 ## Selecting the device
 
-`--device` is an alias of `--metric-device`. Both take `auto`, `cpu`, or
-`gpu`. Giving both with different values is an error.
+`--device` takes `auto`, `cpu`, or `gpu` (default `auto`).
 
 | Option | Native metrics | `cvvdp`, `cvqa-hdr-nr` |
 |---|---|---|
@@ -111,9 +110,9 @@ performance, and exits 1 when a tolerance or device check fails.
 | Case | Result |
 |---|---|
 | `--device gpu`, no CUDA device visible to PyTorch (`CUDA_VISIBLE_DEVICES=`) | Exit 2 in preflight, before any metric runs: `CUDA was requested but PyTorch 2.11.0+cu128 (CUDA build 12.8) reports no CUDA device; not falling back to CPU` |
-| `--device gpu` with native metrics on a build without CUDA | Exit 2: `this build has no GPU metrics; refusing --metric-device gpu` |
+| `--device gpu` with native metrics on a build without CUDA | Exit 2: `this build has no GPU metrics; refusing --device gpu` |
 | `--device metal` | Exit 2: `unsupported --device metal (use auto, cpu, or gpu)` |
-| `--device cpu --metric-device gpu` | Exit 2: `conflicting --device cpu and --metric-device gpu` |
+| `--device cpu --device gpu` | Exit 2: `conflicting --device cpu and --device gpu` |
 | Adapter `--device mps` or another value | Exit 2: argparse rejects it (choices `auto`, `cpu`, `cuda`) |
 | Official CLI log reports a device other than the one requested | Exit 1: `cvvdp reported device ..., not ...` |
 

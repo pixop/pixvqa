@@ -612,10 +612,9 @@ def cli_cases(s: Suite) -> None:
 
 
 def device_cases(s: Suite) -> None:
-    """--device/--metric-device: auto stays auto for the adapters, gpu becomes cuda."""
+    """--device: auto stays auto for the adapters, gpu becomes cuda."""
     pair = ["--metrics", "cvvdp,cvqa-hdr-nr", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp(), *s.nr()]
-    for flag, choice, token in (("--device", "cpu", "cpu"), ("--device", "gpu", "cuda"),
-                                ("--metric-device", "gpu", "cuda"), ("--device", "auto", "auto"),
+    for flag, choice, token in (("--device", "cpu", "cpu"), ("--device", "gpu", "cuda"), ("--device", "auto", "auto"),
                                 (None, None, "auto")):
         name = f"device-{flag or 'default'}-{choice or 'none'}"
         proc = s.run([*pair, *([flag, choice] if flag else [])])
@@ -628,11 +627,14 @@ def device_cases(s: Suite) -> None:
             fail(name, str(sent))
         else:
             ok(name)
-    proc = s.run([*pair, "--device", "cpu", "--metric-device", "gpu"])
-    if expect("device-conflict", proc, 2, needles=["conflicting --device cpu and --metric-device gpu"]) \
+    proc = s.run([*pair, "--device", "cpu", "--device", "gpu"])
+    if expect("device-conflict", proc, 2, needles=["conflicting --device cpu and --device gpu"]) \
             and not s.backend_log():
         ok("device-conflict-rejected")
-    proc = s.run([*pair, "--device", "cpu", "--metric-device", "cpu"])
+    proc = s.run([*pair, "--" + "metric-device", "cpu"])
+    if expect("removed-device-alias", proc, 1, needles=["PARSE ERROR"]) and not s.backend_log():
+        ok("removed-device-alias-rejected")
+    proc = s.run([*pair, "--device", "cpu", "--device", "cpu"])
     if expect("device-repeat-agrees", proc, 0, stdout_needles=["device:cpu ]"]):
         ok("device-repeat-agrees")
     proc = s.run([*pair, "--device", "metal"])

@@ -294,7 +294,7 @@ def main() -> int:
 
         version = run(["--version"])
         if "build: cuda" not in version.stdout:
-            gpu = run(base + ["--metrics", "pu21-psnr", "--metric-device", "gpu"])
+            gpu = run(base + ["--metrics", "pu21-psnr", "--device", "gpu"])
             if gpu.returncode == 0 or "GPU" not in gpu.stderr:
                 fail(f"gpu pu21 was accepted: {gpu.stderr[-300:]}")
             else:

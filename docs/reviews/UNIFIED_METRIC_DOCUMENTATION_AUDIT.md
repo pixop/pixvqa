@@ -35,8 +35,7 @@ The **implementation and harness** for unified CLI parameters, numerical conform
 | `docs/INSTALL_VALIDATION.md` | Clean-room install gate | Yes |
 | `docs/CLI_USAGE.md` | CLI examples, metric groups, unified HDR/CVVDP options | Yes |
 | `docs/METRICS_AND_FORMATS.md` | Metrics, formats, CPU/GPU | Yes |
-| `docs/COLORVIDEOVDP.md` | CVVDP backend | Yes |
-| `docs/COMPRESSEDVQA_HDR.md` | CVQA-HDR-NR | Yes |
+| `docs/LEARNED_METRICS.md` | CVVDP and NR summary | Yes |
 | `docs/LEARNED_*.md` | Learned env, config, devices | Partial |
 | `docs/PU21.md`, `docs/QCS.md` | HDR / QCS | Partial |
 | `docs/RELEASE_VALIDATION.md` | `make release-check*` | No (not in index) |
@@ -212,9 +211,9 @@ Only in numerical README lines 123–125; acceptable if index links to numerical
 | Topic | Doc source | Implementation | Verdict |
 |--------|------------|----------------|---------|
 | Metric groups `sdr` / `pq` / `hlg` | `docs/CLI_USAGE.md` lines 267–279 | `scripts/numerical_conformance/metric_caps.py` `GROUP_METRICS`; `src/main.cpp` group handling | **Consistent** |
-| `--device` / `--metric-device` alias | `CLI_USAGE.md` lines 301–302 | `src/main.cpp` lines 2948, help text ~197–199 | **Consistent** |
+| `--device` / `--device` alias | `CLI_USAGE.md` lines 301–302 | `src/main.cpp` lines 2948, help text ~197–199 | **Consistent** |
 | `--hdr-transfer`, `--tf`, per-side transfer | `CLI_USAGE.md` lines 320–321 | `src/main.cpp` `metric_resolve` / conflict checks; exercised in `test_metric_parameters.py` | **Consistent** (when swdec built) |
-| CVVDP raw YUV420p10 PQ/HLG only | `CLI_USAGE.md`, `COLORVIDEOVDP.md` | `src/main.cpp` ~833–839; `registry.py` `cvvdp_skip_reason` SDR raw → NA | **Consistent** |
+| CVVDP raw YUV420p10 PQ/HLG only | `CLI_USAGE.md`, `LEARNED_METRICS.md` | `src/main.cpp` ~833–839; `registry.py` `cvvdp_skip_reason` SDR raw → NA | **Consistent** |
 | CVQA compressed-only, no `--frames` | `CLI_USAGE.md` lines 104–106 | `metric_caps.py` `cvqa-hdr-nr` `honors_frames: False` | **Consistent** |
 | HDR not inferred from bit depth alone | `METRICS_AND_FORMATS.md` lines 103–104 | `src/main.cpp` messaging ~2346 | **Consistent** |
 | 95 baseline vs 6 internal synthetics | numerical README 121–122 | `validation_levels.py` `INTERNAL_SYNTHETIC_CASE_SUFFIXES`; `baselines.py` `requires_approved_baseline_regression` | **Consistent** |

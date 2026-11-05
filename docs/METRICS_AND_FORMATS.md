@@ -10,8 +10,8 @@
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
-| [`cvvdp`](COLORVIDEOVDP.md) | ColorVideoVDP JOD, optional external Python backend. Full-reference |
-| [`cvqa-hdr-nr`](COMPRESSEDVQA_HDR.md) | CompressedVQA-HDR NR, optional external Python backend. No-reference |
+| [`cvvdp`](LEARNED_METRICS.md) | ColorVideoVDP JOD, optional external Python backend. Full-reference |
+| [`cvqa-hdr-nr`](LEARNED_METRICS.md) | CompressedVQA-HDR NR, optional external Python backend. No-reference |
 | [`--qcs`](QCS.md) | Quality Consistency Score (QCS): temporal quality reliability descriptor derived from per-frame VQA scores |
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
@@ -97,7 +97,7 @@ PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation.
 VMAF still runs on CPU libvmaf when a GPU is requested. CUDA PSNR, SSIM, and
 MS-SSIM use FP64.
 
-NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC. `--metric-device gpu` has no CPU substitute for a metric that cannot run on the GPU. `--metric-device auto`, the default, runs PSNR, SSIM, MS-SSIM, XPSNR, and the PU21 metrics on CUDA when three things hold: the build includes CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. GPU PU21 also needs even chroma geometry. Any other selected metric runs on the CPU, and the execution summary prints the reason, for example `PSNR: cpu (auto: no usable CUDA device: ...)`. VMAF stays on CPU libvmaf without a warning. Because CUDA SSIM and MS-SSIM use FP64 and a different summation order, an `auto` result on a GPU machine can differ from a CPU run in the last printed digits. `--threads auto` uses half of the processors visible to this process, at most 8 and at least 1, for metric workers. Software decoding keeps its own pool of 8 threads on each compressed input.
+NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC. `--device gpu` has no CPU substitute for a metric that cannot run on the GPU. `--device auto`, the default, runs PSNR, SSIM, MS-SSIM, XPSNR, and the PU21 metrics on CUDA when three things hold: the build includes CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. GPU PU21 also needs even chroma geometry. Any other selected metric runs on the CPU, and the execution summary prints the reason, for example `PSNR: cpu (auto: no usable CUDA device: ...)`. VMAF stays on CPU libvmaf without a warning. Because CUDA SSIM and MS-SSIM use FP64 and a different summation order, an `auto` result on a GPU machine can differ from a CPU run in the last printed digits. `--threads auto` uses half of the processors visible to this process, at most 8 and at least 1, for metric workers. Software decoding keeps its own pool of 8 threads on each compressed input.
 
 **Limitations:**
 - HDR transfer characteristics (PQ/HLG) come from the stream or from `--hdr-transfer`. They are not inferred from bit depth, BT.2020 primaries, or the filename.

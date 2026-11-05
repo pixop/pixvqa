@@ -162,8 +162,8 @@ def raw_metrics(td: Path) -> None:
             args = ["--metrics", "psnr,ssim,msssim,xpsnr", "--qcs", "--fps", "24", "-v", "0",
                     "-r", str(ref), "-s", "64x48", "-f", tag,
                     "-t", str(dist), "-s", "64x48", "-f", tag]
-            cpu = run(CPU, ["--metric-device", "cpu", *args])
-            gpu = run(INSTALLED, ["--metric-device", "gpu", *args])
+            cpu = run(CPU, ["--device", "cpu", *args])
+            gpu = run(INSTALLED, ["--device", "gpu", *args])
             if cpu.returncode or gpu.returncode:
                 fail(f"raw {bits} {chroma} rc {cpu.returncode}/{gpu.returncode}\n{gpu.stderr[-300:]}")
                 continue
@@ -193,8 +193,8 @@ def hdr_metrics(td: Path) -> None:
             args = ["--metrics", "pu21-psnr,pu21-ssim,pu21-msssim", "--qcs", "-v", "0", *extra,
                     "-r", str(ref), "-s", "64x48", "-f", tag,
                     "-t", str(dist), "-s", "64x48", "-f", tag]
-            cpu = run(CPU, ["--metric-device", "cpu", *args])
-            gpu = run(INSTALLED, ["--metric-device", "gpu", *args])
+            cpu = run(CPU, ["--device", "cpu", *args])
+            gpu = run(INSTALLED, ["--device", "gpu", *args])
             if cpu.returncode or gpu.returncode:
                 fail(f"pu21 {bits} {transfer} {chroma} rc {cpu.returncode}/{gpu.returncode}\n{gpu.stderr[-300:]}")
                 continue
@@ -211,12 +211,12 @@ def mixed_vmaf(td: Path) -> None:
     write_yuv(ref, 320, 240, "420", 10, [(400, 512, 512)] * 2)
     write_yuv(dist, 320, 240, "420", 10, [(430, 500, 520)] * 2)
     geom = ["-r", str(ref), "-s", "320x240", "-f", "420p:10", "-t", str(dist), "-s", "320x240", "-f", "420p:10"]
-    only = run(INSTALLED, ["--metrics", "vmaf", "--model", str(MODEL), "--metric-device", "gpu", "-v", "0", *geom])
+    only = run(INSTALLED, ["--metrics", "vmaf", "--model", str(MODEL), "--device", "gpu", "-v", "0", *geom])
     if only.returncode or "using CPU libvmaf" not in only.stderr or "VMAF: cpu libvmaf" not in only.stdout:
         fail(f"VMAF-only GPU request\n{only.stderr[-300:]}\n{only.stdout[-300:]}")
     else:
         ok("VMAF-only GPU request stays on CPU libvmaf")
-    mixed = run(INSTALLED, ["--metrics", "psnr,vmaf", "--model", str(MODEL), "--metric-device", "gpu",
+    mixed = run(INSTALLED, ["--metrics", "psnr,vmaf", "--model", str(MODEL), "--device", "gpu",
                             "-v", "0", *geom], timeout=240)
     if mixed.returncode or "using CPU libvmaf" not in mixed.stderr or "VMAF: cpu libvmaf" not in mixed.stdout or "PSNR: gpu" not in mixed.stdout:
         fail(f"mixed PSNR+VMAF\n{mixed.stderr[-300:]}\n{mixed.stdout[-400:]}")
@@ -224,7 +224,7 @@ def mixed_vmaf(td: Path) -> None:
         ok("mixed PSNR stays on CUDA and VMAF stays on CPU")
     if HDR_MODEL.is_file():
         hdr = run(INSTALLED, [
-            "--metrics", "xpsnr,vmaf", "--fps", "24", "--model", str(HDR_MODEL), "--metric-device", "gpu",
+            "--metrics", "xpsnr,vmaf", "--fps", "24", "--model", str(HDR_MODEL), "--device", "gpu",
             "--hdr-transfer", "pq", "--hdr-primaries", "bt2020", "--hdr-matrix", "bt2020nc", "--hdr-range", "limited",
             "-v", "0", *geom,
         ], timeout=240)
@@ -262,8 +262,8 @@ def nvdec_and_metadata(td: Path) -> None:
         return
     metrics = ["--metrics", "psnr,ssim,msssim,xpsnr,pu21-psnr,pu21-ssim,pu21-msssim", "--qcs",
                "--hdr-transfer", "pq", "-v", "0"]
-    sw = run(SW, ["--metric-device", "cpu", "--decode", "cpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)], timeout=240)
-    nv = run(INSTALLED, ["--metric-device", "gpu", "--decode", "gpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)], timeout=240)
+    sw = run(SW, ["--device", "cpu", "--decode", "cpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)], timeout=240)
+    nv = run(INSTALLED, ["--device", "gpu", "--decode", "gpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)], timeout=240)
     if sw.returncode or nv.returncode:
         fail(f"hevc sw/nvdec rc {sw.returncode}/{nv.returncode}\n{nv.stderr[-400:]}")
     else:
@@ -277,8 +277,8 @@ def nvdec_and_metadata(td: Path) -> None:
             ["[ PSNR", "[ SSIM", "[ MS-SSIM", "[ XPSNR", "[ PU21-PSNR", "[ PU21-SSIM", "[ PU21-MS-SSIM",
              "PSNR-QCS", "XPSNR-QCS", "PU21-PSNR-QCS"],
         )
-    auto = run(INSTALLED, ["--metric-device", "gpu", "--decode", "gpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)])
-    explicit = run(INSTALLED, ["--metric-device", "gpu", "--decode", "gpu", *metrics,
+    auto = run(INSTALLED, ["--device", "gpu", "--decode", "gpu", *metrics, "-r", str(hevc), "-t", str(hevc_d)])
+    explicit = run(INSTALLED, ["--device", "gpu", "--decode", "gpu", *metrics,
                                "-r", str(hevc), "-s", "256x144", "-f", "420p:10",
                                "-t", str(hevc_d), "-s", "256x144", "-f", "420p:10"])
     if auto.returncode or explicit.returncode:
@@ -307,11 +307,11 @@ def nvdec_and_metadata(td: Path) -> None:
     bad_fmt = run(INSTALLED, ["--metrics", "psnr", "--decode", "gpu", "-v", "0",
                               "-r", str(hevc), "-s", "256x144", "-f", "422p:10", "-t", str(hevc_d)])
     require_reject("incorrect pixel-format override", bad_fmt, "-f asks for")
-    rate = run(INSTALLED, ["--metrics", "xpsnr", "--decode", "gpu", "--metric-device", "gpu", "-v", "0",
+    rate = run(INSTALLED, ["--metrics", "xpsnr", "--decode", "gpu", "--device", "gpu", "-v", "0",
                            "-r", str(hevc), "-t", str(hevc_d)])
-    forced = run(INSTALLED, ["--metrics", "xpsnr", "--fps", "24", "--decode", "gpu", "--metric-device", "gpu", "-v", "0",
+    forced = run(INSTALLED, ["--metrics", "xpsnr", "--fps", "24", "--decode", "gpu", "--device", "gpu", "-v", "0",
                              "-r", str(hevc), "-t", str(hevc_d)])
-    other = run(INSTALLED, ["--metrics", "xpsnr", "--fps", "30", "--decode", "gpu", "--metric-device", "gpu", "-v", "0",
+    other = run(INSTALLED, ["--metrics", "xpsnr", "--fps", "30", "--decode", "gpu", "--device", "gpu", "-v", "0",
                             "-r", str(hevc), "-t", str(hevc_d)])
     if rate.returncode or "using frame rate 24/1" not in rate.stderr:
         fail(f"constant frame rate was not detected\n{rate.stderr[-300:]}")
@@ -327,13 +327,13 @@ def nvdec_and_metadata(td: Path) -> None:
     hlg_color = ["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv"]
     if encode_hevc(hlg_raw, hlg, "yuv420p10le", "256x144", "24", hlg_color,
                    "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited"):
-        seen = run(INSTALLED, ["--metrics", "pu21-psnr", "--decode", "gpu", "--metric-device", "gpu",
+        seen = run(INSTALLED, ["--metrics", "pu21-psnr", "--decode", "gpu", "--device", "gpu",
                                "--hdr-peak-nits", "1000", "-v", "0", "-r", str(hlg), "-t", str(hlg)])
         if seen.returncode or "transfer=hlg" not in seen.stdout:
             fail(f"HLG was not propagated on NVDEC\n{seen.stdout[-300:]}\n{seen.stderr[-240:]}")
         else:
             ok("HLG transfer propagates into NVDEC PU21")
-    pq = run(INSTALLED, ["--metrics", "pu21-psnr", "--decode", "gpu", "--metric-device", "gpu", "-v", "0",
+    pq = run(INSTALLED, ["--metrics", "pu21-psnr", "--decode", "gpu", "--device", "gpu", "-v", "0",
                          "-r", str(hevc), "-t", str(hevc)])
     if pq.returncode or "transfer=pq" not in pq.stdout:
         fail(f"PQ was not propagated on NVDEC\n{pq.stdout[-300:]}")
@@ -368,7 +368,7 @@ def unsupported(td: Path) -> None:
     if made.returncode == 0:
         decoded = td / "av1_8.yuv"
         dec = ff(["-i", str(av1), "-f", "rawvideo", "-pix_fmt", "yuv420p", str(decoded)])
-        nv = run(INSTALLED, ["--metrics", "psnr,ssim", "--qcs", "--decode", "gpu", "--metric-device", "gpu", "-v", "0",
+        nv = run(INSTALLED, ["--metrics", "psnr,ssim", "--qcs", "--decode", "gpu", "--device", "gpu", "-v", "0",
                              "-r", str(av1), "-t", str(av1)])
         raw = run(CPU, ["--metrics", "psnr,ssim", "--qcs", "-v", "0",
                         "-r", str(decoded), "-s", "256x144", "-f", "420p:8",
@@ -421,7 +421,7 @@ def kimono() -> None:
         if not ref.is_file() or not dist.is_file():
             print(f"SKIP {name} local video is absent")
             continue
-        cpu = run(SW, ["--metric-device", "cpu", "--decode", "cpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
+        cpu = run(SW, ["--device", "cpu", "--decode", "cpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
         external_oracle = False
         if cpu.returncode and name == "av1" and "libdav1d" in cpu.stderr:
             raw_ref, raw_dist = Path("/tmp") / "kimono_av1_ref.yuv", Path("/tmp") / "kimono_av1_dist.yuv"
@@ -430,7 +430,7 @@ def kimono() -> None:
             if a.returncode or b.returncode:
                 fail(f"kimono av1 independent decode failed\n{a.stderr[-200:]}")
             else:
-                cpu = run(CPU, ["--metric-device", "cpu", "--fps", "24", *metrics,
+                cpu = run(CPU, ["--device", "cpu", "--fps", "24", *metrics,
                                 "-r", str(raw_ref), "-s", "960x540", "-f", "420p:10",
                                 "-t", str(raw_dist), "-s", "960x540", "-f", "420p:10"], timeout=300)
                 if cpu.returncode:
@@ -444,15 +444,15 @@ def kimono() -> None:
             ok(f"kimono {name} software decode scored 4 frames with QCS")
         software_decode = cpu.returncode == 0 and not external_oracle
         if software_decode:
-            gpu = run(INSTALLED, ["--metric-device", "gpu", "--decode", "cpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
+            gpu = run(INSTALLED, ["--device", "gpu", "--decode", "cpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
             if gpu.returncode:
                 fail(f"kimono {name} CUDA rc={gpu.returncode}\n{gpu.stderr[-300:]}")
             else:
                 compare_metrics(f"kimono {name} CUDA vs CPU on software decode", cpu.stdout, gpu.stdout,
                                 ["[ PSNR", "[ SSIM", "[ MS-SSIM", "[ XPSNR", "[ PU21-PSNR", "PSNR-QCS", "PU21-PSNR-QCS"])
         if nvdec:
-            hw_cpu = run(INSTALLED, ["--metric-device", "cpu", "--decode", "gpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
-            hw = run(INSTALLED, ["--metric-device", "gpu", "--decode", "gpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
+            hw_cpu = run(INSTALLED, ["--device", "cpu", "--decode", "gpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
+            hw = run(INSTALLED, ["--device", "gpu", "--decode", "gpu", *metrics, "-r", str(ref), "-t", str(dist)], timeout=300)
             if hw.returncode or hw_cpu.returncode or "distorted: gpu" not in hw.stdout:
                 fail(f"kimono {name} NVDEC rc={hw.returncode}/{hw_cpu.returncode}\n{hw.stderr[-400:]}")
             else:
@@ -485,7 +485,7 @@ def stability(td: Path) -> None:
     ref, dist = td / "st.yuv", td / "std.yuv"
     write_yuv(ref, 176, 144, "420", 10, [(400, 512, 512)] * 2)
     write_yuv(dist, 176, 144, "420", 10, [(420, 500, 520)] * 2)
-    args = ["--metrics", "psnr,pu21-psnr", "--hdr-transfer", "pq", "--metric-device", "gpu", "-v", "0",
+    args = ["--metrics", "psnr,pu21-psnr", "--hdr-transfer", "pq", "--device", "gpu", "-v", "0",
             "-r", str(ref), "-s", "176x144", "-f", "420p:10", "-t", str(dist), "-s", "176x144", "-f", "420p:10"]
     first = run(INSTALLED, args)
     body = score_body(first.stdout)

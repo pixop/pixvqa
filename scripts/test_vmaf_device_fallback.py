@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VMAF CPU fallback when --metric-device gpu is requested.
+"""VMAF CPU fallback when --device gpu is requested.
 
 CPU-build cases always run. CUDA execution cases run only when a full binary
 built from this tree is present. A missing CUDA binary is recorded as skipped,
@@ -67,9 +67,9 @@ def check_cpu(binary: Path, ref: Path, dist: Path) -> dict:
         "-r", str(ref), "-s", "320x240", "-f", "420p:10",
         "-t", str(dist), "-s", "320x240", "-f", "420p:10",
     ]
-    cpu = run(binary, ["--metric-device", "cpu", *common])
-    auto = run(binary, ["--metric-device", "auto", *common])
-    gpu = run(binary, ["--metric-device", "gpu", *common])
+    cpu = run(binary, ["--device", "cpu", *common])
+    auto = run(binary, ["--device", "auto", *common])
+    gpu = run(binary, ["--device", "gpu", *common])
     require(cpu.returncode == 0, f"cpu device failed\n{cpu.stderr}")
     require(auto.returncode == 0, f"auto device failed\n{auto.stderr}")
     require(gpu.returncode == 0, f"gpu device failed\n{gpu.stderr}")
@@ -86,19 +86,19 @@ def check_cpu(binary: Path, ref: Path, dist: Path) -> dict:
     require(cpu_score and cpu_score == score_line(gpu.stdout) == score_line(auto.stdout),
             f"VMAF score changed across devices\n{cpu.stdout}\n{gpu.stdout}\n{auto.stdout}")
 
-    mixed = run(binary, ["--metric-device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60",
+    mixed = run(binary, ["--device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60",
                          "--model", str(MODEL), "-v", "0",
                          "-r", str(ref), "-s", "320x240", "-f", "420p:10",
                          "-t", str(dist), "-s", "320x240", "-f", "420p:10"])
-    require(mixed.returncode != 0, "CPU build accepted XPSNR on --metric-device gpu")
+    require(mixed.returncode != 0, "CPU build accepted XPSNR on --device gpu")
     require("no GPU metrics" in mixed.stderr or "no CPU substitute" in mixed.stderr, mixed.stderr)
 
-    psnr = run(binary, ["--metric-device", "gpu", "--metrics", "psnr,msssim", "-v", "0",
+    psnr = run(binary, ["--device", "gpu", "--metrics", "psnr,msssim", "-v", "0",
                         "-r", str(ref), "-s", "320x240", "-f", "420p:10",
                         "-t", str(dist), "-s", "320x240", "-f", "420p:10"])
     require(psnr.returncode != 0 and "no GPU metrics" in psnr.stderr, psnr.stderr)
 
-    decode = run(binary, ["--metrics", "vmaf", "--metric-device", "gpu", "--decode", "gpu",
+    decode = run(binary, ["--metrics", "vmaf", "--device", "gpu", "--decode", "gpu",
                           "--input", "compressed", "--model", str(MODEL),
                           "-r", str(ref), "-t", str(dist), "-s", "320x240", "-f", "420p:10"])
     require(decode.returncode != 0, "GPU decode of a non-video file was accepted")
@@ -122,9 +122,9 @@ def check_hdr(binary: Path, ref: Path, dist: Path) -> dict:
         "-r", str(ref), "-s", "320x240", "-f", "420p:10",
         "-t", str(dist), "-s", "320x240", "-f", "420p:10",
     ]
-    cpu = run(binary, ["--metric-device", "cpu", *common])
-    auto = run(binary, ["--metric-device", "auto", *common])
-    gpu = run(binary, ["--metric-device", "gpu", *common])
+    cpu = run(binary, ["--device", "cpu", *common])
+    auto = run(binary, ["--device", "auto", *common])
+    gpu = run(binary, ["--device", "gpu", *common])
     require(cpu.returncode == 0, f"hdr cpu device failed\n{cpu.stderr}")
     require(auto.returncode == 0, f"hdr auto device failed\n{auto.stderr}")
     require(gpu.returncode == 0, f"hdr gpu device failed\n{gpu.stderr}")
@@ -139,11 +139,11 @@ def check_hdr(binary: Path, ref: Path, dist: Path) -> dict:
     cpu_score = score_line(cpu.stdout)
     require(cpu_score and cpu_score == score_line(gpu.stdout) == score_line(auto.stdout),
             f"HDR VMAF score changed across devices\n{cpu.stdout}\n{gpu.stdout}")
-    mixed = run(binary, ["--metric-device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60",
+    mixed = run(binary, ["--device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60",
                          "--model", str(HDR_MODEL), *HDR, "-v", "0",
                          "-r", str(ref), "-s", "320x240", "-f", "420p:10",
                          "-t", str(dist), "-s", "320x240", "-f", "420p:10"])
-    require(mixed.returncode != 0, "CPU build accepted HDR VMAF + XPSNR on --metric-device gpu")
+    require(mixed.returncode != 0, "CPU build accepted HDR VMAF + XPSNR on --device gpu")
     require("no GPU metrics" in mixed.stderr or "no CPU substitute" in mixed.stderr, mixed.stderr)
     return {"vmaf_score_line": cpu_score, "gpu_warning": True, "scores_match": True,
             "cpu_build_rejects_gpu_xpsnr": True}
@@ -152,13 +152,13 @@ def check_hdr(binary: Path, ref: Path, dist: Path) -> dict:
 def check_full(binary: Path, ref: Path, dist: Path) -> dict:
     sides = ["-r", str(ref), "-s", "320x240", "-f", "420p:10", "-t", str(dist), "-s", "320x240", "-f", "420p:10"]
     model = ["--model", str(MODEL), "-v", "0"]
-    xpsnr = run(binary, ["--metric-device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60", *model, *sides])
-    both = run(binary, ["--metric-device", "gpu", "--metrics", "psnr,msssim,vmaf", *model, *sides])
-    plain = run(binary, ["--metric-device", "gpu", "--metrics", "psnr,msssim", "-v", "0", *sides])
+    xpsnr = run(binary, ["--device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60", *model, *sides])
+    both = run(binary, ["--device", "gpu", "--metrics", "psnr,msssim,vmaf", *model, *sides])
+    plain = run(binary, ["--device", "gpu", "--metrics", "psnr,msssim", "-v", "0", *sides])
     hidden = os.environ.copy()
     hidden["CUDA_VISIBLE_DEVICES"] = ""
     alone = subprocess.run(
-        [str(binary), "--metric-device", "gpu", "--metrics", "vmaf", *model, *sides],
+        [str(binary), "--device", "gpu", "--metrics", "vmaf", *model, *sides],
         capture_output=True, text=True, env=hidden,
     )
     out = {
@@ -177,9 +177,9 @@ def check_full(binary: Path, ref: Path, dist: Path) -> dict:
     require(alone.returncode == 0 and WARN in alone.stderr and "VMAF: cpu libvmaf" in alone.stdout,
             f"vmaf with no visible CUDA device\n{alone.stderr}\n{alone.stdout}")
     hdr = ["--model", str(HDR_MODEL), *HDR, "-v", "0"]
-    hdr_only = run(binary, ["--metric-device", "gpu", "--metrics", "vmaf", *hdr, *sides])
-    hdr_x = run(binary, ["--metric-device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60", *hdr, *sides])
-    sdr_p = run(binary, ["--metric-device", "gpu", "--metrics", "psnr,vmaf", *model, *sides])
+    hdr_only = run(binary, ["--device", "gpu", "--metrics", "vmaf", *hdr, *sides])
+    hdr_x = run(binary, ["--device", "gpu", "--metrics", "xpsnr,vmaf", "--fps", "60", *hdr, *sides])
+    sdr_p = run(binary, ["--device", "gpu", "--metrics", "psnr,vmaf", *model, *sides])
     require(hdr_only.returncode == 0 and WARN in hdr_only.stderr and "VMAF: cpu libvmaf" in hdr_only.stdout
             and "backend=cpu" in hdr_only.stdout and "CUDA HDR" not in hdr_only.stderr,
             f"hdr vmaf gpu\n{hdr_only.stderr}\n{hdr_only.stdout}")

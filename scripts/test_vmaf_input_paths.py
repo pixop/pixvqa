@@ -130,7 +130,7 @@ def main() -> int:
             dist.write_bytes(blob)
             base_cmd = [
                 str(PIXVQA_CUDA),
-                "--metric-device", "gpu",
+                "--device", "gpu",
                 "--metrics", "psnr",
                 "-v",
                 "0",

@@ -111,7 +111,7 @@ enum class CudaPrecision { Fp32, Fp64, Mixed };
 // MS-SSIM already run on CUDA. Cuda is opt-in and does not use CudaPrecision.
 enum class XpsnrBackend { Cpu, Cuda };
 
-// VMAF execution. Cpu is the only implemented backend. A GPU metric-device
+// VMAF execution. Cpu is the only implemented backend. A GPU device
 // request keeps this value and warns; it is never reported as CUDA.
 enum class VmafBackend { Cpu, Cuda };
 
@@ -219,7 +219,7 @@ struct Options {
   bool msssim_gpu = false;
   bool vmaf_cpu_notice = false;
   bool use_cuda = false;
-  // Why --metric-device auto kept a CUDA-capable metric on the CPU. Empty when
+  // Why --device auto kept a CUDA-capable metric on the CPU. Empty when
   // the metric runs on the GPU, was not selected, or the device was not auto.
   std::string psnr_cpu_reason;
   std::string ssim_cpu_reason;

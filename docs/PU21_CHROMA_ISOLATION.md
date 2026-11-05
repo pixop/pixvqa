@@ -47,7 +47,7 @@ Native metrics score the original raw YUV444P10 files:
 
 ```bash
 pixvqa --metrics psnr,ssim,msssim,pu21-psnr,pu21-ssim,pu21-msssim \
-  --metric-device cpu --hdr-transfer pq --hdr-primaries bt2020 \
+  --device cpu --hdr-transfer pq --hdr-primaries bt2020 \
   --hdr-matrix bt2020nc --hdr-range limited \
   -r reference.yuv -s 256x256 -f 444p:10 \
   -t distorted.yuv -s 256x256 -f 444p:10

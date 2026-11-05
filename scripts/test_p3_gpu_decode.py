@@ -130,8 +130,8 @@ def main() -> int:
             print("OK   GPU MKV decode matches the elementary pixels")
 
         metrics = ["--metrics", "psnr,ssim,msssim,xpsnr", "--fps", "24", "--threads", "2"]
-        cpu_m = pix([*metrics, "--decode", "cpu", "--metric-device", "cpu", *sides(ref, hevc)])
-        gpu_m = pix([*metrics, "--decode", "gpu", "--metric-device", "gpu", *sides(ref, hevc)])
+        cpu_m = pix([*metrics, "--decode", "cpu", "--device", "cpu", *sides(ref, hevc)])
+        gpu_m = pix([*metrics, "--decode", "gpu", "--device", "gpu", *sides(ref, hevc)])
         if cpu_m.returncode or gpu_m.returncode:
             fail(f"metric rc cpu={cpu_m.returncode} gpu={gpu_m.returncode}\n{gpu_m.stderr}")
         if score_lines(cpu_m.stdout) != score_lines(gpu_m.stdout):

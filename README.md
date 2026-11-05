@@ -49,11 +49,11 @@ For raw YUV, build variants (`make cpu`, `make swdec`, `make full`), and install
 
 ## Common workflows
 
-**Individual metrics:** use `--metrics psnr,ssim,msssim` or another comma-separated list. **Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
+**Individual metrics:** use `--metrics psnr,ssim,msssim,vmaf` or another comma-separated list. **Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
 
-**Learned metrics:** configure their separate Python/PyTorch dependencies and model files before use. ColorVideoVDP is a full-reference quality metric; CompressedVQA-HDR NR needs only a distorted **compressed** clip. See [ColorVideoVDP](docs/COLORVIDEOVDP.md), [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md), [Learned environment](docs/LEARNED_ENVIRONMENT.md), and [Local configuration](docs/LEARNED_METRICS_CONFIG.md).
+**Learned metrics:** ColorVideoVDP (`cvvdp`, full-reference) and CompressedVQA-HDR NR (`cvqa-hdr-nr`, no-reference) require external Python dependencies and model files. They can be combined with **native metrics** in `--metrics` and are included in compatible metric groups. See [Learned metrics](docs/LEARNED_METRICS.md).
 
-**Device selection:** `--device cpu|gpu|auto` (alias `--metric-device`) controls supported metric implementations. GPU availability and numerical agreement depend on the specific metric and environment; see [Learned Devices](docs/LEARNED_DEVICES.md).
+**Device selection:** `--device cpu|gpu|auto` controls supported metric implementations. GPU availability and numerical agreement depend on the specific metric and environment; see [Learned Devices](docs/LEARNED_DEVICES.md).
 
 **QCS:** `--qcs` enables temporal quality-consistency analysis where supported. Its interval and learned-metric semantics are described in [QCS](docs/QCS.md).
 
@@ -87,8 +87,8 @@ See [Validation Guide](docs/VALIDATION.md) for prerequisites, the five reported 
 ## Documentation
 
 - **Getting started:** [Installation & builds](docs/GETTING_STARTED.md) · [Manual installation](docs/INSTALL.md) · [Make guide](docs/BUILD_MAKE.md) · [Installation validation](docs/INSTALL_VALIDATION.md)
-- **Using PixVQA:** [CLI usage](docs/CLI_USAGE.md) · [Metrics & formats](docs/METRICS_AND_FORMATS.md) · [ColorVideoVDP](docs/COLORVIDEOVDP.md) · [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md)
-- **Advanced configuration:** [Learned environment](docs/LEARNED_ENVIRONMENT.md) · [Learned-model config](docs/LEARNED_METRICS_CONFIG.md) · [Learned devices](docs/LEARNED_DEVICES.md) · [PU21](docs/PU21.md) · [QCS](docs/QCS.md)
+- **Using PixVQA:** [CLI usage](docs/CLI_USAGE.md) · [Metrics & formats](docs/METRICS_AND_FORMATS.md) · [Learned metrics](docs/LEARNED_METRICS.md)
+- **Advanced configuration:** [Learned devices](docs/LEARNED_DEVICES.md) · [PU21](docs/PU21.md) · [QCS](docs/QCS.md)
 - **Validation:** [Validation guide](docs/VALIDATION.md) · [Numerical conformance](scripts/numerical_conformance/README.md) · [Release validation](docs/RELEASE_VALIDATION.md) · [CI](docs/CI.md)
 - **Project information:** [References](docs/REFERENCES.md) · [Licensing](docs/LICENSING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 

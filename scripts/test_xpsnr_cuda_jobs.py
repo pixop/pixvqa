@@ -34,8 +34,8 @@ def main() -> int:
         base = ["--metrics", "xpsnr", "--fps", "60", "-r", str(ref), "-s", "3840x2160", "-f", "420p:10",
                 "-t", str(tst), "-s", "3840x2160", "-f", "420p:10"]
         cpu = run(CPU, ["--threads", "8", *base])
-        gpu = run(CUDA, ["--metric-device", "gpu",  *base])
-        gpu2 = run(CUDA, ["--metric-device", "gpu",  *base])
+        gpu = run(CUDA, ["--device", "gpu",  *base])
+        gpu2 = run(CUDA, ["--device", "gpu",  *base])
         if cpu.returncode or gpu.returncode or gpu2.returncode:
             print(f"FAIL job{job} rc cpu={cpu.returncode} gpu={gpu.returncode}", file=sys.stderr)
             return 1
@@ -52,8 +52,8 @@ def main() -> int:
             print(f"OK   job{job} frames=48 y={seq[0]} u={seq[1]} v={seq[2]} avg={seq[3]} min={seq[4]}")
 
         geom = base[4:]
-        both_cpu = run(CUDA, ["--metric-device", "gpu", "--metrics", "psnr,ssim", *geom])
-        both_gpu = run(CUDA, ["--metric-device", "gpu", "--metrics", "psnr,ssim,xpsnr", "--fps", "60", *geom])
+        both_cpu = run(CUDA, ["--device", "gpu", "--metrics", "psnr,ssim", *geom])
+        both_gpu = run(CUDA, ["--device", "gpu", "--metrics", "psnr,ssim,xpsnr", "--fps", "60", *geom])
         if both_cpu.returncode or both_gpu.returncode:
             print(f"FAIL job{job} unified rc", file=sys.stderr)
             return 1
@@ -75,7 +75,7 @@ def main() -> int:
     # Two processes, same file, identical WSSE.
     ref = CACHE / "job0_ref_48.yuv"
     tst = CACHE / "job0_48.yuv"
-    args = ["--metric-device", "gpu",  "--metrics", "xpsnr", "--fps", "60", "-n", "4",
+    args = ["--device", "gpu",  "--metrics", "xpsnr", "--fps", "60", "-n", "4",
             "-r", str(ref), "-s", "3840x2160", "-f", "420p:10",
             "-t", str(tst), "-s", "3840x2160", "-f", "420p:10"]
     a = subprocess.Popen([str(CUDA), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -90,7 +90,7 @@ def main() -> int:
     else:
         print(f"OK   two-process frames={len(WSSE.findall(ae))}")
 
-    odd = ["--metric-device", "gpu",  "--metrics", "xpsnr", "--fps", "60",
+    odd = ["--device", "gpu",  "--metrics", "xpsnr", "--fps", "60",
            "-r", str(ref), "-s", "1600x1601", "-f", "444p:10",
            "-t", str(ref), "-s", "1600x1601", "-f", "444p:10"]
     # The cached file is 4K; the size flag is what the reader uses, so this would

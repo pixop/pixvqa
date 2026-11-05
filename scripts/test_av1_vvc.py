@@ -104,7 +104,7 @@ def expect_match(label: str, binary: Path, reference: Path, compressed: Path, fm
                  decoder: str, backend: str, frames: int = N, width: int = W, height: int = H) -> subprocess.CompletedProcess[str] | None:
     done = pix(binary, [
         "--metrics", "psnr", "--decode", "cpu" if backend == "software" else "gpu",
-        "--metric-device", "cpu", "-v", "0",
+        "--device", "cpu", "-v", "0",
         "-r", str(reference), "-s", f"{width}x{height}", "-f", fmt,
         "-t", str(compressed), "--input", "compressed", "-s", f"{width}x{height}", "-f", fmt,
     ])

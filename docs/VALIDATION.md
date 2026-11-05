@@ -27,7 +27,7 @@ python3 scripts/test_metric_numerical_conformance.py --profile comprehensive --s
 
 The CLI conformance runner uses CPU and software-decoder binaries as configured by the harness; `PIXVQA_BIN` and `PIXVQA_DECODE_BIN` may be used to override its defaults. `PIXVQA_BIN` should point to a binary with the capabilities required by the numerical test (normally `build/full/pixvqa`). The guided installer instead puts a selected executable at `bin/pixvqa`. These paths are not interchangeable unless their build capabilities match.
 
-Learned metric installation and local model paths are documented in [Learned Environment](LEARNED_ENVIRONMENT.md) and [Learned Configuration](LEARNED_METRICS_CONFIG.md). See [learned prerequisites for numerical validation](../scripts/numerical_conformance/LEARNED_DEPS.md) for missing-dependency behavior.
+Learned metric installation and local model paths are documented in [Learned metrics](LEARNED_METRICS.md). See [learned prerequisites for numerical validation](../scripts/numerical_conformance/LEARNED_DEPS.md) for missing-dependency behavior.
 
 ## Five validation levels
 

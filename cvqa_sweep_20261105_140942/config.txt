@@ -1,0 +1,7 @@
+VIDEO=/home/sergio/codeccomp/results/261104/hevc_nvenc_4070_sdk13_all/cbr/ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13/Bristol_1920x1080_60_F0-3599_420_10bit_sdr_bt709l_yuv_tbr10000_ip60_bfauto_420_10b_auto_hq_hrd2000_aqs2_aqt1_laauto_sg0_brefauto_wpauto_hevc_nvenc_4070_sdk13.mp4
+BINARY=./build/full/pixvqa
+REPEATS=3
+SAMPLE_FPS_LIST=1 2 4 8 15 30 60
+CHUNK_SEC_LIST=0.5 1 2 4 8
+MAX_BATCH=32
+SOURCE_FPS=60
