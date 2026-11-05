@@ -8,11 +8,15 @@ alone or together with native metrics and `cvvdp`; see
 
 The adapter imports the unmodified `NR/NR_model.py` and `NR/VQA_NR.py` from an
 upstream checkout pinned to `76bff6d5c078d51be06eddf1ed11591f3678145a`. It
-builds the SigLIP2 model with `pretrained=False`, strictly loads the supplied
-checkpoint, and uses the upstream OpenCV/PIL preprocessing, approximately
-one-frame-per-second sampling, single forward pass, and logistic calibration
-unchanged. It imports the upstream modules with bytecode writing disabled, so
-the checkout gains no `__pycache__`.
+builds the SigLIP2 model with `pretrained=False` and strictly loads the supplied
+checkpoint. The default sampling interval is one second; PixVQA additionally
+supports configurable frame sampling and chunked inference. Selected frames are
+processed independently in batches, their raw scores are averaged across the
+whole video, and the upstream logistic calibration is applied once to that mean.
+At the default one-second interval, the adapter uses upstream video
+preprocessing; at other intervals it follows a custom OpenCV/PIL frame-selection
+path with the same spatial transforms. It imports the upstream modules with
+bytecode writing disabled, so the checkout gains no `__pycache__`.
 
 ## Invocation
 
@@ -23,6 +27,8 @@ pixvqa --metrics cvqa-hdr-nr \
   --cvqahdr-repo /home/me/src/CompressedVQA-HDR \
   --cvqahdr-checkpoint /home/me/models/NR_HDR_VQA.pth \
   --cvqahdr-profile /home/me/models/NR_HDR_VQA.npy \
+  --cvqa-nr-sample-interval-sec 1 \
+  --cvqa-nr-chunk-size-sec 8 \
   --cvqahdr-output-json result.cvqahdr.json
 ```
 
@@ -33,10 +39,12 @@ metric (any native metric or `cvvdp`) is also selected, `-r` is required and
 the NR backend still never receives it.
 
 The metric accepts compressed video only. Raw YUV (a `.yuv` test path, or a
-raw test input detected by a native run) is rejected. Without native metrics,
-`-s`, `-f`, `--fps`, decode controls, HDR controls, `--threads`, and `-v` are
-rejected because nothing would read them. `--frames` is rejected whenever
-`cvqa-hdr-nr` is selected: the official sampler always reads the whole clip.
+raw test input detected by a native run) is rejected. For NR-only runs, supplied raw-video options (`-s`, `-f`, `--fps`) are
+accepted but ignored with an informational message. Other shared or native
+options may be accepted for command-line compatibility but do not configure
+the NR model; in particular, HDR metadata options do not change the upstream
+OpenCV preprocessing. `--frames` is rejected whenever `cvqa-hdr-nr` is
+selected: NR evaluates the full input clip.
 `--device cpu` (alias of `--metric-device`) runs the model on the CPU,
 `--device gpu` requires CUDA and fails in preflight without it, and the
 default `auto` uses CUDA when PyTorch sees a device, else the CPU with a
@@ -89,28 +97,41 @@ import; and OpenCV metadata satisfies the sampling constraints below. In mixed
 runs PixVQA runs this check for every learned backend before any metric runs.
 Preflight failures exit 2; inference failures exit 1.
 
-## Sampling constraints
+## Configurable sampling and chunking
 
-The official code allocates `floor(frame_count / round(fps))` frames but can
-write one more sampled frame when the trailing frame count exceeds
-`floor(round(fps) / 2)`. The adapter uses OpenCV before inference and rejects:
+- `--cvqa-nr-sample-interval-sec N` sets the requested time between sampled
+  frames, in seconds (default **1**). For example, `1`, `0.5`, and `0.25`
+  select approximately 1, 2, and 4 samples/s.
+- `--cvqa-nr-chunk-size-sec N` sets the nominal video duration represented by
+  each GPU inference batch (default **8** seconds). The adapter converts this
+  to a batch size of sampled frames. Smaller chunks generally reduce peak
+  inference VRAM; larger chunks may improve GPU batching efficiency.
 
-- clips shorter than `round(fps)` frames;
-- clips where `frame_count % round(fps) > floor(round(fps) / 2)`.
+Both values must be finite and positive. Sampling is implemented in integer
+frame steps: `interval_frames = max(1, floor(N * round(opencv_fps) + 0.5))`.
+The adapter selects the midpoint of each *complete* interval, starting at
+`interval_frames // 2`, and plans `frame_count // interval_frames` samples.
+The actual interval is `interval_frames / opencv_fps`; the trailing incomplete
+interval is not analyzed. The default one-second path uses upstream
+preprocessing; nondefault intervals use adapter frame selection.
 
-This is deliberate: it prevents the published implementation's `IndexError`
-without dropping samples or changing the metric. A short clip with a whole
-number of rounded-fps frame blocks is a safe validation input.
+The adapter currently decodes and prepares the selected frames for the whole
+prerecorded clip **before** running sequential GPU chunks. Chunking bounds the
+GPU inference batch size, but does not yet provide streaming input, bounded
+CPU-side frame buffering, or live score delivery. Faster-than-real-time
+offline throughput must not be described as validated live operation.
 
-The sampled frames are decoded indices `round(fps) // 2 + k * round(fps)` for
-`k < floor(frame_count / round(fps))`. Their timestamps are
-`frame_index / opencv_fps`. The sampling density is
-`opencv_fps / round(fps)`, about one sample per second (0.999/s at 59.94 fps).
+Chunking changes the organization of inference, not the intended pooled metric:
+frame predictions are averaged across **all** sampled frames before logistic
+calibration. Each frame is analyzed independently; the model does not jointly
+model motion across sampled frames. Per-frame numerical values may differ
+slightly with batch size or device.
 
 ## Output
 
 The JSON record keeps full-precision `quality_score` and `raw_model_score`,
-the OpenCV sampling plan, runtime versions, checkpoint and profile SHA-256
+the OpenCV sampling plan, requested/effective sampling interval, chunk settings,
+model/preprocessing/inference timings, runtime versions, checkpoint and profile SHA-256
 hashes, CUDA device information, and the upstream commit/clean-tree status.
 Its `temporal` object holds one entry per sampled frame (`index`,
 `frame_index`, `time_seconds`, `raw_model_score`, `quality_score`), the sample
@@ -133,6 +154,18 @@ The model uses OpenCV's decoder and its published 384-pixel resize/center crop
 with ImageNet normalization. It does not explicitly process HDR metadata,
 linearize PQ, or convert BT.2020. HDR10 decoder output therefore depends on
 the selected OpenCV/FFmpeg build and is generally 8-bit decoded pixels.
+
+## Optional GPU profiling
+
+Set `PIXVQA_CVQA_NR_PROFILE=1` to enable per-chunk inference timings, processed
+sample counts, peak PyTorch CUDA allocations/reservations, and periodic
+`nvidia-smi` GPU-utilization/VRAM samples (when available). The information is
+printed to stderr and included under `performance` in the persistent JSON
+record (use `--cvqahdr-output-json`). The GPU-utilization and total-memory
+measurements are **device-wide**, not exclusive to this metric; on multi-GPU
+systems, the current sampler combines device rows rather than selecting only
+the inference device. Profiling is disabled by default. The reported stage
+timings do not by themselves constitute end-to-end wall time or live latency.
 
 ## Sampled-frame QCS
 
@@ -165,9 +198,9 @@ sequence into the same QCS integral as the native metrics:
   adapter counts decoded frames, and any padded sample makes QCS
   `value:unavailable reason:padded-samples`. Samples are never interpolated
   or repeated.
-- **Sampled frames only.** QCS describes consistency across about one sampled
-  frame per second, not frame-by-frame consistency. A 2-second clip yields
-  two samples.
+- **Sampled frames only.** QCS describes consistency only across selected
+  frames (default approximately one sample per second), not all video frames.
+  A 2-second clip yields two samples at the default interval.
 
 Per-sample calibration extends the published model, which was trained and
 validated as a video-level predictor. It is not an officially validated

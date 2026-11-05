@@ -46,7 +46,7 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
 - SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- QCS can be applied to any metric using `--qcs`. CVVDP QCS integrates a per-frame JOD-equivalent sequence taken from the official full-video pass. CompressedVQA-HDR NR QCS uses about one sampled frame per second. Both default to [0, 10], which is used only for QCS and never clamps the reported scores.
+- QCS can be applied to any metric using `--qcs`. CVVDP QCS integrates a per-frame JOD-equivalent sequence taken from the official full-video pass. CompressedVQA-HDR NR QCS uses selected frames at a configurable interval (default approximately one sample per second). Both default to [0, 10], which is used only for QCS and never clamps the reported scores.
 - `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select a fixed set per transfer and fill its colorimetry and display. The set is not the ✅ column: PQ and HLG also include PSNR, XPSNR, SSIM, and MS-SSIM, which stay ⚠️ for HDR perceptual assessment. CVVDP HLG uses the upstream `standard_hdr_hlg` display. CompressedVQA-HDR NR is included for SDR and PQ and excluded for HLG. See [metric groups](CLI_USAGE.md#metric-groups).
 
 ## Metric Capabilities

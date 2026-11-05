@@ -107,8 +107,8 @@ displays, the JSON result record, and incompatible native options.
 CompressedVQA-HDR NR is installed separately from PixVQA. It runs as
 `cvqa-hdr-nr` in `--metrics`, alone or mixed with other metrics. It is
 no-reference, so it requires only `-t`, and it accepts compressed video only.
-The official implementation's OpenCV sampling constraints are validated before
-inference. Raw YUV and `--frames` are rejected. When it is the only metric, a
+The adapter validates the requested sample interval and chunk duration before
+inference; defaults are one second and eight seconds, respectively. Raw YUV and `--frames` are rejected. When it is the only metric, a
 supplied `-r` is ignored with an informational message and is never opened.
 
 ```bash
@@ -118,6 +118,8 @@ pixvqa --metrics cvqa-hdr-nr \
   --cvqahdr-repo /home/me/src/CompressedVQA-HDR \
   --cvqahdr-checkpoint /home/me/models/NR_HDR_VQA.pth \
   --cvqahdr-profile /home/me/models/NR_HDR_VQA.npy \
+  --cvqa-nr-sample-interval-sec 1 \
+  --cvqa-nr-chunk-size-sec 8 \
   --cvqahdr-output-json result.cvqahdr.json
 ```
 
@@ -162,9 +164,11 @@ and `make cuda` builds have no FFmpeg decoder. Native metrics on compressed
 input therefore need `make swdec` or `make full`. The learned backends decode
 in their own Python environments, so any build can run `cvvdp` and
 `cvqa-hdr-nr` on compressed video when no native metric is selected.
-Native-only options such as `--decode`, `--threads`, `-v`, `--model`, and
-native-only HDR colorimetry overrides are rejected when no native metric is
-selected. Shared `--hdr-transfer` is accepted for CVVDP-only runs.
+Some native-only options are rejected for CVVDP-only runs. For NR-only runs,
+the current CLI accepts raw-video options (`-s`, `-f`, `--fps`) but ignores
+them; HDR options may be accepted for compatibility, but they do not alter
+CompressedVQA-HDR-NR's upstream OpenCV color processing. Shared
+`--hdr-transfer` is accepted for CVVDP-only runs.
 
 **Execution.** PixVQA validates every option and format, then runs each
 learned backend's `--check` preflight: interpreter, imports, model assets,
@@ -324,7 +328,9 @@ then in the checkout that holds the executable. `--model` overrides it.
 | `--cvqahdr-repo` | Upstream CompressedVQA-HDR checkout. Required unless set in the config |
 | `--cvqahdr-checkpoint` | NR checkpoint. Required unless set in the config |
 | `--cvqahdr-profile` | NR calibration profile. Required unless set in the config |
-| `--cvqahdr-output-json` | Persistent CompressedVQA-HDR NR run record |
+| `--cvqahdr-output-json` | Persistent CompressedVQA-HDR NR run record, including stage timings and sampling/chunk settings |
+| `--cvqa-nr-sample-interval-sec` | Seconds between NR samples (default `1`); effective cadence is rounded to whole source frames |
+| `--cvqa-nr-chunk-size-sec` | Nominal seconds of video represented by each NR GPU inference batch (default `8`) |
 | `--learned-config` | Learned-metric TOML config. Default `config/learned_metrics.local.toml` in the executable's checkout. See [learned-metric config](LEARNED_METRICS_CONFIG.md) |
 | `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto`. Shared HDR transfer for native metrics, learned CVVDP resolution, and metric groups |
 | `--tf`, `--ref-tf`, `--dist-tf` | Legacy native transfer tokens: `sdr`, `linear`, `st2084` (PQ), `stdb67` (HLG). The unified CVVDP resolver maps these to the same families as `--hdr-transfer pq` / `hlg`. Use `--hdr-transfer pq|hlg` when you want the modern spelling |
