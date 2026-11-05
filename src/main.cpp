@@ -93,6 +93,8 @@ struct CvqaHdrNrOptions {
   std::string profile;
   std::string output_json;
   bool output_json_set = false;
+  double sample_interval_sec = 1.0;
+  double chunk_size_sec = 8.0;
 };
 
 struct TemporaryCvvdpDirectory {
@@ -296,6 +298,8 @@ void print_help_advanced() {
       "  --cvqahdr-checkpoint PATH  NR model checkpoint.\n"
       "  --cvqahdr-profile PATH  NR calibration profile.\n"
       "  --cvqahdr-output-json PATH  Persist NR run record.\n"
+      "  --cvqa-nr-sample-interval-sec N  Temporal sampling interval (default 1 second).\n"
+      "  --cvqa-nr-chunk-size-sec N  Video seconds per GPU inference chunk (default 8).\n"
       "  Options override config defaults; see docs/LEARNED_METRICS_CONFIG.md.\n"
       "\n"
       "Advanced HDR settings\n"
@@ -1719,7 +1723,12 @@ bool cvqahdr_command(LearnedPlan& plan, std::vector<std::string>& args) {
     return false;
   const std::string output_json =
       cvqahdr.output_json_set ? cvqahdr.output_json : plan.cvqahdr_temporary.path + "/result.json";
-  args = {backend_python(cvqahdr.python, "PIXVQA_CVQAHDR_PYTHON", g_learned_config.nr_python),
+  // Pass optional adapter settings through the child's environment so the
+  // existing Python CLI entrypoint and both preflight/run paths stay compatible.
+  args = {"env",
+          "PIXVQA_CVQA_NR_SAMPLE_INTERVAL_SEC=" + std::to_string(cvqahdr.sample_interval_sec),
+          "PIXVQA_CVQA_NR_CHUNK_SIZE_SEC=" + std::to_string(cvqahdr.chunk_size_sec),
+          backend_python(cvqahdr.python, "PIXVQA_CVQAHDR_PYTHON", g_learned_config.nr_python),
           "-m", "pixvqa_cvqahdr",
           "--test", plan.opt.test_path, "--repo", cvqahdr.repository, "--checkpoint",
           cvqahdr.checkpoint, "--profile", cvqahdr.profile, "--device", device_token(plan.opt),
@@ -1916,7 +1925,7 @@ void print_learned_qcs(const LearnedPlan& plan) {
   std::printf("[ CVQA-HDR-NR-QCS value:%.6f range:[%s,%s] samples:%zu basis:sampled-frames ]\n",
               acc.percent(), lo, hi, r.report.samples.size());
   std::fprintf(stderr,
-               "pixvqa: CVQA-HDR-NR-QCS uses %zu sampled frames (about one per second), not every "
+               "pixvqa: CVQA-HDR-NR-QCS uses %zu sampled frames (at the configured interval), not every "
                "frame; per-sample calibration extends the published video-level model\n",
                r.report.samples.size());
 }
@@ -3311,6 +3320,16 @@ int run_cli(int argc, char** argv) {
                               need("--cvvdp-output-json")))
         return 2;
       cvvdp.output_json_set = true;
+    } else if (a == "--cvqa-nr-sample-interval-sec" || a == "--cvqa-nr-chunk-size-sec") {
+      cvqahdr.options_seen = true;
+      const std::string value = need(a.c_str());
+      double number = 0.0;
+      if (!parse_full_double(value, number) || !(number > 0.0) || !std::isfinite(number)) {
+        std::fprintf(stderr, "pixvqa: %s requires a finite positive number of seconds\n", a.c_str());
+        return 2;
+      }
+      if (a == "--cvqa-nr-sample-interval-sec") cvqahdr.sample_interval_sec = number;
+      else cvqahdr.chunk_size_sec = number;
     } else if (a == "--cvqahdr-python") {
       cvqahdr.options_seen = true;
       if (!assign_cvqahdr_value(cvqahdr.python, "--cvqahdr-python", need("--cvqahdr-python")))
@@ -3555,7 +3574,7 @@ int run_cli(int argc, char** argv) {
   }
   if (learned) {
     const std::vector<const MetricCaps*> caps = selected_metric_caps(opt, cvvdp, cvqahdr);
-    if (!native && !native_only_option.empty()) {
+    if (!native && !cvqahdr.selected && !native_only_option.empty()) {
       const char* learned_only =
           (cvvdp.selected && cvqahdr.selected)
               ? "cvvdp and cvqa-hdr-nr"
@@ -3576,10 +3595,8 @@ int run_cli(int argc, char** argv) {
     }
     if (cvqahdr.selected && !native && !cvqahdr.raw_option.empty()) {
       std::fprintf(stderr,
-                   "pixvqa: %s is incompatible with cvqa-hdr-nr; it reads compressed video only "
-                   "and needs no raw YUV geometry\n",
-                   cvqahdr.raw_option.c_str());
-      return 2;
+                   "pixvqa: info: cvqa-hdr-nr reads compressed video directly; "
+                   "ignoring supplied raw-video options (-s, -f, --fps)\n");
     }
     if (opt.qcs_range_set && !opt.enable_qcs) {
       std::fprintf(stderr, "pixvqa: --qcs-range requires --qcs\n");

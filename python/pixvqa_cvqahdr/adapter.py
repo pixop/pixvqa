@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import time
+import threading
 from pathlib import Path
 
 from pixvqa_cvqahdr import PINNED_COMMIT, PINNED_UPSTREAM
@@ -30,7 +31,7 @@ TEMPORAL_NOTE = (
     "Per-sample scores apply the official logistic to each sampled frame's raw quality1 "
     "prediction. This is a PixVQA extension of the published video-level model, not an "
     "officially validated per-frame predictor. QCS from these samples describes sampled-frame "
-    "consistency at about one sample per second, not frame-by-frame consistency."
+    "consistency at the configured sampling interval, not frame-by-frame consistency."
 )
 
 
@@ -74,8 +75,20 @@ def verify_upstream(repository: str) -> dict:
     }
 
 
-def sampling_plan(frame_count: int, fps: float) -> dict:
-    """Validate the original VQA_NR.py fixed buffer sampler before it can overflow."""
+def runtime_sampling_options() -> tuple[float, float]:
+    """Options supplied by PixVQA to both preflight and inference subprocesses."""
+    try:
+        interval = float(os.environ.get("PIXVQA_CVQA_NR_SAMPLE_INTERVAL_SEC", "1"))
+        chunk_sec = float(os.environ.get("PIXVQA_CVQA_NR_CHUNK_SIZE_SEC", "8"))
+    except ValueError as exc:
+        raise PreflightError("invalid CVQA-HDR-NR sampling/chunk duration") from exc
+    if not all(math.isfinite(v) and v > 0 for v in (interval, chunk_sec)):
+        raise PreflightError("CVQA-HDR-NR sampling interval and chunk duration must be positive and finite")
+    return interval, chunk_sec
+
+
+def sampling_plan(frame_count: int, fps: float, interval_sec: float = 1.0) -> dict:
+    """Plan midpoint samples in complete intervals; 1.0 s matches patched upstream."""
     if frame_count <= 0:
         raise PreflightError("OpenCV reported no video frames")
     if not math.isfinite(fps) or fps <= 0:
@@ -83,33 +96,32 @@ def sampling_plan(frame_count: int, fps: float) -> dict:
     rounded_fps = int(round(fps))
     if rounded_fps <= 0:
         raise PreflightError(f"OpenCV rounded frame rate {fps!r} to zero")
-    sampled_frames = frame_count // rounded_fps
-    tail_frames = frame_count % rounded_fps
-    sample_offset = rounded_fps // 2
+    # The default interval reproduces the patched official midpoint sampler.
+    interval_frames = max(1, int(math.floor(interval_sec * rounded_fps + 0.5)))
+    sampled_frames = frame_count // interval_frames
+    tail_frames = frame_count % interval_frames
+    sample_offset = interval_frames // 2
     if sampled_frames == 0:
         raise PreflightError(
             f"clip has {frame_count} frames but the official NR sampler needs at least "
-            f"{rounded_fps} frames at rounded {rounded_fps} fps"
-        )
-    if tail_frames > sample_offset:
-        raise PreflightError(
-            "clip triggers the official NR sampling-buffer bug: "
-            f"{frame_count} frames at rounded {rounded_fps} fps produces an extra sample "
-            f"after its {sampled_frames}-frame buffer"
+            f"{interval_frames} frames at rounded {rounded_fps} fps"
         )
     return {
         "opencv_frame_count": frame_count,
         "opencv_fps": fps,
         "rounded_fps": rounded_fps,
         "sample_offset_frames": sample_offset,
+        "sample_interval_sec_requested": interval_sec,
+        "sample_interval_frames": interval_frames,
+        "sample_interval_sec_effective": interval_frames / fps,
         "sampled_frames": sampled_frames,
         "tail_frames": tail_frames,
     }
 
 
 def sample_schedule(sampling: dict) -> list[dict]:
-    """Frames the official sampler keeps: decoded index % R == R // 2, in order."""
-    rounded = sampling["rounded_fps"]
+    """Midpoint frame indices of complete sampling intervals, in order."""
+    rounded = sampling["sample_interval_frames"]
     offset = sampling["sample_offset_frames"]
     fps = sampling["opencv_fps"]
     schedule = []
@@ -151,7 +163,10 @@ def preflight_video(path: str) -> dict:
         fps = float(capture.get(cv2.CAP_PROP_FPS))
     finally:
         capture.release()
-    plan = sampling_plan(frame_count, fps)
+    interval_sec, chunk_sec = runtime_sampling_options()
+    plan = sampling_plan(frame_count, fps, interval_sec)
+    plan["chunk_size_sec_requested"] = chunk_sec
+    plan["chunk_max_sampled_frames"] = max(1, int(math.floor(chunk_sec * fps / plan["sample_interval_frames"] + 1e-9)))
     plan["path"] = path
     return plan
 
@@ -228,7 +243,7 @@ def temporal_record(sampling: dict, raw_values: list[float], calibrated: list[fl
     return {
         "basis": "sampled-frames",
         "sample_count": len(samples),
-        "sampling_density_hz": sampling["opencv_fps"] / sampling["rounded_fps"],
+        "sampling_density_hz": sampling["opencv_fps"] / sampling["sample_interval_frames"],
         "raw_dtype": "float32",
         "calibration_dtype": calibration_dtype,
         "pooled_parity": pooled_parity,
@@ -260,6 +275,155 @@ def forward_with_samples(model, batch, torch):
     pooled_parity = torch.mean(per_sample, dim=1)[0].item() == raw_score
     raw_values = per_sample[0].to("cpu").tolist()
     return outputs, raw_score, raw_values, pooled_parity
+
+
+
+
+def preprocess_custom_interval(test: str, sampling: dict, torch):
+    """Use upstream-equivalent transforms with the requested nondefault schedule.
+
+    The official preprocessing function has a fixed ~1 Hz sampler. This path
+    changes only the midpoint selection, not the spatial transforms.
+    """
+    import cv2
+    from PIL import Image
+    from torchvision import transforms
+
+    capture = cv2.VideoCapture(test)
+    if not capture.isOpened():
+        raise AdapterError(f"OpenCV could not open {test}")
+    size = 384
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    if width <= 0 or height <= 0:
+        capture.release()
+        raise AdapterError("invalid decoded video geometry")
+    if height > width:
+        rw = size
+        rh = int(rw / width * height)
+    else:
+        rh = size
+        rw = int(rh / height * width)
+    dim = (rw, rh)
+    transform = transforms.Compose([
+        transforms.Resize(size), transforms.CenterCrop(size), transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    selected = [entry["frame_index"] for entry in sample_schedule(sampling)]
+    video = torch.zeros((len(selected), 3, size, size))
+    sample_index = 0
+    frame_index = 0
+    try:
+        for _ in range(sampling["opencv_frame_count"]):
+            ok, frame = capture.read()
+            if ok:
+                if sample_index < len(selected) and frame_index == selected[sample_index]:
+                    resized = cv2.resize(frame, dim)
+                    rgb = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
+                    video[sample_index] = transform(rgb)
+                    sample_index += 1
+                frame_index += 1
+    finally:
+        capture.release()
+    if sample_index == 0:
+        raise AdapterError("no sampled video frames could be decoded")
+    # Mirror the upstream behavior when the container's advertised frame count
+    # exceeds the number of successfully decoded frames.
+    if sample_index < len(selected):
+        video[sample_index:] = video[sample_index - 1]
+    return video, test
+
+
+class GpuSampler:
+    """Optional device-wide nvidia-smi sampler; metrics include other GPU processes."""
+
+    def __init__(self):
+        self.process = None
+        self.thread = None
+        self.samples = []
+
+    def start(self):
+        try:
+            self.process = subprocess.Popen(
+                ["nvidia-smi", "--query-gpu=memory.used,utilization.gpu",
+                 "--format=csv,noheader,nounits", "-lms", "200"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                bufsize=1,
+            )
+        except OSError as exc:
+            print(f"[CVQA-NR] GPU monitoring unavailable: {exc}", file=sys.stderr, flush=True)
+            return
+
+        def collect():
+            for line in self.process.stdout:
+                # A multi-GPU system emits one line per device, in device index order.
+                parts = line.strip().split(",")
+                if len(parts) == 2:
+                    try:
+                        self.samples.append((int(parts[0]), int(parts[1])))
+                    except ValueError:
+                        pass
+        self.thread = threading.Thread(target=collect, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        if self.process is not None:
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+            if self.thread is not None:
+                self.thread.join(timeout=3)
+        if not self.samples:
+            return None
+        return {
+            "samples": len(self.samples),
+            "peak_device_memory_mib": max(x[0] for x in self.samples),
+            "peak_gpu_utilization_percent": max(x[1] for x in self.samples),
+            "mean_gpu_utilization_percent": sum(x[1] for x in self.samples) / len(self.samples),
+            "note": "Device-wide nvidia-smi samples (not process-exclusive); on multi-GPU systems "
+                    "samples aggregate all GPU rows and must be interpreted accordingly.",
+        }
+
+
+def forward_chunked(model, video, device, torch, chunk_size: int, profile: bool = False):
+    """Keep the model's raw per-frame predictions; calibrate only their global mean."""
+    raw_values = []
+    parity = True
+    chunks = []
+    expected = int(video.shape[0])
+    total_chunks = math.ceil(expected / chunk_size)
+    for index, start in enumerate(range(0, expected, chunk_size), 1):
+        stop = min(start + chunk_size, expected)
+        t0 = time.perf_counter()
+        batch = video[start:stop].to(device).unsqueeze(0)
+        _, _, values, consistent = forward_with_samples(model, batch, torch)
+        if len(values) != stop - start:
+            raise AdapterError(f"chunk {index}/{total_chunks}: expected {stop-start} samples, got {len(values)}")
+        raw_values.extend(values)
+        parity = parity and consistent
+        if profile:
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            seconds = time.perf_counter() - t0
+            chunks.append({"index": index, "start": start, "stop": stop,
+                           "sample_count": len(values), "seconds": seconds})
+            print(f"[CVQA-NR] Chunk {index}/{total_chunks}: samples={len(values)} "
+                  f"({start}:{stop}), inference={seconds:.3f}s",
+                  file=sys.stderr, flush=True)
+        del batch
+    if len(raw_values) != expected:
+        raise AdapterError(f"incomplete inference: processed {len(raw_values)}/{expected} sampled frames")
+    if profile:
+        print(f"[CVQA-NR] Processed samples: {len(raw_values)}/{expected}; "
+              f"chunks: {len(chunks)}/{total_chunks}", file=sys.stderr, flush=True)
+    # Mirror the official float32 temporal mean; the different reduction
+    # grouping may introduce minor floating-point differences.
+    raw_score = torch.tensor(raw_values, dtype=torch.float32).mean().item()
+    return raw_score, raw_values, parity, chunks
 
 
 def preflight(test: str, repository: str, checkpoint: str, profile: str, device: str,
@@ -318,6 +482,16 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
     if notice:
         print(f"pixvqa-cvqa-hdr-nr: warning: {notice}", file=sys.stderr)
     selected_device = torch.device(effective)
+    profiling_enabled = os.environ.get("PIXVQA_CVQA_NR_PROFILE", "0").lower() in ("1", "true", "yes")
+    sampler = GpuSampler() if profiling_enabled and effective == "cuda" else None
+    if sampler is not None:
+        sampler.start()
+    if profiling_enabled:
+        print(f"[CVQA-NR] Video: {sampling['opencv_frame_count']} frames, "
+              f"{sampling['opencv_fps']:.3f} fps; planned samples: {sampling['sampled_frames']}; "
+              f"interval: {sampling['sample_interval_sec_effective']:.3f}s; "
+              f"chunk size: {sampling['chunk_max_sampled_frames']} sampled frames",
+              file=sys.stderr, flush=True)
     if effective == "cuda":
         torch.cuda.reset_peak_memory_stats(selected_device)
     t0 = time.perf_counter()
@@ -327,18 +501,22 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         model.load_state_dict(state_dict, strict=True)
         model.eval()
         t_loaded = time.perf_counter()
-        video, video_name = VQA_NR.video_processing(test)
+        if sampling["sample_interval_sec_requested"] == 1.0:
+            video, video_name = VQA_NR.video_processing(test)
+        else:
+            video, video_name = preprocess_custom_interval(test, sampling, torch)
         if int(video.shape[0]) != sampling["sampled_frames"]:
             raise AdapterError(
                 f"official NR preprocessing returned {int(video.shape[0])} frames; "
                 f"OpenCV preflight expected {sampling['sampled_frames']}"
             )
         t_preprocessed = time.perf_counter()
-        batch = video.to(selected_device).unsqueeze(0)
-        used = {str(p.device.type) for p in model.parameters()} | {batch.device.type}
-        if used != {selected_device.type}:
-            raise AdapterError(f"model or input is on {sorted(used)}, not {effective}")
-        _, raw_score, raw_values, pooled_parity = forward_with_samples(model, batch, torch)
+        if any(p.device.type != selected_device.type for p in model.parameters()):
+            raise AdapterError(f"model parameters are not all on {effective}")
+        chunk_samples = sampling["chunk_max_sampled_frames"]
+        raw_score, raw_values, pooled_parity, chunks = forward_chunked(
+            model, video, selected_device, torch, chunk_samples, profile=profiling_enabled
+        )
         if effective == "cuda":
             torch.cuda.synchronize(selected_device)
         t_inferred = time.perf_counter()
@@ -348,6 +526,8 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         raise
     except Exception as exc:
         raise AdapterError(f"official NR inference failed: {exc}") from exc
+    finally:
+        gpu_samples = sampler.stop() if sampler is not None else None
     decoded = None
     if verify_decoded_frames:
         decoded = count_decoded_frames(test, sampling["opencv_frame_count"])
@@ -362,7 +542,22 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         "peak_rss_bytes": peak_rss_bytes(),
         "peak_cuda_allocated_bytes":
             torch.cuda.max_memory_allocated(selected_device) if effective == "cuda" else None,
+        "peak_cuda_reserved_bytes":
+            torch.cuda.max_memory_reserved(selected_device) if effective == "cuda" else None,
     }
+    if profiling_enabled:
+        performance["gpu_monitor"] = gpu_samples
+        performance["chunks"] = chunks
+        print(f"[CVQA-NR] Peak CUDA allocated: "
+              f"{(performance['peak_cuda_allocated_bytes'] or 0) / 1048576:.1f} MiB; "
+              f"reserved: {(performance['peak_cuda_reserved_bytes'] or 0) / 1048576:.1f} MiB",
+              file=sys.stderr, flush=True)
+        if gpu_samples is not None:
+            print(f"[CVQA-NR] Device-wide GPU utilization: "
+                  f"mean={gpu_samples['mean_gpu_utilization_percent']:.1f}%, "
+                  f"peak={gpu_samples['peak_gpu_utilization_percent']}%; "
+                  f"device VRAM peak={gpu_samples['peak_device_memory_mib']} MiB",
+                  file=sys.stderr, flush=True)
     record = {
         "adapter": "pixvqa_cvqahdr",
         "metric": "cvqa-hdr-nr",
@@ -375,6 +570,9 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         "test": test,
         "video_name": video_name,
         "sampling": sampling,
+        "inference": {"mode": "chunked", "chunk_max_sampled_frames": sampling["chunk_max_sampled_frames"],
+                      "chunk_size_sec_requested": sampling["chunk_size_sec_requested"],
+                      "chunk_count": math.ceil(sampling["sampled_frames"] / sampling["chunk_max_sampled_frames"])},
         "quality_score": score,
         "raw_model_score": raw_score,
         "temporal": temporal,
