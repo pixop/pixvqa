@@ -132,10 +132,10 @@ HDR = [
 ]
 VMAF_LINE = re.compile(r"\[ VMAF:([0-9.eE+-]+) \]")
 PU_LUMA_LINE = {
-    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
-    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
+    "PU21-SSIM": re.compile(r"\[ PU21-SSIM y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
+    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM y:([0-9.eE+-]+) u:n/a v:n/a avg:([0-9.eE+-]+) \]"),
 }
-PU_PSNR_LINE = re.compile(r"\[ PU21-PSNR {5}r:[0-9.]+ g:[0-9.]+ b:[0-9.]+ avg:([0-9.eE+-]+) \]")
+PU_PSNR_LINE = re.compile(r"\[ PU21-PSNR r:[0-9.]+ g:[0-9.]+ b:[0-9.]+ avg:([0-9.eE+-]+) \]")
 
 
 def qcs_from_trace(proc, qcs_name: str, kind: str, lo: float, hi: float, label: str) -> list[float]:
