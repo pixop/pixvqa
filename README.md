@@ -51,8 +51,6 @@ For raw YUV, build variants (`make cpu`, `make swdec`, `make full`), and install
 
 **Individual metrics:** use `--metrics psnr,ssim,msssim` or another comma-separated list. **Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
 
-**HDR10:** `--preset hdr` selects the documented PQ/HDR10 workflow, including the corresponding colorimetry, display configuration, and available metric group. It does not make unsupported metric/input combinations valid; see the [HDR master command](docs/CLI_USAGE.md#hdr-master-command).
-
 **Learned metrics:** configure their separate Python/PyTorch dependencies and model files before use. ColorVideoVDP is a full-reference quality metric; CompressedVQA-HDR NR needs only a distorted **compressed** clip and does not support `--frames`. See [ColorVideoVDP](docs/COLORVIDEOVDP.md), [CompressedVQA-HDR NR](docs/COMPRESSEDVQA_HDR.md), [Learned environment](docs/LEARNED_ENVIRONMENT.md), and [Local configuration](docs/LEARNED_METRICS_CONFIG.md).
 
 **Device selection:** `--device cpu|gpu|auto` (alias `--metric-device`) controls supported metric implementations. GPU availability and numerical agreement depend on the specific metric and environment; see [Learned Devices](docs/LEARNED_DEVICES.md).

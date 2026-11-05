@@ -51,15 +51,15 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 
 ## Metric Capabilities
 
-All metrics can be mixed in one `--metrics` list. PixVQA checks every metric's requirements before running any metric.
+PixVQA supports native and Python-based quality metrics. Metrics can be combined in a single `--metrics` list, and their input requirements are validated before processing.
 
-| Metric | Reference (`-r`) | Raw YUV | Compressed video | `--frames` | QCS | Runs in |
-|---|---|---|---|---|---|---|
-| Native metrics | Required | ✅ | FFmpeg builds (`make swdec`, `make full`) | ✅ | Per frame, default ranges | PixVQA |
-| `cvvdp` | Required | YUV420p10le PQ or HLG, both inputs | ✅ (both inputs) | ✅ | Per-frame JOD-equivalent, default [0, 10] | Python adapter |
-| `cvqa-hdr-nr` | Not used; ignored when it is the only metric | ❌ | ✅ | ❌ | Sampled frames, default [0, 10] | Python adapter |
+| Metric | Reference (`-r`) | Test (`-t`) | QCS | Execution |
+|---|---|---|---|---|
+| Native metrics | Raw YUV or compressed video | Raw YUV or compressed video | Per-frame scores; metric-specific default ranges | PixVQA |
+| `cvvdp` | Raw YUV (YUV420p10le PQ/HLG) or compressed video | Raw YUV (YUV420p10le PQ/HLG) or compressed video | Per-frame JOD-equivalent scores; default range [0, 10] | Python adapter |
+| `cvqa-hdr-nr` | Not required | Compressed video only | Sampled-frame scores; default range [0, 10] | Python adapter |
 
-The `make cpu` and `make cuda` builds have no FFmpeg decoder, so native metrics there accept raw YUV only. Compressed input to a native metric on that build fails with a clear error before any metric runs. `cvvdp` and `cvqa-hdr-nr` decode in their own Python environments and work on compressed video with any build.
+**Decoding:** Native metrics require `make swdec` or `make full` for compressed video. Python-based metrics decode compressed video independently of the build.
 
 ## Supported Video Formats
 
