@@ -51,7 +51,7 @@ CONSTRAINTS = [
     {
         "id": "vmaf-model",
         "file": "src/main.cpp",
-        "needle": "vmaf requires --model",
+        "needle": "--model and --vmaf-model require vmaf in --metrics",
         "rule": "vmaf requires a readable model. --model and --vmaf-model are aliases and must agree. Either one without vmaf is an error.",
     },
     {
