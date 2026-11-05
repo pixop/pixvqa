@@ -43,8 +43,9 @@ raw test input detected by a native run) is rejected. For NR-only runs, supplied
 accepted but ignored with an informational message. Other shared or native
 options may be accepted for command-line compatibility but do not configure
 the NR model; in particular, HDR metadata options do not change the upstream
-OpenCV preprocessing. `--frames` is rejected whenever `cvqa-hdr-nr` is
-selected: NR evaluates the full input clip.
+OpenCV preprocessing. `--frames` is accepted but ignored by `cvqa-hdr-nr`,
+with a warning on stderr: NR evaluates the full input clip. When mixed with
+other metrics, `--frames` still limits those metrics where supported.
 `--device cpu` (alias of `--metric-device`) runs the model on the CPU,
 `--device gpu` requires CUDA and fails in preflight without it, and the
 default `auto` uses CUDA when PyTorch sees a device, else the CPU with a

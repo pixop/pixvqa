@@ -3584,14 +3584,10 @@ int run_cli(int argc, char** argv) {
                    native_only_option.c_str(), learned_only);
       return 2;
     }
-    for (const MetricCaps* c : caps) {
-      if (opt.max_frames > 0 && !c->honors_frames) {
-        std::fprintf(stderr,
-                     "pixvqa: --frames is incompatible with %s; its official sampler reads the "
-                     "whole clip\n",
-                     c->name);
-        return 2;
-      }
+    if (cvqahdr.selected && opt.max_frames > 0) {
+      std::fprintf(stderr,
+                   "pixvqa: warning: --frames is ignored by cvqa-hdr-nr; "
+                   "the full input stream is processed for this metric\n");
     }
     if (cvqahdr.selected && !native && !cvqahdr.raw_option.empty()) {
       std::fprintf(stderr,

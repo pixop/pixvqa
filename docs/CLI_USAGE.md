@@ -108,7 +108,7 @@ CompressedVQA-HDR NR is installed separately from PixVQA. It runs as
 `cvqa-hdr-nr` in `--metrics`, alone or mixed with other metrics. It is
 no-reference, so it requires only `-t`, and it accepts compressed video only.
 The adapter validates the requested sample interval and chunk duration before
-inference; defaults are one second and eight seconds, respectively. Raw YUV and `--frames` are rejected. When it is the only metric, a
+inference; defaults are one second and eight seconds, respectively. Raw YUV is rejected. `--frames` is ignored with a warning; NR processes the full clip. When it is the only metric, a
 supplied `-r` is ignored with an informational message and is never opened.
 
 ```bash
@@ -157,7 +157,7 @@ check finishes before any metric runs.
 |---|---|---|---|
 | Native | Yes | `make swdec` or `make full` only | Yes |
 | `cvvdp` | YUV420p10le PQ/HLG; `-s`, `-f 420p:10`, and `--fps` when both inputs are raw | Yes, including mixed raw/compressed pairs (Python decoding) | Yes |
-| `cvqa-hdr-nr` | No | Yes; decoded by OpenCV | No |
+| `cvqa-hdr-nr` | No | Yes; decoded by OpenCV | Ignored with warning (full clip) |
 
 `cvvdp` accepts raw/compressed, compressed/raw, raw/raw, and compressed/compressed pairs when geometry and frame rate match. The `make cpu`
 and `make cuda` builds have no FFmpeg decoder. Native metrics on compressed

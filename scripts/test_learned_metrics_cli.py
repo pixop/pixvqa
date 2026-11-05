@@ -470,14 +470,16 @@ def cli_cases(s: Suite) -> None:
     if expect("native-option-alone", proc, 2, needles=["--threads is incompatible with cvvdp alone"]):
         ok("native-only-option-rejected-without-native-metric")
 
-    # --frames conflicts with NR in every combination.
-    for name, metrics in (("frames-nr", "cvqa-hdr-nr"), ("frames-native-nr", "psnr,cvqa-hdr-nr")):
-        args = ["--metrics", metrics, "--frames", "5", "-t", "dist.mp4", *s.nr()]
-        if "psnr" in metrics:
-            args = ["-r", str(s.ref), *args]
-        proc = s.run(args)
-        if expect(name, proc, 2, needles=["--frames is incompatible with cvqa-hdr-nr"]) and not s.backend_log():
-            ok(name)
+    # --frames is accepted for NR with a warning, not an incompatible-option error.
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "--frames", "5", "-t", "dist.mp4", *s.nr()])
+    if expect("frames-nr", proc, 2, needles=["warning: --frames is ignored by cvqa-hdr-nr",
+                                            "cannot open test file"]) and not s.backend_log():
+        ok("frames-nr-ignored-with-warning")
+    proc = s.run(["--metrics", "psnr,cvqa-hdr-nr", "--frames", "5",
+                  "-r", str(s.ref), "-t", str(s.fake_mp4), *s.nr()])
+    if expect("frames-native-nr", proc, 2, needles=["warning: --frames is ignored by cvqa-hdr-nr",
+                                                    "no FFmpeg decoder for native metrics"]) and not s.backend_log():
+        ok("frames-native-nr-not-rejected-for-frame-cap")
 
     # Invalid environments fail preflight with exit 2 and nothing runs.
     proc = s.run(["--metrics", "cvvdp", "-r", "r.mkv", "-t", "d.mkv", "--cvvdp-interpretation", "pq",
