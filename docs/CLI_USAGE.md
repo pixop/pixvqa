@@ -239,42 +239,6 @@ pixvqa --metrics psnr --decode gpu \
   -t reference10.hevc.mp4
 ```
 
-### HDR master command
-
-`--preset hdr` is the single command for two HDR10/PQ inputs. With no
-`--metrics` list it runs every supported metric, in the usual order: native,
-then `cvvdp`, then `cvqa-hdr-nr`. It fills options the existing pipeline
-already understands. It does not change metric math.
-
-| What it sets | Value |
-|---|---|
-| Metrics | `psnr`, `xpsnr`, `ssim`, `msssim`, `vmaf`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp`, `cvqa-hdr-nr` |
-| Transfer | `pq`, BT.2020 primaries, `bt2020nc`, and limited range, unless you already passed those |
-| VMAF model | `model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json` when `--model` is omitted. Run from the repository root, or pass `--model` |
-| CVVDP | `--cvvdp-interpretation` / `--cvvdp-display` when omitted: derived from `--hdr-transfer`, `--metrics pq|hlg|sdr`, or compressed-stream metadata (mixed raw/compressed assumes the raw side matches the compressed transfer unless you override) |
-| Learned QCS interval | `[0, 10]` for both `cvvdp` and `cvqa-hdr-nr` (the default for every run, not only the preset) |
-
-`--metrics all` selects the same metrics without the HDR defaults.
-`--preset hdr --metrics psnr,pu21-psnr` keeps your list and still applies the
-HDR defaults. A non-PQ transfer or `--cvvdp-interpretation sdr` is an error. `--frames` is an error because NR reads the whole
-clip. Native metrics on compressed video need `make swdec` or `make full`,
-and `vmaf` needs a build with libvmaf. PSNR, XPSNR, SSIM, and MS-SSIM still
-score stored sample codes. PU21, HDR VMAF, and CVVDP do the HDR processing.
-
-`--qcs` adds one QCS line per metric to the same summary. Pass `-v 0` when
-you want the summary without per-frame native lines.
-
-With `config/learned_metrics.local.toml` in place, the whole HDR10 run is:
-
-```bash
-./bin/pixvqa --preset hdr --qcs -v 0 \
-  -r reference_hdr.mp4 \
-  -t distorted_hdr.mp4
-```
-
-Each metric keeps its own summary line. The block under `Summary:` is the
-consolidated result. Backend warnings stay on stderr.
-
 ### Metric groups
 
 A group name in `--metrics` selects one transfer's metric set and fills that
@@ -289,9 +253,9 @@ stored sample codes; the transfer applies to PU21, VMAF, and CVVDP.
 | `pq` | `psnr`, `xpsnr`, `ssim`, `msssim`, `vmaf`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp`, `cvqa-hdr-nr` | Transfer `pq`, BT.2020 primaries, `bt2020nc`, limited range; HDR VMAF model; `--cvvdp-interpretation pq`, `--cvvdp-display standard_hdr_pq` | A transfer, primaries, matrix, range, CVVDP interpretation, or CVVDP display from another family |
 | `hlg` | `psnr`, `xpsnr`, `ssim`, `msssim`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp` | Transfer `hlg`, BT.2020 primaries, `bt2020nc`, limited range. PU21 keeps its 1000 cd/m² HLG peak. `--cvvdp-interpretation hlg`, `--cvvdp-display standard_hdr_hlg` (upstream model: 1500 cd/m², BT.2020-HLG) | `vmaf` (the installed HDR VMAF model is PQ-only) and `cvqa-hdr-nr` (HDR10 and SDR only) |
 
-HLG is never run through the PQ or SDR display. `--preset hdr` combines with
-`--metrics pq` only. The VMAF model is looked up in the working directory and
-then in the checkout that holds the executable. `--model` overrides it.
+HLG is never run through the PQ or SDR display. The VMAF model is looked up
+in the working directory and then in the checkout that holds the executable.
+`--model` overrides it.
 
 ```bash
 ./bin/pixvqa --metrics sdr --cvvdp-display standard_fhd --qcs \
@@ -307,7 +271,6 @@ then in the checkout that holds the executable. `--model` overrides it.
 |---|---|
 | `-r`, `-t` | Reference path and distorted path. `-t` is always required. `-r` is required by full-reference metrics and ignored when only `cvqa-hdr-nr` is selected |
 | `--metrics` | Comma-separated metric names. Native, `cvvdp`, and `cvqa-hdr-nr` can be mixed; repeated options accumulate. `all` selects every metric. `sdr`, `pq`, and `hlg` are [metric groups](#metric-groups) |
-| `--preset hdr` | HDR10/PQ master run. See [HDR master command](#hdr-master-command) |
 | `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
 | `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. `auto` runs each native metric on CUDA when the build, a visible device, and the input allow it, else on the CPU; the execution summary shows the device and any fallback reason. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. VMAF always uses CPU libvmaf. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
 | `--threads` | `auto` or a positive integer. Default `auto` |

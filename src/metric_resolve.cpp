@@ -29,8 +29,7 @@ std::string normalized_shared_transfer(const MetricTransferCli& cli) {
   return {};
 }
 
-std::string preset_transfer_family(const MetricTransferCli& cli) {
-  if (cli.preset_hdr) return "pq";
+std::string metric_group_transfer_family(const MetricTransferCli& cli) {
   if (cli.metric_group == "pq" || cli.metric_group == "hlg" || cli.metric_group == "sdr") {
     return cli.metric_group;
   }
@@ -106,7 +105,7 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
     return true;
   }
 
-  const std::string preset = preset_transfer_family(cli);
+  const std::string group = metric_group_transfer_family(cli);
   const std::string shared = normalized_shared_transfer(cli);
   if (shared == "__conflict__") {
     err = "reference and test HDR transfer overrides disagree; use one shared --hdr-transfer";
@@ -114,10 +113,10 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
   }
   const std::string shared_family = transfer_family_token(shared);
 
-  if (cvvdp.interpretation_set && !preset.empty() &&
-      transfer_family_token(cvvdp.interpretation) != preset) {
+  if (cvvdp.interpretation_set && !group.empty() &&
+      transfer_family_token(cvvdp.interpretation) != group) {
     err = std::string("--cvvdp-interpretation ") + cvvdp.interpretation + " conflicts with --metrics " +
-          preset;
+          group;
     return false;
   }
   if (cvvdp.interpretation_set && !shared_family.empty() &&
@@ -126,8 +125,8 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
           " conflicts with explicit HDR transfer " + shared;
     return false;
   }
-  if (!preset.empty() && !shared_family.empty() && preset != shared_family) {
-    err = std::string("metric preset uses ") + preset + "; explicit HDR transfer " + shared + " conflicts";
+  if (!group.empty() && !shared_family.empty() && group != shared_family) {
+    err = std::string("metric group uses ") + group + "; explicit HDR transfer " + shared + " conflicts";
     return false;
   }
 
@@ -139,12 +138,12 @@ bool resolve_cvvdp_parameters(const MetricTransferCli& cli, const MetricSideProb
   } else if (!shared_family.empty()) {
     family = shared_family;
     family_source = "explicit HDR transfer";
-  } else if (!preset.empty()) {
-    family = preset;
-    family_source = cli.preset_hdr ? "--preset hdr" : "--metrics " + cli.metric_group;
+  } else if (!group.empty()) {
+    family = group;
+    family_source = "--metrics " + cli.metric_group;
   } else if (!cvvdp.interpretation.empty()) {
     family = transfer_family_token(cvvdp.interpretation);
-    if (!family.empty()) family_source = "metric preset defaults";
+    if (!family.empty()) family_source = "metric group defaults";
   }
 
   std::string ref_family;

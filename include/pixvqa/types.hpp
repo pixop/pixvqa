@@ -192,9 +192,6 @@ struct Options {
   // sequence, NR its calibrated sampled frames.
   double qcs_cvvdp_lo = 0.0, qcs_cvvdp_hi = 10.0;
   double qcs_cvqahdr_nr_lo = 0.0, qcs_cvqahdr_nr_hi = 10.0;
-  // --preset hdr selects every metric when --metrics is omitted and applies
-  // HDR10/PQ processing. See docs/CLI_USAGE.md.
-  bool preset_hdr = false;
   // --metrics pq, hlg, or sdr: the recommended metrics plus that processing.
   std::string metric_group;
   XpsnrBackend xpsnr_backend = XpsnrBackend::Cpu;

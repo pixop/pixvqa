@@ -76,7 +76,7 @@ def check_help(bin_path: Path, kind: str) -> None:
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
             return
-    for hidden in ("--preset hdr", "--vmaf-model",
+    for hidden in ("--vmaf-model",
                    "--cvvdp-python", "--cvqahdr-checkpoint", "--qcs-range"):
         if hidden in text:
             fail(f"{kind} basic help exposes advanced option {hidden}")
@@ -88,14 +88,11 @@ def check_help(bin_path: Path, kind: str) -> None:
     for needle in ("--cvvdp-interpretation", "--cvvdp-display", "--cvvdp-bin",
                    "--cvvdp-output-json", "--cvqahdr-output-json",
                    "--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile",
-                   "--learned-config", "--qcs-range", "--threads", "--preset hdr",
+                   "--learned-config", "--qcs-range", "--threads",
                    "--vmaf-model", "--seek 0"):
         if needle not in adv.stdout:
             fail(f"{kind} advanced help missing {needle}")
             return
-    if "not an exact alias" not in collapsed(adv.stdout):
-        fail(f"{kind} advanced help misdescribes legacy preset")
-        return
     if "NVIDIA" in text or "GeForce" in text:
         fail(f"{kind} help initialized a device")
         return

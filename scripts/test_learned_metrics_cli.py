@@ -578,37 +578,13 @@ def cli_cases(s: Suite) -> None:
     if expect("persistent-record", proc, 0) and persistent.is_file():
         ok("persistent-record-kept")
 
-    # --metrics all selects every metric. --preset hdr fills PQ, the HDR VMAF
-    # model, and the CVVDP display before any file or backend is opened.
+    # --metrics all selects every metric without selecting a transfer group.
     proc = s.run(["--metrics", "all", "-r", "ref.mp4", "-t", "dist.mp4"])
     if expect("metrics-all", proc, 2, needles=["--cvvdp-interpretation"]) and not s.backend_log():
         ok("metrics-all-selects-cvvdp")
-    proc = s.run(["--preset", "sdr"])
-    if expect("preset-unknown", proc, 2, needles=["--preset expects hdr"]) and not s.backend_log():
-        ok("preset-rejects-unknown")
-    proc = s.run(["--preset", "hdr", "--hdr-transfer", "sdr", "-r", "ref.mp4", "-t", "dist.mp4"])
-    if expect("preset-transfer-conflict", proc, 2, needles=["--preset hdr uses pq; transfer sdr conflicts"]) \
-            and not s.backend_log():
-        ok("preset-hdr-rejects-non-pq-transfer")
-    proc = s.run(["--preset", "hdr", "--cvvdp-interpretation", "sdr", "-r", "ref.mp4", "-t", "dist.mp4", *s.nr()])
-    if expect("preset-cvvdp-conflict", proc, 2, needles=["--cvvdp-interpretation pq"]) and not s.backend_log():
-        ok("preset-hdr-rejects-sdr-cvvdp")
     group_cases(s)
     config_cases(s)
     device_cases(s)
-    proc = s.run(["--preset", "hdr", "-r", "ref.mp4", "-t", "dist.mp4"])
-    if expect("preset-selects-nr", proc, 2, needles=["--cvqahdr-repo"]) and not s.backend_log():
-        if "requires --cvvdp-interpretation" in proc.stderr or "requires --model" in proc.stderr:
-            fail("preset-selects-nr", proc.stderr)
-        else:
-            ok("preset-hdr-selects-all-and-fills-cvvdp")
-    proc = s.run(["--preset", "hdr", "--metrics", "vmaf", *s.raw_pair()])
-    if proc.returncode in (0, 2) and "requires --model" not in proc.stderr and (
-            "no libvmaf" in proc.stderr or "hdr_vmaf_v1.1.8_3d0h" in proc.stderr or
-            "[ VMAF" in proc.stdout):
-        ok("preset-hdr-supplies-hdr-vmaf-model")
-    else:
-        fail("preset-vmaf", f"exit {proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
 
 
 def device_cases(s: Suite) -> None:
@@ -718,9 +694,6 @@ def group_cases(s: Suite) -> None:
     proc = s.run(["--metrics", "sdr,pq", "-r", "a.mp4", "-t", "b.mp4"])
     if expect("group-combine", proc, 2, needles=["--metrics sdr and pq cannot be combined"]):
         ok("group-rejects-two-groups")
-    proc = s.run(["--preset", "hdr", "--metrics", "hlg", "-r", "a.mp4", "-t", "b.mp4"])
-    if expect("group-preset", proc, 2, needles=["--preset hdr cannot be combined with --metrics hlg"]):
-        ok("group-rejects-preset-with-hlg")
 
 
 def config_cases(s: Suite) -> None:

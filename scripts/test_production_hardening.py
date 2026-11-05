@@ -101,13 +101,6 @@ int main() {
         }
         if (cvvdp.interpretation != group || !cvvdp.config_resolved) return 2;
     }
-    pixvqa::MetricTransferCli cli;
-    cli.preset_hdr = true;
-    pixvqa::CvvdpResolveState cvvdp;
-    cvvdp.selected = true;
-    std::string err;
-    if (!pixvqa::resolve_cvvdp_parameters(cli, {}, {}, cvvdp, err)) return 3;
-    if (cvvdp.interpretation != "pq") return 4;
     return 0;
 }
 '''
@@ -119,7 +112,7 @@ int main() {
                str(cpp), str(ROOT / "src" / "metric_resolve.cpp"), "-o", str(exe)]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         proc = subprocess.run([str(exe)], capture_output=True, text=True, check=True)
-        for token in ("--metrics sdr", "--metrics pq", "--metrics hlg", "--preset hdr"):
+        for token in ("--metrics sdr", "--metrics pq", "--metrics hlg"):
             assert token in proc.stderr, (token, proc.stderr)
     print("OK   hardening-cpp-cvvdp-group-log-source")
 

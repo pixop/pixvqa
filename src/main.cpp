@@ -308,9 +308,6 @@ void print_help_advanced() {
       "  Per-input forms: --ref-hdr-* and --dist-hdr-*. Full details: --help-hdr.\n"
       "\n"
       "Deprecated compatibility spellings (still functional)\n"
-      "  --preset hdr         Legacy PQ shortcut; without --metrics selects all\n"
-      "                       metrics and applies PQ defaults, not an exact alias\n"
-      "                       for --metrics pq.\n"
       "  --vmaf-model         Alias for --model; both must agree if given.\n"
       "  --cs, --tf, --ref-cs, --dist-cs, --ref-tf, --dist-tf\n"
       "                       Legacy color/transfer overrides (see --help-hdr).\n"
@@ -1006,7 +1003,6 @@ bool validate_cvvdp_options(const CvvdpOptions& cvvdp) {
 
 MetricTransferCli metric_transfer_cli(const Options& opt) {
   MetricTransferCli cli;
-  cli.preset_hdr = opt.preset_hdr;
   cli.metric_group = opt.metric_group;
   cli.hdr_transfer_set = opt.hdr.transfer_set;
   cli.hdr_transfer = opt.hdr.transfer;
@@ -1100,20 +1096,11 @@ std::string locate_beside_executable(const std::string& rel) {
   return "";
 }
 
-// Metric math is unchanged: --preset hdr and --metrics pq|hlg|sdr only select
-// metrics and fill the existing HDR, VMAF, and CVVDP options.
+// Metric groups select metrics and fill existing HDR, VMAF, and CVVDP options.
 bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr) {
-  if (opt.preset_hdr && !opt.metric_group.empty() && opt.metric_group != "pq") {
-    std::fprintf(stderr, "pixvqa: --preset hdr cannot be combined with --metrics %s\n",
-                 opt.metric_group.c_str());
-    return false;
-  }
-  const std::string kind = opt.preset_hdr ? "pq" : opt.metric_group;
+  const std::string& kind = opt.metric_group;
   if (kind.empty()) return true;
-  const std::string who = opt.preset_hdr ? "--preset hdr" : "--metrics " + kind;
-  if (opt.preset_hdr && !native_selected(opt) && !cvvdp.selected && !cvqahdr.selected) {
-    select_all_metrics(opt, cvvdp, cvqahdr);
-  }
+  const std::string who = "--metrics " + kind;
   const std::pair<bool, std::string> transfers[] = {
       {opt.transfer_set, opt.transfer},
       {opt.ref_transfer_set, opt.ref_transfer},
@@ -3250,13 +3237,6 @@ int run_cli(int argc, char** argv) {
 
     if (a == "--metrics") {
       if (!parse_metrics_list(opt, cvvdp, cvqahdr, need("--metrics"))) return 2;
-    } else if (a == "--preset") {
-      const auto v = need("--preset");
-      if (v != "hdr") {
-        std::fprintf(stderr, "pixvqa: --preset expects hdr\n");
-        return 2;
-      }
-      opt.preset_hdr = true;
     } else if (a == "--learned-config") {
       learned_config_path = need("--learned-config");
       if (learned_config_path.empty()) {

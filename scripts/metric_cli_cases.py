@@ -313,15 +313,6 @@ def conformance_matrix() -> tuple[CliConformanceCase, ...]:
             stderr_contains=("--tf and --hdr-transfer both set",),
         ),
         CliConformanceCase(
-            id="preset-hdr-with-metrics-hlg",
-            category="5-metric-transfer-mix",
-            summary="--preset hdr cannot combine with --metrics hlg",
-            outcome="reject",
-            bin="cpu",
-            args=(*R, "--preset", "hdr", "--metrics", "hlg"),
-            stderr_contains=("--preset hdr cannot be combined",),
-        ),
-        CliConformanceCase(
             id="metrics-sdr-excludes-pu21",
             category="5-metric-transfer-mix",
             summary="SDR metric group excludes PU21 (PU21 is for PQ/HLG only)",
@@ -452,7 +443,7 @@ def conformance_matrix() -> tuple[CliConformanceCase, ...]:
         ),
         CliConformanceCase(
             id="metrics-pq-and-hlg-group-conflict",
-            category="9-preset-metric",
+            category="9-metric-groups",
             summary="PQ and HLG metric groups cannot combine",
             outcome="reject",
             bin="cpu",
@@ -461,8 +452,8 @@ def conformance_matrix() -> tuple[CliConformanceCase, ...]:
         ),
         CliConformanceCase(
             id="cvvdp-interpretation-conflicts-metric-pq",
-            category="9-preset-metric",
-            summary="Explicit cvvdp interpretation hlg conflicts with --metrics pq preset",
+            category="9-metric-groups",
+            summary="Explicit cvvdp interpretation hlg conflicts with --metrics pq group",
             outcome="reject",
             bin="swdec",
             needs=("ffmpeg",),

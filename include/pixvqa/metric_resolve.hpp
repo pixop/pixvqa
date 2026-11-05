@@ -7,7 +7,6 @@
 namespace pixvqa {
 
 struct MetricTransferCli {
-  bool preset_hdr = false;
   std::string metric_group;
   bool hdr_transfer_set = false;
   std::string hdr_transfer;
