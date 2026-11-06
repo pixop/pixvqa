@@ -6,7 +6,7 @@
 | `xpsnr` | Extended PSNR (XPSNR). Uses a constant compressed frame rate, or `--fps` |
 | `ssim` | Structural similarity (SSIM): 11×11 Gaussian, sigma 1.5, K1=0.01, K2=0.03 |
 | `msssim` | Multi-scale structural similarity, the five-scale product (MS-SSIM) |
-| `vmaf` | Netflix VMAF v1 through CPU libvmaf. Requires `--model` |
+| `vmaf` | Netflix VMAF through CPU libvmaf. Automatically selects a bundled SDR/PQ model when transfer, geometry and frame rate are known; `--model` overrides selection |
 | `pu21-psnr` | PSNR on PU21-encoded display RGB |
 | `pu21-ssim` | SSIM on PU21-encoded luminance |
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |

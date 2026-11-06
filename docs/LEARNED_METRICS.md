@@ -1,6 +1,6 @@
 # Learned metrics
 
-PixVQA integrates two optional Python-based metrics. Install their dependencies and model files separately; the native build does not install them.
+PixVQA integrates two optional Python-backed metrics. Install their dependencies and model files separately.
 
 | Metric | Purpose | Inputs | Upstream |
 |---|---|---|---|
@@ -11,7 +11,7 @@ Both can be combined with native metrics in `--metrics`. The `sdr`, `pq`, and `h
 
 ## Setup
 
-During the guided installation (`bash install_pixvqa.sh`), select **Install optional learned metrics** to create the Python environment and local configuration. This step is independent of CPU/CUDA build selection and is skipped by default. Python 3.12 with `venv` support is required; model checkpoints are not downloaded. Set `PIXVQA_ENABLE_LEARNED=1` (or `0`) for noninteractive installation. Existing environments and local configuration are preserved.
+The guided installer does **not** currently install Python-backed metrics. Set up their environments separately; checkpoints and calibration files are provided by the user.
 
 To set up learned metrics separately, run:
 
@@ -55,4 +55,4 @@ CVVDP uses the installed `cvvdp` executable, and needs `ffmpeg` and `ffprobe` on
 
 `cvvdp` requires `-r` and `-t`. `cvqa-hdr-nr` requires only `-t`; an NR-only `-r` is ignored. `--frames` limits CVVDP and native metrics, but is ignored with a warning by `cvqa-hdr-nr`, which evaluates the whole clip. CVVDP raw YUV requires declared geometry/format and frame rate when both inputs are raw.
 
-Use `--device auto|cpu|gpu` (default `auto`) to select an execution device. For all other options, run `./bin/pixvqa --help-advanced` or `./bin/pixvqa --help-hdr`.
+Use `--device auto|cpu|gpu` (default `auto`) to select CPU or supported CUDA backends. The Python backends use CUDA when available under `auto`, otherwise CPU. For all other options, run `./bin/pixvqa --help-advanced` or `./bin/pixvqa --help-hdr`.

@@ -2,7 +2,7 @@
 
 This guide builds PixVQA **manually**, using the same pinned dependencies as the guided `install_pixvqa.sh` installer. It targets Linux x86-64 (Ubuntu 22.04/24.04, including WSL2). Native Windows and Git Bash are not supported. The GPU option requires an existing NVIDIA driver and CUDA **12.8** toolkit; this guide does not install either.
 
-The guided installer also offers optional Python-based learned-metrics setup (`PIXVQA_ENABLE_LEARNED=1` to enable noninteractively); it requires Python 3.12 and does not download learned-model assets. See [Learned Metrics](LEARNED_METRICS.md).
+Optional Python-backed metrics require separate setup; the guided installer does not install them in the verified source revision. See [Optional Metrics](LEARNED_METRICS.md).
 
 The guided installer asks about dav1d and NVIDIA on a terminal. Set `PIXVQA_ENABLE_DAV1D` and `PIXVQA_ENABLE_NVIDIA` to `1` or `0` to answer without a terminal. When either variable is unset, that question is still asked.
 
@@ -217,7 +217,7 @@ zimg is tag `release-3.0.6`, commit `f819b14e8f39d1282400b0d9543e8ef73c1b2bbd`, 
 )
 ```
 
-The eight SDR model files and the eight HDR v1.1.8 model files in [model/](../model/README.md) are what `--model` loads. Without the 74f930d prefix the PixVQA binary still builds, and selecting `vmaf` is an error.
+The eight SDR model files and eight HDR v1.1.8 model files in [model/](../model/README.md) are used by automatic model selection or explicit `--model` paths. Without the 74f930d prefix the PixVQA binary still builds, and selecting `vmaf` is an error.
 
 ## 5. Build CPU and software-decoding PixVQA
 
@@ -352,7 +352,7 @@ This matches the guided installer. The program is `$PIXVQA_SRC/bin/pixvqa`. With
 )
 ```
 
-`scripts/install.sh` copies that one executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. Pass one file to `--model`. Run Section 8 before removing `build/`.
+`scripts/install.sh` copies that one executable, the model JSON files, the README, the third-party notices, and the PU21 notice. It does not copy FFmpeg, libdav1d, or CUDA. SDR models are in `$PREFIX/share/pixvqa/model`. HDR v1.1.8 models are in `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8` and `$PREFIX/share/pixvqa/model/hdr_vmaf_v1.1.8_hfr`. PixVQA normally selects a bundled VMAF model automatically; `--model` overrides this. Run Section 8 before removing `build/`.
 
 ## 8. Quality assurance
 
@@ -407,4 +407,4 @@ python3 scripts/run_qa.py --profile full
 - **Reopened terminal:** Repeat Section 0; each subsequent build block rediscovers its dependencies. Do not set `PIXVQA_SRC` from the FFmpeg directory.
 - **Existing incomplete dependency source directory:** Inspect it rather than deleting or silently replacing it. This manual test is deliberately non-destructive.
 
-Consult [`README.md`](../README.md) for usage, [`INSTALL_VALIDATION.md`](INSTALL_VALIDATION.md) for test criteria, and [third-party notices](../THIRD_PARTY_NOTICES.md) for licensing.
+Consult [README](../README.md) for usage and [third-party notices](../THIRD_PARTY_NOTICES.md) for licensing.

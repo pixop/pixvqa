@@ -1,4 +1,0 @@
-wall_sec=39.08
-cpu_user_sec=83.23
-cpu_sys_sec=5.02
-peak_host_rss_kb=2855980

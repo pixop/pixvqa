@@ -1,300 +1,129 @@
-# Command-line Usage
+# CLI Usage
 
-PixVQA supports raw YUV and compressed video. For compressed inputs, resolution and pixel format are detected automatically; raw YUV requires `-s` (resolution) and `-f` (pixel format). Reference and distorted inputs must have matching properties.
-
-XPSNR requires `--fps` unless a reliable constant frame rate can be determined from the compressed inputs. GPU acceleration requires an NVIDIA-enabled build.
-
-The examples use `pixvqa` to refer to `./bin/pixvqa` or an executable on `PATH`. The `samples/` directory contains short Big Buck Bunny excerpts.
+Use `./bin/pixvqa` (shown below as `pixvqa`). PixVQA supports raw YUV and, in an FFmpeg-enabled build, compressed video. Compressed-input metadata normally supplies size, format and frame rate; raw YUV requires `-s` and `-f`.
 
 ## Examples
 
-### Compressed Reference and Distorted Video
+### Compressed video
 
 ```bash
 pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r samples/ref_hevc.mp4 \
-  -t samples/dist_hevc.mp4
+  -r samples/ref_hevc.mp4 -t samples/dist_hevc.mp4
 ```
+
+### Raw YUV
 
 ```bash
-pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r samples/ref_av1.mp4 \
-  -t samples/dist_av1.mp4
+pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 60 \
+  -r reference.yuv -t distorted.yuv -s 1920x1080 -f 420p:10
 ```
+
+`--fps` is required for XPSNR when a reliable constant rate is unavailable (always for two raw inputs). Raw inputs must match the declared geometry and format.
+
+### VMAF model selection
+
+**PixVQA selects a bundled VMAF model automatically by default** (`--model auto`). Although libvmaf needs a model, PixVQA resolves its path from:
+
+- **Transfer:** SDR or PQ, supplied by `--hdr-transfer`, the `sdr`/`pq` metric group, or reliable compressed-stream metadata. Untagged raw input needs an explicit transfer declaration; bit depth alone does not imply HDR.
+- **Resolution:** exactly 1920×1080 (3H) or 3840×2160 (1.5H).
+- **Frame rate:** known constant rate; selects the HFR variant above 30 fps. For raw YUV, specify `--fps`.
+
+Automatic selection is unavailable for HLG, unsupported resolutions, missing/ambiguous transfer or unknown frame rate. **Pass `--model PATH`** to select a specific model or override automatic selection. `--vmaf-model` is a deprecated alias; if both are supplied they must agree. Explicit selection bypasses the automatic model-choice restrictions, **not** the model's format/transfer compatibility checks. Bundled HDR VMAF models require limited-range YUV420p10 PQ, BT.2020 primaries and BT.2020 non-constant-luminance matrix; PixVQA does not convert mismatched samples.
 
 ```bash
-pixvqa --metrics psnr,xpsnr,ssim,msssim \
-  -r samples/ref_vvc.mp4 \
-  -t samples/dist_vvc.mp4
+pixvqa --metrics vmaf --hdr-transfer sdr --fps 60 \
+  -r reference.yuv -t distorted.yuv -s 1920x1080 -f 420p:10
+
+# Explicit model, for example to override auto-selection:
+pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json \
+  -r reference.yuv -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
-### Uncompressed Reference and Compressed Distorted Video
+### Optional Python-backed metrics
+
+[Setup and model assets](LEARNED_METRICS.md) must be configured separately.
 
 ```bash
-pixvqa --metrics psnr,ssim \
-  -r reference.yuv --input raw -s 1920x1080 -f 420p:8 \
-  -t distorted.mp4
+# Full-reference ColorVideoVDP: use explicit transfer/display when metadata is missing.
+pixvqa --metrics cvvdp -r reference.mp4 -t distorted.mp4 \
+  --cvvdp-interpretation pq --cvvdp-display standard_hdr_pq
+
+# No-reference CompressedVQA-HDR NR: compressed test input only.
+pixvqa --metrics cvqa-hdr-nr -t distorted.mp4
+
+# Mix native and Python-backed metrics.
+pixvqa --metrics psnr,vmaf,cvvdp,cvqa-hdr-nr --hdr-transfer pq \
+  -r reference.mp4 -t distorted.mp4
 ```
 
-### Uncompressed Reference and Distorted Video
+ColorVideoVDP supports compressed input and raw YUV420p10le PQ/HLG (declare size/format and `--fps` for raw/raw pairs). SDR use requires a suitable `--cvvdp-display`. CompressedVQA-HDR NR supports compressed SDR or HDR10, not raw YUV or HLG; it ignores `--frames` with a warning and evaluates the full video. NR defaults to one sample per second and eight-second inference chunks.
 
-XPSNR requires `--fps` because raw YUV does not contain frame-rate metadata.
+### PQ / HLG PU21
 
 ```bash
-pixvqa --metrics psnr,xpsnr,ssim,msssim --fps 24 --threads 1 \
-  -r reference.yuv -s 1920x1080 -f 420p:8 \
-  -t distorted.yuv -s 1920x1080 -f 420p:8
-```
-
-### VMAF
-
-VMAF requires an explicit model selection using `--model`. Bundled VMAF models are available in the `model/` directory.
-
-```bash
-pixvqa --metrics vmaf --model model/vmaf_v1.0.16_3d0h.json --threads 1 \
-  -r reference.yuv -s 1920x1080 -f 420p:8 \
-  -t distorted.yuv -s 1920x1080 -f 420p:8
-```
-
-The bundled HDR VMAF v1.1.8 models assume limited-range 10-bit 4:2:0 PQ with
-BT.2020 primaries and the BT.2020 non-constant-luminance matrix. PixVQA applies
-that model configuration automatically; ensure both inputs really have those
-characteristics. Contradictory metadata or HDR CLI options produce a warning and
-do not convert the samples.
-
-```bash
-pixvqa --metrics vmaf \
-  --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json \
-  -r reference10.yuv -s 1920x1080 -f 420p:10 \
-  -t distorted10.yuv -s 1920x1080 -f 420p:10
-```
-
-### ColorVideoVDP (optional external backend)
-
-CVVDP is installed separately from PixVQA. It runs as `cvvdp` in `--metrics`,
-alone or [mixed with other metrics](#mixed-native-and-learned-metrics).
-PixVQA resolves CVVDP interpretation from explicit options, metric groups,
-or reliable compressed-stream transfer metadata. The display model follows
-the selected PQ/HLG interpretation; SDR requires an explicit display.
-Compressed inputs must have valid per-side color metadata. Raw CVVDP inputs
-are limited to YUV420p10le PQ or HLG and require `-s`, `-f 420p:10`, and
-`--fps` when both sides are raw. See [Learned metrics](LEARNED_METRICS.md)
-for the metadata and mixed-input contracts.
-
-```bash
-pixvqa --metrics cvvdp \
-  -r reference.mkv \
-  -t distorted.mkv \
-  --cvvdp-interpretation pq \
-  --cvvdp-display standard_hdr_pq \
-  --cvvdp-output-json result.cvvdp.json
-```
-
-```bash
-pixvqa --metrics cvvdp \
-  -r reference.yuv \
-  -t reconstructed.yuv \
-  -s 1920x1080 -f 420p:10 --fps 60 \
-  --cvvdp-interpretation pq \
-  --cvvdp-display standard_hdr_pq
-```
-
-See [Learned metrics](LEARNED_METRICS.md) for setup and examples.
-
-### CompressedVQA-HDR NR (optional external backend)
-
-CompressedVQA-HDR NR is installed separately from PixVQA. It runs as
-`cvqa-hdr-nr` in `--metrics`, alone or mixed with other metrics. It is
-no-reference, so it requires only `-t`, and it accepts compressed video only.
-The adapter validates the requested sample interval and chunk duration before
-inference; defaults are one second and eight seconds, respectively. Raw YUV is rejected. `--frames` is ignored with a warning; NR processes the full clip. When it is the only metric, a
-supplied `-r` is ignored with an informational message and is never opened.
-
-```bash
-pixvqa --metrics cvqa-hdr-nr \
-  -t distorted.mp4 \
-  --cvqahdr-python /home/me/venvs/cvqahdr/bin/python \
-  --cvqahdr-repo /home/me/src/CompressedVQA-HDR \
-  --cvqahdr-checkpoint /home/me/models/NR_HDR_VQA.pth \
-  --cvqahdr-profile /home/me/models/NR_HDR_VQA.npy \
-  --cvqa-nr-sample-interval-sec 1 \
-  --cvqa-nr-chunk-size-sec 8 \
-  --cvqahdr-output-json result.cvqahdr.json
-```
-
-See [Learned metrics](LEARNED_METRICS.md) for setup and examples.
-
-### Mixed native and learned metrics
-
-Native metrics, `cvvdp`, and `cvqa-hdr-nr` can be selected together, in one
-`--metrics` list or across repeated `--metrics` options:
-
-```bash
-pixvqa --metrics psnr,vmaf,cvvdp,cvqa-hdr-nr \
-  --model model/hdr_vmaf_v1.1.8/hdr_vmaf_v1.1.8_3d0h.json \
-  -r reference.mp4 -t distorted.mp4 \
-  --cvvdp-interpretation pq --cvvdp-display standard_hdr_pq \
-  --cvqahdr-repo /home/me/src/CompressedVQA-HDR \
-  --cvqahdr-checkpoint /home/me/models/NR_HDR_VQA.pth \
-  --cvqahdr-profile /home/me/models/NR_HDR_VQA.npy
-```
-
-The `--cvqahdr-*` and interpreter options can be omitted when
-`config/learned_metrics.local.toml` provides them; see
-[Learned metrics](LEARNED_METRICS.md).
-
-**Reference rules.** `-t` is always required. `-r` is required when any
-full-reference metric is selected: every native metric and `cvvdp`. If
-`cvqa-hdr-nr` is the only metric, a supplied `-r` is ignored with a
-`pixvqa: info:` message on stderr and is never opened.
-
-**Compatible inputs.** Each selected metric must accept the inputs. Every
-check finishes before any metric runs.
-
-| Metric | Raw YUV | Compressed video | `--frames` |
-|---|---|---|---|
-| Native | Yes | `make swdec` or `make full` only | Yes |
-| `cvvdp` | YUV420p10le PQ/HLG; `-s`, `-f 420p:10`, and `--fps` when both inputs are raw | Yes, including mixed raw/compressed pairs (Python decoding) | Yes |
-| `cvqa-hdr-nr` | No | Yes; decoded by OpenCV | Ignored with warning (full clip) |
-
-`cvvdp` accepts raw/compressed, compressed/raw, raw/raw, and compressed/compressed pairs when geometry and frame rate match. The `make cpu`
-and `make cuda` builds have no FFmpeg decoder. Native metrics on compressed
-input therefore need `make swdec` or `make full`. The learned backends decode
-in their own Python environments, so any build can run `cvvdp` and
-`cvqa-hdr-nr` on compressed video when no native metric is selected.
-Some native-only options are rejected for CVVDP-only runs. For NR-only runs,
-the current CLI accepts raw-video options (`-s`, `-f`, `--fps`) but ignores
-them; HDR options may be accepted for compatibility, but they do not alter
-CompressedVQA-HDR-NR's upstream OpenCV color processing. Shared
-`--hdr-transfer` is accepted for CVVDP-only runs.
-
-**Execution.** PixVQA validates every option and format, then runs each
-learned backend's `--check` preflight: interpreter, imports, model assets,
-video metadata, and NR sampling constraints. Only then does any metric run.
-Native metrics run first and keep their per-frame output. CVVDP runs next,
-then NR. One summary follows:
-
-```text
-Summary:
-
-[ PSNR  y:... ]
-[ CVVDP jod:7.415657997131348 frames:120 display:standard_hdr_pq interpretation:pq ]
-[ CVQA-HDR-NR quality_score:4.444974268667124 raw_model_score:-1.1983554363250732 samples:2 frames:120 density:0.999/s ]
-[ PSNR-QCS value:... range:[30,50] ]
-[ CVVDP-QCS value:74.247569 range:[0,10] frames:120 basis:per-frame-jod-equivalent ]
-[ CVQA-HDR-NR-QCS value:... range:[0,10] samples:2 basis:sampled-frames ]
-
-Total frames:120  fps:...
-```
-
-Learned scores are printed with full precision, as the shortest decimal text
-that round-trips to the same double. CVVDP coverage `frames:N` reflects the
-evaluated source length; for mixed raw/compressed input, the adapter rejects
-unequal known lengths unless a positive `--frames` cap fits both sides.
-NR coverage gives the sample count, the OpenCV frame count, and the
-sampling density. Provenance, such as runtime versions,
-hashes, commands, and sample timestamps, stays in each backend's JSON record.
-Records are temporary unless `--cvvdp-output-json` or `--cvqahdr-output-json`
-is given. A metric that fails prints `status:failed`, for example
-`[ CVVDP status:failed ]`. If a native metric fails during the frame loop, its
-per-frame lines stay, the learned metrics still run, and the summary starts
-with `[ NATIVE status:failed ]`.
-
-**Output streams.** Reports go to stdout. Backend warnings, progress, and
-diagnostics go to stderr; PixVQA forwards them as they arrive and drains both
-pipes concurrently. A single learned metric without `--qcs` keeps its
-standalone compact JSON line on stdout. Every other combination prints the
-text report.
-
-**Exit status.**
-
-- 0: every selected metric completed.
-- 2: invalid configuration, incompatible inputs, or failed preflight. No metric
-  ran.
-- 1: a runtime failure. Completed results are still printed.
-
-### PU21 Metrics for HDR Video (PQ and HLG)
-
-PU21 metrics account for HDR transfer functions, unlike conventional metrics that operate on encoded sample values. For PQ and HLG, PixVQA defaults to BT.2020 primaries, BT.2020nc matrix, and limited range when these are unspecified. HLG defaults to a 1000 cd/m² display peak; PQ requires no display peak. See the [PU21 guide](PU21.md) for details.
-
-```bash
-pixvqa --metrics pu21-psnr,pu21-ssim --hdr-transfer pq \
-  -r reference10.yuv -s 1920x1080 -f 420p:10 \
-  -t distorted10.yuv -s 1920x1080 -f 420p:10
-```
-
-```bash
+pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer pq \
+  -r ref10.yuv -t dist10.yuv -s 1920x1080 -f 420p:10
 pixvqa --metrics pu21-psnr,pu21-msssim --hdr-transfer hlg \
-  -r reference10.yuv -s 1920x1080 -f 420p:10 \
-  -t distorted10.yuv -s 1920x1080 -f 420p:10
+  -r ref10.yuv -t dist10.yuv -s 1920x1080 -f 420p:10
 ```
 
-### GPU Decoding (NVDEC)
+See [PU21](PU21.md) for HDR interpretation and display defaults.
 
-Decode the compressed HEVC 10-bit 4:2:0 video using NVIDIA NVDEC while reading the reference as raw YUV.
+## Metric groups
 
-```bash
-pixvqa --metrics psnr --decode gpu \
-  -r reference10.yuv --input raw -s 1920x1080 -f 420p:10 \
-  -t reference10.hevc.mp4
-```
+A group selects metric names and transfer-related defaults. A group can be combined with individual metrics, but not a different group. Conventional PSNR/SSIM/MS-SSIM/XPSNR measure encoded sample differences; HDR light-domain evaluation is provided by PU21.
 
-### Metric groups
+| Group | Included metrics | Default interpretation and restrictions |
+|---|---|---|
+| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVVDP, CVQA-HDR NR | SDR VMAF model auto-selected; specify an SDR `--cvvdp-display` (such as `standard_fhd`) |
+| `pq` | Same as `sdr` plus PU21-PSNR/SSIM/MS-SSIM | PQ, BT.2020, BT.2020nc, limited range; HDR VMAF; CVVDP `standard_hdr_pq` |
+| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, CVVDP | HLG, BT.2020, BT.2020nc, limited range; CVVDP `standard_hdr_hlg`; no VMAF/NR |
 
-A group name in `--metrics` selects one transfer's metric set and fills that
-transfer's colorimetry and display. A comma-separated list of metric names
-still selects only those metrics. A group can be combined with extra metric
-names, but not with another group. PSNR, XPSNR, SSIM, and MS-SSIM still score
-stored sample codes; the transfer applies to PU21, VMAF, and CVVDP.
+All group metrics must be installed and compatible. For mixed inputs with missing metadata, supply the appropriate HDR/color options; metric groups do not convert pixels.
 
-| Group | Metrics | What it fills | What it refuses |
+## Compatible inputs
+
+| Metric | Raw YUV | Compressed video | Frame cap (`-n` / `--frames`) |
 |---|---|---|---|
-| `sdr` | `psnr`, `xpsnr`, `ssim`, `msssim`, `vmaf`, `cvvdp`, `cvqa-hdr-nr` | SDR VMAF model `model/vmaf_v1.0.16_3d0h.json`; `--cvvdp-interpretation sdr`. `--cvvdp-display` (`standard_fhd` or `standard_4k`) is required | Every PU21 metric. It does not set `--hdr-transfer sdr`, so a PQ or HLG stream is not rescored as SDR |
-| `pq` | `psnr`, `xpsnr`, `ssim`, `msssim`, `vmaf`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp`, `cvqa-hdr-nr` | Transfer `pq`, BT.2020 primaries, `bt2020nc`, limited range; HDR VMAF model; `--cvvdp-interpretation pq`, `--cvvdp-display standard_hdr_pq` | A transfer, primaries, matrix, range, CVVDP interpretation, or CVVDP display from another family |
-| `hlg` | `psnr`, `xpsnr`, `ssim`, `msssim`, `pu21-psnr`, `pu21-ssim`, `pu21-msssim`, `cvvdp` | Transfer `hlg`, BT.2020 primaries, `bt2020nc`, limited range. PU21 keeps its 1000 cd/m² HLG peak. `--cvvdp-interpretation hlg`, `--cvvdp-display standard_hdr_hlg` (upstream model: 1500 cd/m², BT.2020-HLG) | `vmaf` (the installed HDR VMAF model is PQ-only) and `cvqa-hdr-nr` (HDR10 and SDR only) |
+| Native metrics | Yes | FFmpeg-enabled build (`swdec` / `full`) | Supported |
+| `cvvdp` | 10-bit 4:2:0 PQ/HLG, with geometry and rate | Yes (also mixed raw/compressed) | Supported |
+| `cvqa-hdr-nr` | No | SDR or HDR10 | Ignored (full clip) |
 
-HLG is never run through the PQ or SDR display. The VMAF model is looked up
-in the working directory and then in the checkout that holds the executable.
-`--model` overrides it.
+`-t` is always required; add `-r` for any full-reference metric. When only NR is selected, `-r` is ignored. Native metrics need FFmpeg support for compressed inputs; Python-backed metrics decode using their own dependencies.
 
-```bash
-./bin/pixvqa --metrics sdr --cvvdp-display standard_fhd --qcs \
-  -r reference_sdr.mp4 -t distorted_sdr.mp4
-./bin/pixvqa --metrics hlg -r reference_hlg.mp4 -t distorted_hlg.mp4
-```
+## Command-line options
 
-## Command-line Options
+Options below were checked against `src/main.cpp` (`--help`, `--help-advanced`, `--help-hdr` and argument handling). Defaults refer to the current source, not libvmaf's standalone CLI.
 
-`pixvqa --help` lists everyday options. `pixvqa --help-advanced` lists backend overrides, QCS ranges, deprecated compatibility spellings, and persistent output controls. `pixvqa --help-hdr` lists the HDR options, group defaults, and color interpretation. QCS is documented in [QCS.md](QCS.md). PQ and HLG setup is documented in [PU21.md](PU21.md).
-
-| Option | Purpose |
+| Option | Description / default |
 |---|---|
-| `-r`, `-t` | Reference path and distorted path. `-t` is always required. `-r` is required by full-reference metrics and ignored when only `cvqa-hdr-nr` is selected |
-| `--metrics` | Comma-separated metric names. Native, `cvvdp`, and `cvqa-hdr-nr` can be mixed; repeated options accumulate. `all` selects every metric. `sdr`, `pq`, and `hlg` are [metric groups](#metric-groups) |
-| `--decode` | `auto`, `cpu`, or `gpu`. Default `auto` |
-| `--device` | `auto`, `cpu`, or `gpu`. Default `auto`. `auto` runs each native metric on CUDA when the build, a visible device, and the input allow it, else on the CPU; the execution summary shows the device and any fallback reason. `gpu` never falls back to the CPU, except VMAF, which has no GPU path. VMAF always uses CPU libvmaf. Learned metrics resolve `auto` to CUDA when PyTorch sees a device, else CPU; see [LEARNED_DEVICES.md](LEARNED_DEVICES.md) |
-| `--threads` | `auto` or a positive integer. Default `auto` |
-| `-s WxH` | Luma size. Required for raw YUV. Checked when set on compressed video |
-| `-f` | `420p`, `422p`, or `444p`, with `:8` or `:10`. Required for raw YUV |
-| `--input` | `auto`, `raw`, or `compressed`. Default `auto`. `raw` does not probe |
-| `--fps` | `N` or `N/D`. Required for `xpsnr` when no constant compressed rate is available. Decimals truncate toward zero |
-| `--model` | VMAF model JSON. No default |
-| `--cvvdp-interpretation` | Optional override for CVVDP: `sdr`, `pq`, or `hlg`. When omitted, PixVQA resolves transfer from `--hdr-transfer`, a metric group (`pq`/`hlg`/`sdr`), or reliable compressed-input metadata, then maps to the default display model |
-| `--cvvdp-display` | Required official CVVDP display model. `pq` fills `standard_hdr_pq`; `hlg` fills `standard_hdr_hlg` |
-| `--cvvdp-python` | Interpreter for the adapter. Overrides `PIXVQA_CVVDP_PYTHON` and the config |
-| `--cvvdp-bin` | Official CVVDP executable. Overrides `[cvvdp] executable` |
-| `--cvvdp-gpu-mem GB` | Optional CVVDP CUDA-memory cap in decimal GB. It is passed as upstream `--gpu-mem`, which limits its frame-block budget to `min(cap, free memory minus its safety reserve)`. Omit it to preserve upstream's free-memory heuristic |
-| `--cvvdp-output-json` | Persistent CVVDP machine-readable run record |
-| `--cvqahdr-python` | Interpreter for CompressedVQA-HDR NR. Overrides `PIXVQA_CVQAHDR_PYTHON` and the config |
-| `--cvqahdr-repo` | Upstream CompressedVQA-HDR checkout. Required unless set in the config |
-| `--cvqahdr-checkpoint` | NR checkpoint. Required unless set in the config |
-| `--cvqahdr-profile` | NR calibration profile. Required unless set in the config |
-| `--cvqahdr-output-json` | Persistent CompressedVQA-HDR NR run record, including stage timings and sampling/chunk settings |
-| `--cvqa-nr-sample-interval-sec` | Seconds between NR samples (default `1`); effective cadence is rounded to whole source frames |
-| `--cvqa-nr-chunk-size-sec` | Nominal seconds of video represented by each NR GPU inference batch (default `8`) |
-| `--learned-config` | Learned-metric TOML config. Default `config/learned_metrics.local.toml` in the executable's checkout. See [Learned metrics](LEARNED_METRICS.md) |
-| `--hdr-transfer` | `pq`, `hlg`, `sdr`, `linear`, or `auto`. Shared HDR transfer for native metrics, learned CVVDP resolution, and metric groups |
-| `--tf`, `--ref-tf`, `--dist-tf` | Legacy native transfer tokens: `sdr`, `linear`, `st2084` (PQ), `stdb67` (HLG). The unified CVVDP resolver maps these to the same families as `--hdr-transfer pq` / `hlg`. Use `--hdr-transfer pq|hlg` when you want the modern spelling |
-| `-v` | `1` prints each frame and the summary. `0` prints the summary. Default `1` |
-| `--qcs` | Enable QCS for every selected metric. `cvvdp` uses per-frame JOD-equivalents and `cvqa-hdr-nr` uses sampled frames |
-| `--qcs-range` | `metric=lower:upper`, comma-separated and repeatable, with lower < upper. `cvvdp` and `cvqa-hdr-nr` default to [0, 10]; the interval never clamps reported scores |
+| `--metrics LIST` | Required. Comma-separated names: `psnr,xpsnr,ssim,msssim,vmaf,pu21-psnr,pu21-ssim,pu21-msssim,cvvdp,cvqa-hdr-nr`; or `all,sdr,pq,hlg`. May be repeated. |
+| `-r PATH`, `-t PATH` | Reference and distorted video. `-t` required; `-r` for full-reference metrics. |
+| `--input auto|raw|compressed` | Input detection; default `auto`. Applies to following `-r`/`-t` side when placed after it. |
+| `-s WxH`, `-f 420p|422p|444p[:8|:10]` | Raw-video geometry/format; format without depth defaults to 10-bit. Specify before both paths to apply to both sides. |
+| `--fps N|N/D` | Frame rate for raw VMAF auto-selection and XPSNR when no reliable rate is available. |
+| `-n N`, `--frames N` | Maximum frames for native/CVVDP; NR ignores with warning. |
+| `-v 0|1` | Summary only / per-frame plus summary; default `1` (higher verbosity values are accepted). |
+| `--threads auto|N` | Native metric threads; default `auto`. |
+| `--decode auto|cpu|gpu` | Native decoding device; default `auto`; GPU needs NVDEC. |
+| `--device auto|cpu|gpu` | Metric device preference; default `auto`. VMAF always runs on CPU. |
+| `--model PATH|auto` | VMAF model; default `auto`. Explicit path overrides automatic selection. |
+| `--hdr-transfer auto|pq|hlg|sdr|linear` | Transfer interpretation; default `auto`. |
+| `--hdr-primaries`, `--hdr-matrix`, `--hdr-range` | Color overrides; use `--help-hdr` for accepted values and per-input forms. |
+| `--hdr-chroma-loc`, `--hdr-chroma-up`, `--hdr-peak-nits`, `--hdr-black-nits`, `--hdr-hlg-gamma` | Additional HDR options; use `--help-hdr`. |
+| `--cvvdp-interpretation sdr|pq|hlg` | Optional explicit CVVDP transfer; otherwise resolve from group/HDR options/metadata. |
+| `--cvvdp-display NAME` | CVVDP display; auto default for PQ/HLG; specify for SDR when not otherwise resolved. |
+| `--cvvdp-gpu-mem GB` | Optional positive decimal-GB CUDA budget. |
+| `--cvvdp-python`, `--cvvdp-bin` | Override CVVDP Python or executable path. |
+| `--cvvdp-output-json PATH` | Persist CVVDP result record. |
+| `--cvqahdr-python`, `--cvqahdr-repo`, `--cvqahdr-checkpoint`, `--cvqahdr-profile` | NR interpreter, checkout, checkpoint and calibration; use configured defaults or provide paths. |
+| `--cvqahdr-output-json PATH` | Persist NR result record. |
+| `--cvqa-nr-sample-interval-sec N` | NR temporal interval in seconds; default `1`. |
+| `--cvqa-nr-chunk-size-sec N` | NR chunk duration in seconds; default `8`. |
+| `--learned-config PATH` | Optional TOML settings for Python-backed metrics; default `config/learned_metrics.local.toml` in checkout when present. |
+| `--qcs` | Enable supported temporal Quality Consistency Scores. |
+| `--qcs-range metric=lower:upper` | Configurable QCS range; comma-separated or repeated; requires `--qcs`. Defaults and semantics: [QCS](QCS.md). |
+| `--tf`, `--cs`, `--ref-tf`, `--dist-tf`, `--ref-cs`, `--dist-cs`, `--hlg-peak`, `--vmaf-model` | Deprecated compatibility options; see `--help-advanced` and `--help-hdr`. Do not mix conflicting old/new options. |
+| `-h`, `--help`, `--help-advanced`, `--help-hdr`, `--version` | Help and version. |
+
+Exit codes: `0` success, `2` invalid setup/preflight, `1` runtime error. All selected metrics must complete for success.

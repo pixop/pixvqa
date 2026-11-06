@@ -1,103 +1,57 @@
-# Installation and Building
+# Installation & Builds
 
-PixVQA supports **Linux x86-64**, including Ubuntu 22.04 and 24.04 (native Linux and WSL2). Native Windows builds have not been validated.
+PixVQA supports Linux x86-64 (Ubuntu 22.04/24.04, including WSL2). Native Windows builds are not validated.
 
-There are **two ways to build PixVQA**, both available to all users:
-
-- **Guided installation (recommended for first-time users):** `install_pixvqa.sh` sets up the required dependencies, compiles PixVQA, and installs the executable as `bin/pixvqa`.
-- **Incremental builds (for anyone with dependencies already installed):** GNU Make compiles a selected variant without reinstalling dependencies. This is useful after updating the source code or when choosing CPU-only, software-decoding, or CUDA/NVDEC support. You do **not** need to be a developer to use it.
-
-### Option 1: Guided Installation (Recommended for First-Time Users)
-
-Clone the repository and run the interactive installer:
+## Guided installation (recommended)
 
 ```bash
 git clone https://github.com/pixop/pixvqa.git
 cd pixvqa
 bash install_pixvqa.sh
+./bin/pixvqa --version
 ```
 
-The installer downloads and builds the required dependencies and asks which capabilities to enable. **FFmpeg software decoding** supports compressed video; **NVIDIA CUDA/NVDEC** acceleration is optional and requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed. The installer also offers an independent, optional learned-metrics Python setup (Python 3.12 required); model assets must be provided separately.
-
-By default, the installer installs the chosen build into **`bin/pixvqa`** inside the checkout.
-
-**To keep PixVQA-managed dependencies inside this repository** rather than in shared directories under `$HOME`, use the following command *instead* of the plain installer command above:
+The installer offers a dav1d/FFmpeg software-decoding build and optional CUDA/NVDEC support. The NVIDIA build requires a compatible driver and CUDA 12.8 installed beforehand. To isolate PixVQA-managed dependencies under this checkout, instead run:
 
 ```bash
 PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
 ```
 
-Check which capabilities were installed:
+For unattended installation, use `PIXVQA_ENABLE_DAV1D=0|1` and `PIXVQA_ENABLE_NVIDIA=0|1` to answer the corresponding prompts. **The installer does not install Python-backed metrics**; set them up separately in [Optional Metrics](LEARNED_METRICS.md).
+
+## Build with GNU Make
+
+With dependencies already installed, choose a target (Make does not download dependencies):
+
+| Command | Inputs / acceleration | Executable |
+|---|---|---|
+| `make cpu` | Raw YUV; CPU metrics | `build/cpu/pixvqa` |
+| `make swdec` | FFmpeg compressed decoding; CPU metrics | `build/swdec/pixvqa` |
+| `make full` | FFmpeg, CUDA metrics and NVDEC | `build/full/pixvqa` |
+| `make test-cpu` | CPU self-tests | `build/cpu/selftest` |
 
 ```bash
+make -j"$(nproc)" swdec
+./build/swdec/pixvqa --version
+make install VARIANT=swdec PREFIX="$PWD"
 ./bin/pixvqa --version
-python3 scripts/run_qa.py --profile smoke
 ```
 
-The version output reports the compiled build and available decoders (for example, `build: cuda` and `decode: software nvdec` for a full build).
+`make` does not replace `bin/pixvqa`; run `make install VARIANT=cpu|swdec|full PREFIX="$PWD"` after building the desired variant. If using checkout-local dependencies, export `PIXVQA_DEPS_ROOT="$PWD/deps"` before `make`.
 
-For a first quality comparison, use the bundled HEVC sample clips (requires FFmpeg software decoding or the full build):
+## Try it
+
+For FFmpeg-enabled builds:
 
 ```bash
 ./bin/pixvqa --metrics psnr,ssim,msssim \
-  -r samples/ref_hevc.mp4 \
-  -t samples/dist_hevc.mp4
+  -r samples/ref_hevc.mp4 -t samples/dist_hevc.mp4
 ```
 
-CPU-only builds accept raw YUV instead; see the [raw YUV example](CLI_USAGE.md#uncompressed-reference-and-distorted-video).
-
-### Option 2: Building from Source (Incremental Builds)
-
-**Anyone can use this workflow**, provided the required dependencies are already installed (for example, by running the guided installer once). The `make` commands do **not** download or install missing dependencies.
-
-Choose the build that matches your needs:
-
-| Command | Capabilities | Compiled executable |
-|---|---|---|
-| `make cpu` | CPU metrics, raw YUV inputs only | `build/cpu/pixvqa` |
-| `make swdec` | CPU metrics and FFmpeg software decoding | `build/swdec/pixvqa` |
-| `make full` | CUDA metrics, FFmpeg software decoding, and NVDEC | `build/full/pixvqa` |
-| `make test-cpu` | Build and run CPU self-tests | `build/cpu/selftest` |
-
-For example, if you previously installed dependencies into `./deps` and want the full CUDA/NVDEC build:
+For raw YUV (supported by CPU builds), see [CLI Usage](CLI_USAGE.md#raw-yuv). For a basic installation check:
 
 ```bash
-export PIXVQA_DEPS_ROOT="$PWD/deps"
-make -j"$(nproc)" full
-./build/full/pixvqa --version
+python3 scripts/run_qa.py --profile smoke
 ```
 
-Replace `full` with `swdec` or `cpu` to compile another variant. If your dependencies were installed elsewhere, use the appropriate dependency paths instead; see the [Make Build Guide](BUILD_MAKE.md).
-
-**Building is not the same as installing.** Each `make` target writes its own executable under `build/`. Running `make full`, for example, does **not** replace `bin/pixvqa`. The executable at **`bin/pixvqa` is whichever variant you last installed**, either through the guided installer or through `make install`.
-
-To install your chosen compiled variant into `bin/pixvqa`, run:
-
-```bash
-make install VARIANT=full PREFIX="$PWD"
-./bin/pixvqa --version
-```
-
-Use `VARIANT=cpu` or `VARIANT=swdec` if that is the variant you built. The `PREFIX="$PWD"` argument explicitly installs into the current checkout; without it, an existing `PREFIX` environment variable may redirect the installation. Installing a different variant **replaces** the previous `bin/pixvqa` executable.
-
-After changing or updating source files, run the same `make` target again. GNU Make recompiles only affected components; if you want to use the updated build via `./bin/pixvqa`, run the matching `make install` command again.
-
-For dependency configuration, compiler options, and troubleshooting, see the [Make Build Guide](BUILD_MAKE.md).
-
-### Troubleshooting and Manual Installation
-
-If the guided installer fails, consult the [Manual Installation Guide](INSTALL.md). Follow the numbered sections in order, verifying that each stage completes successfully before continuing.
-
-For clean-install testing, full release QA prerequisites, and known validation limitations, see [Installation Validation](INSTALL_VALIDATION.md). The `smoke` profile above is the recommended post-installation check.
-
-**Note:** VMAF always runs on CPU libvmaf. Other supported metrics can use CUDA when NVIDIA acceleration is enabled.
-
-### Full metric conformance (optional)
-
-The installation smoke test above is not the 42-case CLI conformance suite or
-the comprehensive numerical regression suite. To validate a development
-build, see the [Validation Guide](VALIDATION.md) and the
-[numerical conformance reference](../scripts/numerical_conformance/README.md).
-
-The current orchestrator runs the 42-case CLI matrix (Phase 1), separate
-parameter-resolution tests (Phase 1b), and numerical conformance (Phase 2).
+If automatic installation fails, see the detailed [Manual Installation](INSTALL.md). The smoke test is a user-facing check, not a numerical-conformance certification.

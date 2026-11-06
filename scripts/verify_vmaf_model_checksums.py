@@ -65,7 +65,8 @@ def main() -> int:
             rows.append((pin, local_name, local_sha, match))
             if not match:
                 ok = False
-    report = ROOT / "reports" / "VMAF_MODEL_CHECKSUMS.md"
+    report = ROOT / "internal" / "reports" / "VMAF_MODEL_CHECKSUMS.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# VMAF model SHA-256 (exact byte identity)",
         "",
