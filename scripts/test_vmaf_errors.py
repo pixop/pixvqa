@@ -59,7 +59,7 @@ def main() -> int:
             "64x64",
             "-f",
             "420p:10"]
-        expect_fail("missing-model", ["--metrics", "vmaf", *base], "--model")
+        expect_fail("missing-transfer-for-auto-model", ["--metrics", "vmaf", *base], "needs an explicit transfer")
         # 64x64 is below the feature extractor. The GPU request must warn and
         # select CPU libvmaf before that failure, rather than refusing the device.
         expect_fail(
@@ -81,15 +81,10 @@ def main() -> int:
             code=1,  # thrown during start() after banner
         )
         expect_fail(
-            "conflict-model-flags",
-            [
-                "--metrics", "vmaf",
-                "--model",
-                str(MODEL),
-                "--vmaf-model",
-                str(td_path / "other.json"),
-                *base],
-            "disagree",
+            "legacy-model-option-rejected",
+            ["--metrics", "vmaf", "--vmaf-model", str(MODEL), *base],
+            "Couldn't find match for argument",
+            code=1,
         )
         expect_fail(
             "hdr-pq",
@@ -133,23 +128,6 @@ def main() -> int:
             "needs at least",
             cwd=ROOT,
         )
-        # Alias agreement
-        p = run(
-            [
-                "--metrics", "vmaf",
-                "--model",
-                str(MODEL),
-                "--vmaf-model",
-                str(MODEL),
-                
-                *base]
-        )
-        # Still fails on size, but must not be a disagree error.
-        if "disagree" in (p.stderr + p.stdout):
-            raise SystemExit("alias agreement unexpectedly rejected")
-        if "needs at least" not in (p.stderr + p.stdout):
-            raise SystemExit(f"alias agreement: unexpected output\n{p.stderr}{p.stdout}")
-        print("OK   alias-agree")
     print("All VMAF error checks passed")
     return 0
 

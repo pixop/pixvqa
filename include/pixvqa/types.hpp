@@ -165,10 +165,8 @@ struct Options {
   bool enable_pu21_msssim = false;
   bool pu21_gpu = false;
   // Required when enable_vmaf. Filesystem path to a VMAF model JSON.
-  // Set by --model or the backward-compatible alias --vmaf-model.
+  // Set by --model.
   std::string vmaf_model_path;
-  bool vmaf_model_from_model = false;       // --model was used
-  bool vmaf_model_from_vmaf_model = false;  // --vmaf-model was used
   VmafBackend vmaf_backend = VmafBackend::Cpu;
   bool enable_qcs = false;
   bool qcs_range_set = false;

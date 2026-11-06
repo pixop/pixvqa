@@ -76,8 +76,7 @@ def check_help(bin_path: Path, kind: str) -> None:
         if needle not in text and needle not in flat:
             fail(f"{kind} help missing {needle}")
             return
-    for hidden in ("--vmaf-model",
-                   "--cvvdp-python", "--cvqahdr-checkpoint", "--qcs-range"):
+    for hidden in ("--cvvdp-python", "--cvqahdr-checkpoint", "--qcs-range"):
         if hidden in text:
             fail(f"{kind} basic help exposes advanced option {hidden}")
             return
@@ -89,7 +88,7 @@ def check_help(bin_path: Path, kind: str) -> None:
                    "--cvvdp-output-json", "--cvqahdr-output-json",
                    "--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile",
                    "--learned-config", "--qcs-range", "--threads",
-                   "--vmaf-model", "--seek 0"):
+                   "--seek 0"):
         if needle not in adv.stdout:
             fail(f"{kind} advanced help missing {needle}")
             return

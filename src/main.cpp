@@ -308,7 +308,6 @@ void print_help_advanced() {
       "  Per-input forms: --ref-hdr-* and --dist-hdr-*. Full details: --help-hdr.\n"
       "\n"
       "Deprecated compatibility spellings (still functional)\n"
-      "  --vmaf-model         Alias for --model; both must agree if given.\n"
       "  --cs, --tf, --ref-cs, --dist-cs, --ref-tf, --dist-tf\n"
       "                       Legacy color/transfer overrides (see --help-hdr).\n"
       "  --hlg-peak           Legacy HLG peak override (see --help-hdr).\n"
@@ -2801,7 +2800,7 @@ bool metric_transfer_cli_flag(const std::string& flag) {
 bool classifies_as_native_only_cli_flag(const std::string& a) {
   if (metric_transfer_cli_flag(a)) return false;
   if (a == "--input" || a == "--decode" || a == "--threads" || a == "--model" ||
-      a == "--vmaf-model" || a == "--cs" || a == "--ref-cs" || a == "--dist-cs" ||
+      a == "--cs" || a == "--ref-cs" || a == "--dist-cs" ||
       a == "--hlg-peak" || a == "--seek") {
     return true;
   }
@@ -3087,7 +3086,7 @@ int adopt_frame_rate(Options& opt, const SideSpec& ref, const SideSpec& test) {
 }
 
 // Automatic model choice is intentionally restricted to validated picture formats.
-// Explicit --model / --vmaf-model paths are passed through unchanged.
+// Explicit --model paths are passed through unchanged.
 bool resolve_auto_vmaf_model(Options& opt, const SideSpec& ref, const SideSpec& test) {
   if (!opt.enable_vmaf) return true;
   if (!opt.vmaf_model_path.empty() && opt.vmaf_model_path != "auto") {
@@ -3351,23 +3350,7 @@ int run_cli(int argc, char** argv) {
     } else if (a == "--qcs-range") {
       if (!assign_qcs_range_list(opt, need("--qcs-range"))) return 2;
     } else if (a == "--model") {
-      const auto v = need("--model");
-      if (opt.vmaf_model_from_vmaf_model && opt.vmaf_model_path != v) {
-        std::fprintf(stderr, "pixvqa: --model and --vmaf-model disagree (%s vs %s)\n", v.c_str(),
-                     opt.vmaf_model_path.c_str());
-        return 2;
-      }
-      opt.vmaf_model_path = v;
-      opt.vmaf_model_from_model = true;
-    } else if (a == "--vmaf-model") {
-      const auto v = need("--vmaf-model");
-      if (opt.vmaf_model_from_model && opt.vmaf_model_path != v) {
-        std::fprintf(stderr, "pixvqa: --model and --vmaf-model disagree (%s vs %s)\n",
-                     opt.vmaf_model_path.c_str(), v.c_str());
-        return 2;
-      }
-      opt.vmaf_model_path = v;
-      opt.vmaf_model_from_vmaf_model = true;
+      opt.vmaf_model_path = need("--model");
     } else if (a == "--decode") {
       const auto v = need("--decode");
       if (!parse_device_choice(v, opt.decode_request)) {
@@ -3744,7 +3727,7 @@ int run_cli(int argc, char** argv) {
     }
 #endif
   } else if (!opt.vmaf_model_path.empty()) {
-    std::fprintf(stderr, "pixvqa: --model and --vmaf-model require vmaf in --metrics\n");
+    std::fprintf(stderr, "pixvqa: --model requires vmaf in --metrics\n");
     return 2;
   }
   if (opt.enable_xpsnr && !xpsnr_geometry_supported(opt.format.width, opt.format.height)) {

@@ -51,8 +51,8 @@ CONSTRAINTS = [
     {
         "id": "vmaf-model",
         "file": "src/main.cpp",
-        "needle": "--model and --vmaf-model require vmaf in --metrics",
-        "rule": "vmaf requires a readable model. --model and --vmaf-model are aliases and must agree. Either one without vmaf is an error.",
+        "needle": "--model requires vmaf in --metrics",
+        "rule": "VMAF auto-selects a model when possible; an explicit --model path overrides selection and requires vmaf in --metrics.",
     },
     {
         "id": "vmaf-hdr",
@@ -165,8 +165,8 @@ CONSTRAINTS = [
     {
         "id": "pairing",
         "file": "src/main.cpp",
-        "needle": "ref/test frame count mismatch",
-        "rule": "Frames are paired in presentation order. A count mismatch is an error. Timestamps do not drop, repeat, or resynchronize.",
+        "needle": "reference/test lengths differ",
+        "rule": "Frames are paired in presentation order. Unequal lengths evaluate the common prefix, while I/O errors remain fatal. Timestamps do not resynchronize.",
     },
     {
         "id": "empty-input",
@@ -278,7 +278,7 @@ def check_inventory(root: Path) -> tuple:
         return False, "inventory needles missing: " + ", ".join(inv["missing_needles"])
     required = [
         "--metrics", "--decode", "--input", "--device", "--threads", "--model",
-        "--vmaf-model", "--qcs", "--qcs-range", "--fps", "--frames", "--hdr-transfer",
+        "--qcs", "--qcs-range", "--fps", "--frames", "--hdr-transfer",
         "--help", "--version", "--help-hdr",
     ]
     absent = [name for name in required if name not in inv["options"]]

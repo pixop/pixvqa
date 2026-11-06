@@ -35,7 +35,7 @@ For raw XPSNR and automatic VMAF selection, specify `--fps` when rate is not ava
 - **Resolution:** exactly 1920×1080 (3H) or 3840×2160 (1.5H).
 - **Constant frame rate:** at most 30 fps or above 30 fps (HFR model); use `--fps` for raw input or to override conflicting/unknown rate metadata.
 
-Auto-selection does not support HLG, other resolutions, ambiguous transfer, or unknown rate. To use another suitable model, set `--model PATH` (legacy alias: `--vmaf-model`). An explicit path **replaces** auto-selection, but PixVQA still checks model accessibility and compatibility. Bundled HDR VMAF is designed for limited-range YUV420p10 PQ with BT.2020 primaries and a non-constant-luminance matrix. PixVQA does not convert incompatible input samples.
+Auto-selection does not support HLG, other resolutions, ambiguous transfer, or unknown rate. To use another suitable model, set `--model PATH`. An explicit path **replaces** auto-selection, but PixVQA still checks model accessibility and compatibility. Bundled HDR VMAF is designed for limited-range YUV420p10 PQ with BT.2020 primaries and a non-constant-luminance matrix. PixVQA does not convert incompatible input samples.
 
 ```bash
 ./bin/pixvqa --metrics vmaf --hdr-transfer sdr --fps 50 \
@@ -112,6 +112,6 @@ This is the everyday option reference. `--help-advanced` and `--help-hdr` list a
 | `--qcs`, `--qcs-range metric=lower:upper` | Enable QCS; override metric interval (repeatable/comma-separated). See [QCS](QCS.md). |
 | `--help`, `--help-advanced`, `--help-hdr`, `--version` | Help and version. |
 
-Legacy aliases (`--vmaf-model`, `--cs`, `--tf`, `--ref-cs`, `--dist-cs`, `--ref-tf`, `--dist-tf`, `--hlg-peak`) remain accepted; avoid mixing conflicting aliases and modern options.
+Legacy aliases (`--cs`, `--tf`, `--ref-cs`, `--dist-cs`, `--ref-tf`, `--dist-tf`, `--hlg-peak`) remain accepted; avoid mixing conflicting aliases and modern options.
 
 **Exit codes:** `0` success; `2` configuration/preflight error; `1` runtime/backend failure.

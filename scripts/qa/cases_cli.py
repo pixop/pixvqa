@@ -106,7 +106,7 @@ def cases() -> list:
                 return Result("FAIL", f"help missing {needle}", command)
         if advanced.returncode != 0:
             return Result("FAIL", "advanced help failed", f"{path} --help-advanced")
-        for needle in ("--threads", "--qcs-range", "--vmaf-model"):
+        for needle in ("--threads", "--qcs-range"):
             if needle not in advanced.stdout:
                 return Result("FAIL", f"advanced help missing {needle}", f"{path} --help-advanced")
         if "NVIDIA" in help_run.stdout or "GeForce" in help_run.stdout:
@@ -379,13 +379,13 @@ def cases() -> list:
             return Result("SKIP", "swdec or the VMAF model is absent", "model")
         ref, dist, size, _fmt = _pair(world, 320, 240, "420", 8, 2)
         proc, cmd = _run(world, "swdec", [
-            "--metrics", "vmaf", "--model", str(world.model), "--vmaf-model", str(world.tmp / "other.json"),
+            "--metrics", "vmaf", "--vmaf-model", str(world.tmp / "other.json"),
             "-r", str(ref), "-s", size, "-f", "420p:8",
             "-t", str(dist), "-s", size, "-f", "420p:8",
         ])
-        return _reject(proc, "disagree", cmd)
+        return _reject(proc, "Couldn't find match for argument", cmd)
 
-    out.append(_case("model-disagree", "cli", ["full"], ["metric:vmaf"], model_conflict))
+    out.append(_case("model-legacy-rejected", "cli", ["full"], ["metric:vmaf"], model_conflict))
 
     def cpu_rejects_gpu_metric(world: World) -> Result:
         path = world.binary("cpu")
