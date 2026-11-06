@@ -18,8 +18,11 @@
   weights into the local cache when that line executes. There is no guard here
   against a randomly initialized backbone; if the hub/cache path fails, treat it
   as an upstream/runtime failure, not a validated reference.
-- Python: PyTorch, torchvision, PyTorchVideo, opencv-python, Pillow, NumPy
-  and their transitive dependencies. Check an isolated compatible environment.
+- Python: PyTorch, torchvision, PyTorchVideo, opencv-python, Pillow, NumPy,
+  pandas, and their transitive dependencies. Prefer the **same** repo-local
+  `.venv` pinned in [`python/requirements/learned-env.txt`](../../python/requirements/learned-env.txt)
+  as for cvvdp/cvqa-hdr-nr ([Learned Metrics](../LEARNED_METRICS.md)); do not claim
+  validated inference until you run your own checks with real checkpoints.
 
 ## Running the unmodified upstream reference
 

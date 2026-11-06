@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Create the shared cvvdp + cvqa-hdr-nr environment from python/requirements/learned-env.txt.
+# Create the shared learned-metrics environment (cvvdp, cvqa-hdr-nr, SimpleVQA deps)
+# from python/requirements/learned-env.txt.
+# See docs/LEARNED_METRICS.md for defaults, WSL2/NTFS notes, and checkpoint handling.
 #
 #   scripts/setup_learned_env.sh ENV_DIR COLORVIDEOVDP_CHECKOUT
 #
 # ENV_DIR must not exist. The ColorVideoVDP checkout is read, not modified: pip
 # clones the pinned commit from it. Model checkpoints are never downloaded.
 set -euo pipefail
+
+_script_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=learned_venv_helpers.sh
+. "$_script_dir/learned_venv_helpers.sh"
 
 if [ $# -ne 2 ]; then
   echo "usage: $0 ENV_DIR COLORVIDEOVDP_CHECKOUT" >&2
@@ -27,7 +33,12 @@ if ! git -C "$cvvdp_src" cat-file -e "$cvvdp_commit^{commit}" 2>/dev/null; then
   exit 2
 fi
 
-"$python" -m venv "$env_dir"
+venv_flags="$(learned_venv_create_flags "$env_dir")"
+if [ -n "$venv_flags" ]; then
+  echo "$0: creating venv with $venv_flags (host↔Linux mount such as 9p/drvfs; override with PIXVQA_LEARNED_VENV_USE_SYMLINKS=1); see docs/LEARNED_METRICS.md" >&2
+fi
+# shellcheck disable=SC2086
+"$python" -m venv $venv_flags "$env_dir"
 pip=("$env_dir/bin/python" -m pip --disable-pip-version-check)
 # Only the PyTorch wheels come from the cu128 index; everything else from PyPI.
 "${pip[@]}" install --no-cache-dir --index-url https://download.pytorch.org/whl/cu128 \
@@ -50,6 +61,8 @@ if [ -n "$unexpected" ]; then
 fi
 "$env_dir/bin/python" - <<'EOF'
 import torch, pycvvdp, open_clip, timm, cv2
+import pytorchvideo  # SimpleVQA SlowFast hub
 print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available())
 print("pycvvdp", pycvvdp.__file__)
+print("pytorchvideo", pytorchvideo.__file__)
 EOF

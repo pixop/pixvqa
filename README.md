@@ -6,7 +6,7 @@
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP** and no-reference **CompressedVQA-HDR NR**. [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
+PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP** and no-reference **CompressedVQA-HDR NR**. The same optional **repository-local** `.venv` can also satisfy dependencies for the **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`), which is not yet registered under `pixvqa --metrics` — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
 
 PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build. CPU, optional CUDA metric acceleration, and NVDEC are available depending on the build.
 
@@ -21,7 +21,7 @@ bash install_pixvqa.sh
 ./bin/pixvqa --version
 ```
 
-The guided installer offers software decoding and optional CUDA/NVDEC support (CUDA 12.8 and a compatible NVIDIA driver must already be installed). Python-backed metrics need [separate setup](docs/LEARNED_METRICS.md).
+The guided installer offers software decoding and optional CUDA/NVDEC support (CUDA 12.8 and a compatible NVIDIA driver must already be installed). Optional learned Python metrics are **off by default** (prompt defaults to no; use `PIXVQA_ENABLE_LEARNED=1` to enable non-interactively). Python-backed metrics always need [separate environment and asset setup](docs/LEARNED_METRICS.md); the guided step only runs the helper script when you opt in.
 
 ## Use
 

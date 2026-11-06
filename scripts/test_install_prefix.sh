@@ -15,6 +15,8 @@ bash -n scripts/ci/verify_install.sh
 bash -n scripts/ci/prepare_vvc_fixture.sh
 bash -n install_pixvqa.sh
 bash -n scripts/install_learned_metrics.sh
+bash -n scripts/setup_learned_env.sh
+bash -n scripts/learned_venv_helpers.sh
 # shellcheck disable=SC1091
 source "$ROOT/scripts/install_prefix.sh"
 # shellcheck disable=SC1091
@@ -143,4 +145,7 @@ PATH="$stub:/usr/bin:/bin" GIT_LOG="$git_log" PIXVQA_GIT_RETRY_DELAY=0 \
 grep -q 'http.version=HTTP/1.1' "$git_log" || fail 'fetch did not fall back to HTTP/1.1'
 head -n 1 "$git_log" | grep -q 'http.version=HTTP/1.1' && fail 'fetch skipped the first plain attempt'
 echo "OK   git fetch retries with an HTTP/1.1 fallback"
+
+bash scripts/test_install_learned_metrics.sh
+
 echo "All install-prefix checks passed"

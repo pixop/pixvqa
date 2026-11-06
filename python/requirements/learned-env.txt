@@ -1,7 +1,8 @@
-# Shared runtime for cvvdp and cvqa-hdr-nr: CPython 3.12, Linux x86_64, CUDA 12.8 wheels
+# Shared runtime for cvvdp, cvqa-hdr-nr, and the standalone SimpleVQA reference runner
+# (python -m pixvqa_simplevqa): CPython 3.12, Linux x86_64, CUDA 12.8 wheels
 # (RTX 50-series / sm_120 needs cu128 or newer). Install with scripts/setup_learned_env.sh;
 # it fetches torch from the cu128 index and ColorVideoVDP from a pinned local commit.
-# See docs/LEARNED_ENVIRONMENT.md. Runtime packages only: no notebooks, training, or build tools.
+# See docs/LEARNED_METRICS.md. Runtime packages only: no notebooks, training, or build tools.
 
 # PyTorch, from https://download.pytorch.org/whl/cu128
 torch==2.11.0+cu128
@@ -37,6 +38,23 @@ typing_extensions==4.16.0
 
 # Shared numerics
 numpy==2.5.2
+
+# SimpleVQA reference (PyTorchVideo SlowFast hub path; torch.hub may use APIs not pinned
+# here — see docs/dev/SIMPLEVQA_REFERENCE.md). Pins aligned with a verified env
+# (pixvqa-simplevqa-env): compatible with torch 2.11+cu128 / torchvision 0.26 / numpy 2.5.x.
+av==19.0.2
+pytorchvideo==0.1.5
+fvcore==0.1.5.post20221221
+iopath==0.1.10
+portalocker==4.4.2
+parameterized==0.9.0
+tabulate==0.10.0
+termcolor==3.3.0
+yacs==0.1.8
+pandas==3.1.1
+python-dateutil==3.0.0
+six==1.17.0
+tzdata==2026.5
 
 # CompressedVQA-HDR NR (SigLIP2 backbone through open_clip and timm)
 open_clip_torch==3.1.0

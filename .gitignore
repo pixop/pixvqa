@@ -91,6 +91,9 @@ baselines/numerical_conformance/comprehensive.json
 # PixVQA: temporary source backups
 *.bak
 
+# Optional third-party model weights (see docs/LEARNED_METRICS.md); not source.
+/models/
+
 # PixVQA: local development artifacts
 /artifacts/
 /pixvqa_cli_consistency_sources.zip

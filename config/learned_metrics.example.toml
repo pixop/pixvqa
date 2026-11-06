@@ -1,4 +1,7 @@
-# PixVQA learned-metric configuration (cvvdp and cvqa-hdr-nr).
+# PixVQA learned-metric configuration for cvvdp and cvqa-hdr-nr. The same
+# interpreter (see [learned].python) also holds dependencies for the standalone
+# SimpleVQA reference: `PYTHONPATH=python …/.venv/bin/python -m pixvqa_simplevqa` — not
+# wired to `pixvqa --metrics` yet; see docs/dev/SIMPLEVQA_REFERENCE.md.
 #
 # Copy to config/learned_metrics.local.toml (ignored by Git) and edit the paths.
 # PixVQA reads it only when cvvdp or cvqa-hdr-nr is selected. Lookup order:
@@ -16,8 +19,10 @@
 # See docs/LEARNED_METRICS.md.
 
 [learned]
-# One interpreter for both metrics (docs/LEARNED_METRICS.md).
-python = "~/pixvqa-learned-env/bin/python"
+# One interpreter for cvvdp, cvqa-hdr-nr, and SimpleVQA deps (docs/LEARNED_METRICS.md).
+# Relative to this file's directory (.. is the repository root). Expand to an
+# absolute path in learned_metrics.local.toml if you prefer.
+python = "../.venv/bin/python"
 # Directory holding the pixvqa_cvvdp and pixvqa_cvqahdr adapter packages.
 # Appended to PYTHONPATH, so an explicit PYTHONPATH still wins.
 adapter_path = "../python"
@@ -26,12 +31,19 @@ path = "~/bin"
 
 [cvvdp]
 # Optional. Default: the cvvdp entry point beside the interpreter, then PATH.
-# executable = "~/pixvqa-learned-env/bin/cvvdp"
+# executable = "../.venv/bin/cvvdp"
 # Optional per-metric interpreter; overrides [learned] python.
-# python = "~/pixvqa-learned-env/bin/python"
+# python = "../.venv/bin/python"
 
 [cvqa-hdr-nr]
 repository = "~/src/CompressedVQA-HDR"
 checkpoint = "~/models/compressedvqa-hdr/NR_HDR_VQA.pth"
 profile = "~/models/compressedvqa-hdr/NR_HDR_VQA.npy"
-# python = "~/pixvqa-learned-env/bin/python"
+# python = "../.venv/bin/python"
+
+# SimpleVQA is not loaded by pixvqa's TOML parser. Document repo/checkpoint paths
+# here for your own notes, or keep them in SIMPLEVQA_REFERENCE.md:
+#
+# SimpleVQA upstream Git checkout (e.g. deps/SimpleVQA), and UGC_BVQA_model.pth.
+# repository = "../deps/SimpleVQA"
+# checkpoint = "~/models/simplevqa/UGC_BVQA_model.pth"
