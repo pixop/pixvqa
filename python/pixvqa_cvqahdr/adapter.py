@@ -149,7 +149,7 @@ def reject_unsupported_cl(path: str) -> None:
         raise PreflightError("bt2020c is unsupported by CVQA-HDR-NR (no validated CL conversion)")
 
 
-def preflight_video(path: str) -> dict:
+def preflight_video(path: str, max_frames: int = -1) -> dict:
     reject_unsupported_cl(path)
     try:
         import cv2
@@ -163,8 +163,12 @@ def preflight_video(path: str) -> dict:
         fps = float(capture.get(cv2.CAP_PROP_FPS))
     finally:
         capture.release()
+    if max_frames == 0 or max_frames < -1:
+        raise PreflightError("--max-frames expects a positive integer or -1")
+    effective_frames = min(frame_count, max_frames) if max_frames > 0 else frame_count
     interval_sec, chunk_sec = runtime_sampling_options()
-    plan = sampling_plan(frame_count, fps, interval_sec)
+    plan = sampling_plan(effective_frames, fps, interval_sec)
+    plan["source_frame_count"] = frame_count
     plan["chunk_size_sec_requested"] = chunk_sec
     plan["chunk_max_sampled_frames"] = max(1, int(math.floor(chunk_sec * fps / plan["sample_interval_frames"] + 1e-9)))
     plan["path"] = path
@@ -427,7 +431,7 @@ def forward_chunked(model, video, device, torch, chunk_size: int, profile: bool 
 
 
 def preflight(test: str, repository: str, checkpoint: str, profile: str, device: str,
-              report_auto_fallback: bool = False) -> dict:
+              report_auto_fallback: bool = False, max_frames: int = -1) -> dict:
     if device not in DEVICE_CHOICES:
         raise PreflightError(f"unsupported device {device!r}; use auto, cpu, or cuda")
     if not os.path.isfile(test):
@@ -456,7 +460,7 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
     notice = auto_notice(device, effective)
     if notice and report_auto_fallback:
         print(f"pixvqa-cvqa-hdr-nr: warning: {notice}", file=sys.stderr)
-    sampling = preflight_video(test)
+    sampling = preflight_video(test, max_frames=max_frames)
     calibration = load_calibration(profile)
     NR_model, VQA_NR = import_official(repository)
     return {
@@ -466,8 +470,9 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
 
 
 def run(test: str, repository: str, checkpoint: str, profile: str, device: str, output_json: str,
-        verify_decoded_frames: bool = False) -> dict:
-    context = preflight(test, repository, checkpoint, profile, device)
+        verify_decoded_frames: bool = False, max_frames: int = -1) -> dict:
+    context = preflight(test, repository, checkpoint, profile, device,
+                        max_frames=max_frames)
     upstream = context["upstream"]
     sampling = context["sampling"]
     calibration = context["calibration"]
@@ -501,7 +506,10 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         model.load_state_dict(state_dict, strict=True)
         model.eval()
         t_loaded = time.perf_counter()
-        if sampling["sample_interval_sec_requested"] == 1.0:
+        # The official preprocessing reads the entire file; use the equivalent
+        # bounded sampler when the caller requests a shorter shared interval.
+        if (sampling["sample_interval_sec_requested"] == 1.0 and
+                sampling["opencv_frame_count"] == sampling["source_frame_count"]):
             video, video_name = VQA_NR.video_processing(test)
         else:
             video, video_name = preprocess_custom_interval(test, sampling, torch)

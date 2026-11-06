@@ -62,11 +62,9 @@ def main() -> int:
     expect_fail("raw-extension-rejected", [*base, "-t", "distorted.yuv"], "raw YUV")
     expect_fail("raw-options-rejected", [*base, "-s", "1920x1080"], "incompatible")
     frames_result = run([*base, "--frames", "7"])
-    if (frames_result.returncode != 2 or
-            "warning: --frames is ignored by cvqa-hdr-nr" not in frames_result.stderr or
-            "--cvqahdr-repo" not in frames_result.stderr):
-        raise SystemExit(f"frames-ignored-before-assets: {frames_result.stderr}")
-    print("OK   frames-ignored-before-assets")
+    if frames_result.returncode != 2 or "--cvqahdr-repo" not in frames_result.stderr:
+        raise SystemExit(f"frames-before-assets: {frames_result.stderr}")
+    print("OK   frames-before-assets")
     expect_fail("native-options-incompatible", [*base, "--threads", "2"], "incompatible")
     expect_fail("qcs-default-range-still-needs-assets", [*base, "--qcs"], "--cvqahdr-repo")
     expect_fail("options-without-metric", ["--metrics", "psnr", "-r", "r", "-t", "d",

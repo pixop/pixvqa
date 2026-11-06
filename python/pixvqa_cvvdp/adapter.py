@@ -236,14 +236,8 @@ def check_pair(ref: dict, test: dict, interpretation: str, nframes: int) -> None
         return int(raw) if isinstance(raw, (str, int)) and str(raw).isdigit() else None
 
     ref_count, test_count = known_count(ref), known_count(test)
-    if nframes <= 0 and ref_count is not None and test_count is not None and ref_count != test_count:
-        raise AdapterError("frame count mismatch between reference and test")
-    if nframes > 0:
-        for label, count in (("reference", ref_count), ("test", test_count)):
-            if count is not None and count < nframes:
-                raise AdapterError(
-                    f"{label} has {count} frames, fewer than requested {nframes}"
-                )
+    # Length differences are valid: all full-reference metrics use the common prefix.
+    # A requested frame cap is an upper bound, not a minimum required duration.
     for label, meta in (("reference", ref), ("test", test)):
         if meta.get("color_space") == "bt2020c":
             raise AdapterError(f"{label} is tagged bt2020c; CVVDP has no validated CL-to-NCL conversion")
@@ -463,8 +457,6 @@ def validate_raw_yuv(path: str, width: int, height: int, nframes: int) -> int:
             f"{width}x{height} YUV420p10le frames ({frame_bytes} bytes each)"
         )
     frames = size // frame_bytes
-    if nframes > frames:
-        raise AdapterError(f"{path} has {frames} frames, fewer than requested {nframes}")
     indices = _raw_sample_frame_indices(frames, nframes)
     if indices:
         validate_raw_yuv_sample_bytes(path, width, height, indices)
@@ -571,11 +563,12 @@ def run(ref: str, test: str, interpretation: str, display: str, nframes: int, de
         if check_only:
             if temporal:
                 check_temporal_runtime()
-            return {"check": "ok", "frames_evaluated": frames_evaluated(prepared["test_meta"], nframes),
+            return {"check": "ok", "frames_evaluated": prepared["effective_frames"],
                     "device": effective}
         prepared["device_requested"] = device
         prepared["gpu_mem_gb"] = gpu_mem_gb
-        return execute(prepared, interpretation, display, nframes, effective, output_json, temporal)
+        return execute(prepared, interpretation, display, prepared["effective_frames"],
+                       effective, output_json, temporal)
     finally:
         if prepared is not None and prepared["links"] is not None:
             prepared["links"].cleanup()
@@ -612,6 +605,25 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
             if interpretation not in ("sdr", "pq", "hlg"):
                 raise PreflightError(f"unsupported raw YUV interpretation {interpretation!r}")
             encoded_fps = encode_fps(raw_fps_num, raw_fps_den)
+            # Validate only the potentially scored prefix. In particular, an
+            # extra raw frame may be garbage when the encoded side ends earlier.
+            compressed_ref_meta = probe_video(ref) if not ref_is_raw else None
+            compressed_test_meta = probe_video(test) if not test_is_raw else None
+            raw_validation_limits = [nframes] if nframes > 0 else []
+            for meta in (compressed_ref_meta, compressed_test_meta):
+                if meta is not None:
+                    count = meta.get("nb_frames")
+                    if isinstance(count, (str, int)) and str(count).isdigit():
+                        raw_validation_limits.append(int(count))
+            # Both raw inputs have exact frame counts from their byte sizes.
+            if ref_is_raw and test_is_raw:
+                bytes_per_frame = frame_bytes_yuv420p10le(raw_width, raw_height)
+                for raw_path in (ref, test):
+                    if os.path.isfile(raw_path):
+                        size = os.path.getsize(raw_path)
+                        if size > 0 and size % bytes_per_frame == 0:
+                            raw_validation_limits.append(size // bytes_per_frame)
+            raw_validation_cap = min(raw_validation_limits) if raw_validation_limits else 0
             links = TemporarySymlinkDir()
             expected = {
                 "width": raw_width, "height": raw_height, "bit_depth": 10, "chroma_ss": "420",
@@ -620,17 +632,17 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
             if ref_is_raw:
                 ref_path, ref_meta, ref_verified, ref_frames = _raw_side(
                     "reference", ref, raw_width, raw_height, encoded_fps, raw_fps_num, raw_fps_den,
-                    interpretation, nframes, links, expected, decode_video_props)
+                    interpretation, raw_validation_cap, links, expected, decode_video_props)
             else:
-                ref_path, ref_meta = ref, probe_video(ref)
+                ref_path, ref_meta = ref, compressed_ref_meta
                 ref_verified = None
                 ref_frames = None
             if test_is_raw:
                 test_path, test_meta, test_verified, test_frames = _raw_side(
                     "test", test, raw_width, raw_height, encoded_fps, raw_fps_num, raw_fps_den,
-                    interpretation, nframes, links, expected, decode_video_props)
+                    interpretation, raw_validation_cap, links, expected, decode_video_props)
             else:
-                test_path, test_meta = test, probe_video(test)
+                test_path, test_meta = test, compressed_test_meta
                 test_verified = None
                 test_frames = None
             raw_record = {
@@ -654,6 +666,12 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
                 if not ref_is_raw:
                     raw_record["filename_verification"] = test_verified["verified_by"]
         check_pair(ref_meta, test_meta, interpretation, nframes)
+        counts = []
+        for meta in (ref_meta, test_meta):
+            count = meta.get("nb_frames")
+            if isinstance(count, (str, int)) and str(count).isdigit():
+                counts.append(int(count))
+        effective_frames = min(([nframes] if nframes > 0 else []) + counts) if (counts or nframes > 0) else -1
         display_model = check_display(interpretation, display)
         binary = resolve_cvvdp_binary(cvvdp_bin)
     except BaseException:
@@ -663,7 +681,7 @@ def prepare_inputs(ref, test, interpretation, display, nframes, cvvdp_bin, raw_w
     return {
         "links": links, "ref_path": ref_path, "test_path": test_path, "ref_meta": ref_meta,
         "test_meta": test_meta, "raw_record": raw_record, "display_model": display_model,
-        "binary": binary,
+        "binary": binary, "effective_frames": effective_frames,
     }
 
 

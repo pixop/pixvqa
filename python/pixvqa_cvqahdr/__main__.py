@@ -76,6 +76,8 @@ def main(argv=None) -> int:
         action="store_true",
         help="Internal: the caller will remove the output record after this run.",
     )
+    parser.add_argument("--max-frames", type=int, default=-1,
+                        help="Limit scoring to this many decoded frames of the distorted video.")
     parser.add_argument("--check", action="store_true",
                         help="Validate imports, assets, and the video sampler, then exit.")
     parser.add_argument("--protocol", choices=["json", "lines"], default="json",
@@ -86,7 +88,8 @@ def main(argv=None) -> int:
     try:
         with stdout_to_stderr():
             if args.check:
-                preflight(args.test, args.repo, args.checkpoint, args.profile, args.device)
+                preflight(args.test, args.repo, args.checkpoint, args.profile, args.device,
+                          max_frames=args.max_frames)
             else:
                 record = run(
                     args.test,
@@ -96,6 +99,7 @@ def main(argv=None) -> int:
                     args.device,
                     args.output_json,
                     args.verify_decoded_frames,
+                    max_frames=args.max_frames,
                 )
     except PreflightError as exc:
         print(f"pixvqa-cvqa-hdr-nr: error: {exc}", file=sys.stderr)

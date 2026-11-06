@@ -177,13 +177,8 @@ def test_raw_yuv() -> None:
                     raise
             else:
                 raise SystemExit("value above 1023 was accepted")
-            try:
-                validate_raw_yuv(str(reference), 16, 16, 2)
-            except AdapterError as exc:
-                if "fewer than requested" not in str(exc):
-                    raise
-            else:
-                raise SystemExit("short frame count was accepted")
+            # A requested frame cap is an upper limit, not a minimum length.
+            validate_raw_yuv(str(reference), 16, 16, 2)
 
             frame_bytes = 16 * 16 * 3
             good = b"\x00\x00" * (frame_bytes // 2)

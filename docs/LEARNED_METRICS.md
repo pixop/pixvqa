@@ -53,6 +53,6 @@ CVVDP uses the installed `cvvdp` executable, and needs `ffmpeg` and `ffprobe` on
   -r reference.mp4 -t distorted.mp4
 ```
 
-`cvvdp` requires `-r` and `-t`. `cvqa-hdr-nr` requires only `-t`; an NR-only `-r` is ignored. `--frames` limits CVVDP and native metrics, but is ignored with a warning by `cvqa-hdr-nr`, which evaluates the whole clip. CVVDP raw YUV requires declared geometry/format and frame rate when both inputs are raw.
+`cvvdp` requires `-r` and `-t`. `cvqa-hdr-nr` requires only `-t`; an NR-only `-r` is ignored. `--frames` caps native and learned metrics. When native metrics are also selected, learned metrics use the number of successfully compared frames (the common reference/test prefix). CVVDP raw YUV requires declared geometry/format and frame rate when both inputs are raw.
 
 Use `--device auto|cpu|gpu` (default `auto`) to select CPU or supported CUDA backends. The Python backends use CUDA when available under `auto`, otherwise CPU. For all other options, run `./bin/pixvqa --help-advanced` or `./bin/pixvqa --help-hdr`.

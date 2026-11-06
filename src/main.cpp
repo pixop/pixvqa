@@ -1719,6 +1719,10 @@ bool cvqahdr_command(LearnedPlan& plan, std::vector<std::string>& args) {
           "--test", plan.opt.test_path, "--repo", cvqahdr.repository, "--checkpoint",
           cvqahdr.checkpoint, "--profile", cvqahdr.profile, "--device", device_token(plan.opt),
           "--output-json", output_json};
+  if (plan.opt.max_frames > 0) {
+    args.emplace_back("--max-frames");
+    args.push_back(std::to_string(plan.opt.max_frames));
+  }
   if (!cvqahdr.output_json_set) args.emplace_back("--transient-output");
   return true;
 }
@@ -3563,11 +3567,6 @@ int run_cli(int argc, char** argv) {
                    native_only_option.c_str(), learned_only);
       return 2;
     }
-    if (cvqahdr.selected && opt.max_frames > 0) {
-      std::fprintf(stderr,
-                   "pixvqa: warning: --frames is ignored by cvqa-hdr-nr; "
-                   "the full input stream is processed for this metric\n");
-    }
     if (cvqahdr.selected && !native && !cvqahdr.raw_option.empty()) {
       std::fprintf(stderr,
                    "pixvqa: info: cvqa-hdr-nr reads compressed video directly; "
@@ -3930,10 +3929,12 @@ int run_cli(int argc, char** argv) {
         }
       }
 #endif
-      if (!ok_r && !ok_t) break;
-      if (ok_r != ok_t) {
-        std::fprintf(stderr, "ref/test frame count mismatch at frame %d\n", nframes);
-        return 1;
+      if (!ok_r || !ok_t) {
+        if (ok_r != ok_t)
+          std::fprintf(stderr,
+                       "pixvqa: warning: reference/test lengths differ; "
+                       "evaluating %d common frames\n", nframes);
+        break;
       }
       if (!hdr_reported) {
         HdrSide ref_meta;
@@ -4175,7 +4176,11 @@ int run_cli(int argc, char** argv) {
 
     const auto t1 = std::chrono::steady_clock::now();
     const double sec = std::chrono::duration<double>(t1 - t0).count();
-    if (g_learned) execute_learned(*g_learned);
+    if (g_learned) {
+      // Keep learned and native results on the same successfully decoded prefix.
+      g_learned->opt.max_frames = nframes;
+      execute_learned(*g_learned);
+    }
 
     std::printf("\n\nSummary:\n\n");
     if (opt.enable_psnr) {

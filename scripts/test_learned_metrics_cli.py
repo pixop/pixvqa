@@ -470,15 +470,13 @@ def cli_cases(s: Suite) -> None:
     if expect("native-option-alone", proc, 2, needles=["--threads is incompatible with cvvdp alone"]):
         ok("native-only-option-rejected-without-native-metric")
 
-    # --frames is accepted for NR with a warning, not an incompatible-option error.
+    # --frames is accepted for NR and limits the scored interval.
     proc = s.run(["--metrics", "cvqa-hdr-nr", "--frames", "5", "-t", "dist.mp4", *s.nr()])
-    if expect("frames-nr", proc, 2, needles=["warning: --frames is ignored by cvqa-hdr-nr",
-                                            "cannot open test file"]) and not s.backend_log():
-        ok("frames-nr-ignored-with-warning")
+    if expect("frames-nr", proc, 2, needles=["cannot open test file"]) and not s.backend_log():
+        ok("frames-nr-accepted")
     proc = s.run(["--metrics", "psnr,cvqa-hdr-nr", "--frames", "5",
                   "-r", str(s.ref), "-t", str(s.fake_mp4), *s.nr()])
-    if expect("frames-native-nr", proc, 2, needles=["warning: --frames is ignored by cvqa-hdr-nr",
-                                                    "no FFmpeg decoder for native metrics"]) and not s.backend_log():
+    if expect("frames-native-nr", proc, 2, needles=["no FFmpeg decoder for native metrics"]) and not s.backend_log():
         ok("frames-native-nr-not-rejected-for-frame-cap")
 
     # Invalid environments fail preflight with exit 2 and nothing runs.
@@ -509,9 +507,9 @@ def cli_cases(s: Suite) -> None:
     if expect("partial-native", proc, 1, stdout_needles=["[ PSNR", "[ CVVDP status:failed ]", "Total frames:2"]):
         ok("partial-failure-native-kept")
     proc = s.run(["--metrics", "psnr,cvvdp", *s.raw_pair(test=s.short), *s.cvvdp()])
-    if expect("native-runtime-failure", proc, 1, needles=["frame count mismatch"],
-              stdout_needles=["[ NATIVE status:failed ]", f"[ CVVDP jod:{CVVDP_JOD}"]):
-        ok("native-runtime-failure-learned-still-reported")
+    if expect("native-shorter-input", proc, 0, needles=["reference/test lengths differ"],
+              stdout_needles=["Total frames:1", f"[ CVVDP jod:{CVVDP_JOD}"]):
+        ok("native-shorter-input-learned-uses-common-prefix")
     proc = s.run(args, MOCK_NR_BAD_PROTOCOL="1")
     if expect("bad-protocol", proc, 1, needles=["did not start with pixvqa-protocol"],
               stdout_needles=["[ CVQA-HDR-NR status:failed ]"]):

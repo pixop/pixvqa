@@ -34,10 +34,10 @@ def test_adapter_frame_policy() -> None:
     from pixvqa_cvvdp.adapter import check_pair
     check_pair(meta('20'), meta('20'), 'pq', 0)
     check_pair(meta('20'), meta('12'), 'pq', 10)
-    for cap in (0, -1):
-        expect_error(lambda: check_pair(meta('20'), meta('12'), 'pq', cap), 'frame count mismatch')
-    expect_error(lambda: check_pair(meta('20'), meta('12'), 'pq', 13), 'test has 12 frames')
-    expect_error(lambda: check_pair(meta('12'), meta('20'), 'pq', 13), 'reference has 12 frames')
+    # Unequal lengths and oversized caps are valid; scoring uses the common prefix.
+    for cap in (0, -1, 13):
+        check_pair(meta('20'), meta('12'), 'pq', cap)
+        check_pair(meta('12'), meta('20'), 'pq', cap)
     # Unknown compressed frame counts must be handled by the reader at runtime.
     check_pair(meta(None), meta('20'), 'pq', 0)
     check_pair(meta(None), meta('20'), 'pq', 10)
@@ -99,8 +99,8 @@ def test_mixed_reader_length_policy() -> None:
                 'test.mkv', 'reference.yuv', ref_is_raw=True, test_is_raw=False,
                 display_photometry='standard_hdr_pq', frames=n, fps=24.0,
             )
-        expect_error(lambda: src(-1).init_readers(), 'frame counts differ')
-        expect_error(lambda: src(13).init_readers(), 'test has 12 frames')
+        assert src(-1).get_video_size() == (16, 16, 12)
+        assert src(13).get_video_size() == (16, 16, 12)
         good = src(10)
         assert good.get_video_size() == (16, 16, 10)
         counts['reference.yuv'] = 12

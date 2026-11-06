@@ -192,6 +192,35 @@ def test_one_frame(path_ref: Path, path_test: Path):
     return 0
 
 
+def test_common_frame_prefix(path_ref: Path, path_test: Path):
+    """Different clean EOF positions are not native failures; partial frames remain errors."""
+    frame = bytes(FRAME_BYTES)
+    for ref_count, test_count, cap in ((3, 2, None), (2, 3, None), (3, 2, 1)):
+        path_ref.write_bytes(frame * ref_count)
+        path_test.write_bytes(frame * test_count)
+        args = ["--metrics", "psnr,ssim", "-r", str(path_ref),
+                "-t", str(path_test), "-s", f"{W}x{H}", "-f", "420p:10"]
+        if cap is not None:
+            args += ["--frames", str(cap)]
+        result = run(args)
+        expected = min(ref_count, test_count, cap or 1000000)
+        if result.returncode or f"Total frames:{expected}" not in result.stdout:
+            return fail(f"common prefix ({ref_count}/{test_count}, cap {cap}): "
+                        f"rc={result.returncode}, stderr={result.stderr}")
+        warning = "reference/test lengths differ" in result.stderr
+        if warning != (cap is None and ref_count != test_count):
+            return fail(f"common prefix warning ({ref_count}/{test_count}, cap {cap}): "
+                        f"{result.stderr}")
+    path_ref.write_bytes(frame * 2 + b"partial")
+    path_test.write_bytes(frame * 3)
+    result = run(["--metrics", "psnr", "-r", str(path_ref),
+                  "-t", str(path_test), "-s", f"{W}x{H}", "-f", "420p:10"])
+    if result.returncode == 0 or "short YUV frame" not in result.stderr:
+        return fail("partial frame must still fail")
+    print("OK   common-frame-prefix")
+    return 0
+
+
 def test_empty_fifo():
     with tempfile.TemporaryDirectory(prefix="pixvqa_fifo_") as tmp:
         ref = os.path.join(tmp, "ref.fifo")
@@ -237,6 +266,7 @@ def main():
         rc |= test_short(ref, test)
         rc |= test_empty_files(ref, test)
         rc |= test_one_frame(ref, test)
+        rc |= test_common_frame_prefix(ref, test)
         rc |= test_prod_style_cli(ref, test)
         rc |= test_mismatch_size(ref, test)
         rc |= test_unsupported_wsssim()
