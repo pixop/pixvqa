@@ -175,10 +175,12 @@ def main() -> int:
             print("OK   identical elementary pair and auto software decode")
 
         mismatch = pix([*base, "--decode", "cpu", *sides(ref_h, short_h)])
-        if mismatch.returncode == 0 or "frame count mismatch" not in mismatch.stderr:
+        if (mismatch.returncode != 0
+                or "reference/test lengths differ" not in mismatch.stderr
+                or "Total frames:" not in mismatch.stdout):
             fail(f"length mismatch rc={mismatch.returncode} {mismatch.stderr}")
         else:
-            print("OK   frame-count mismatch")
+            print("OK   shorter HEVC evaluates common frames")
 
         bad_size = pix([*base, "--decode", "cpu", "-r", str(ref_h), "-s", "32x32", "-f", "420p:10",
                         "-t", str(dist_h), "-s", "32x32", "-f", "420p:10"])

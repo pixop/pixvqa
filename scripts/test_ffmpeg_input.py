@@ -254,12 +254,13 @@ def main() -> int:
                 "-r", str(h264_mp4), "-s", f"{W}x{H}", "-f", "420p:8",
                 "-t", str(short), "-s", f"{W}x{H}", "-f", "420p:8",
             ])
-            if mismatch.returncode == 0 or "frame count mismatch" not in mismatch.stderr:
-                fail(f"length mismatch was not rejected: {mismatch.stderr[-300:]}")
-            elif "Summary:" in mismatch.stdout:
-                fail("length mismatch still printed a summary")
+            if (mismatch.returncode != 0
+                    or "reference/test lengths differ" not in mismatch.stderr
+                    or "Total frames:2" not in mismatch.stdout
+                    or "[ PSNR" not in mismatch.stdout):
+                fail(f"length mismatch did not score common frames: {mismatch.stderr[-300:]}")
             else:
-                print("OK   frame-count mismatch rejected")
+                print("OK   frame-count mismatch scored common prefix")
 
             chroma = pix([
                 "--metrics", "psnr", "--decode", "cpu",

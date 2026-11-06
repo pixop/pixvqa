@@ -334,9 +334,11 @@ def _negative_cases() -> list:
             "-r", str(a), "-s", "32x32", "-f", "420p:8",
             "-t", str(b), "-s", "32x32", "-f", "420p:8",
         ])
-        if not _reject(proc, "frame count mismatch"):
-            return Result("FAIL", proc.stderr[-200:], cmd)
-        return Result("PASS", "raw frame-count mismatch", cmd)
+        if (proc.returncode != 0 or "Total frames:2" not in proc.stdout
+                or "reference/test lengths differ" not in proc.stderr
+                or "[ PSNR" not in proc.stdout):
+            return Result("FAIL", proc.stderr[-200:] + proc.stdout[-200:], cmd)
+        return Result("PASS", "unequal raw lengths evaluate 2 common frames", cmd)
 
     def fake_mp4(world: World) -> Result:
         path = world.tmp / "fake.mp4"
