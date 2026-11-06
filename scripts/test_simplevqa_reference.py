@@ -7,13 +7,31 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 from pixvqa_simplevqa.adapter import (
-    InferenceError, SetupError, parse_score, run, validate,
+    InferenceError,
+    SetupError,
+    inspect_video,
+    parse_score,
+    run,
+    validate,
 )
+
+
+def _completed(rc: int, stdout: str = "", stderr: str = "") -> CompletedProcess[str]:
+    return CompletedProcess([], returncode=rc, stdout=stdout, stderr=stderr)
+
+
+def _ffprobe_json_pair(stream_obj: dict, fmt_obj: dict) -> list[CompletedProcess[str]]:
+    return [
+        _completed(0, json.dumps({"streams": [stream_obj]})),
+        _completed(0, json.dumps({"format": fmt_obj})),
+    ]
+
 
 with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     d = Path(tmp)
@@ -41,8 +59,15 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     checkpoint.write_bytes(b"fake-weights-for-wrapper-contract-only")
     video = d / "tiny.mp4"
     video.write_bytes(b"fake-video-for-wrapper-contract-only")
-    probe = {"codec": "hevc", "width": 1920, "height": 1080,
-             "fps": 60.0, "frame_count": 600, "transfer": "bt709"}
+    probe = {
+        "codec": "hevc",
+        "width": 1920,
+        "height": 1080,
+        "fps": 60.0,
+        "frame_count": 600,
+        "duration_seconds": 10.0,
+        "transfer": "bt709",
+    }
     with patch("pixvqa_simplevqa.adapter.inspect_video", return_value=probe), patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
     ):
@@ -68,6 +93,14 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
                 pass
             else:
                 raise AssertionError("PQ accepted")
+        with patch("pixvqa_simplevqa.adapter.inspect_video", return_value={**probe, "transfer": "arib-std-b67"}):
+            try:
+                validate(repo, checkpoint, video)
+            except SetupError:
+                pass
+            else:
+                raise AssertionError("HLG accepted")
+
     for value in ("nan", "inf", "not-a-score", "1.0,extra"):
         try:
             parse_score(f"{video},{value}\n", video)
@@ -75,6 +108,12 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
             pass
         else:
             raise AssertionError(f"accepted invalid score: {value}")
+    try:
+        parse_score(f"{video}\n", video)
+    except InferenceError:
+        pass
+    else:
+        raise AssertionError("accepted non-CSV line")
     try:
         parse_score(f"{d / 'other.mp4'},0.4\n", video)
     except InferenceError:
@@ -84,12 +123,200 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     raw = d / "raw.yuv"
     raw.write_bytes(b"raw")
     try:
-        from pixvqa_simplevqa.adapter import inspect_video
         inspect_video(raw)
     except SetupError:
         pass
     else:
         raise AssertionError("raw YUV was accepted by upstream demo")
+
+    # --- inspect_video / ffprobe mocks (deterministic preflight) ---
+    stream_base = {
+        "avg_frame_rate": "60/1",
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "color_transfer": "bt709",
+    }
+
+    def _patch_ffprobe_sequence(responses: list[CompletedProcess[str]]):
+        def _fake_run(*_a, **_k):
+            return responses.pop(0)
+
+        return patch("pixvqa_simplevqa.adapter.subprocess.run", side_effect=_fake_run)
+
+    # Malformed nb_frames
+    bad_nb = {**stream_base, "nb_frames": "not-an-int"}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(bad_nb, {"duration": "2.0"})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "nb_frames" in str(e).lower() or "malformed" in str(e).lower()
+        else:
+            raise AssertionError("malformed nb_frames accepted")
+
+    # Missing nb_frames and missing duration
+    no_len = {**stream_base}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(no_len, {})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "nb_frames" in str(e).lower() or "duration" in str(e).lower()
+        else:
+            raise AssertionError("missing length accepted")
+
+    # Duration < 1s
+    short = {**stream_base, "nb_frames": 30}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(short, {"duration": "0.5"})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "second" in str(e).lower()
+        else:
+            raise AssertionError("subsecond duration accepted")
+
+    # nb_frames too low vs rounded fps
+    low_fc = {**stream_base, "nb_frames": 20}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(low_fc, {"duration": "5.0"})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "frame count" in str(e).lower() or "full second" in str(e).lower()
+        else:
+            raise AssertionError("low frame count accepted")
+
+    # Invalid stream JSON
+    with patch(
+        "pixvqa_simplevqa.adapter.subprocess.run",
+        side_effect=[
+            _completed(0, stdout="{ not json"),
+            _completed(0, stdout='{"format":{}}'),
+        ],
+    ):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "json" in str(e).lower()
+        else:
+            raise AssertionError("invalid JSON accepted")
+
+    # Valid JSON but root is not an object (e.g. list)
+    with patch(
+        "pixvqa_simplevqa.adapter.subprocess.run",
+        side_effect=[
+            _completed(0, stdout="[]"),
+            _completed(0, stdout='{"format":{}}'),
+        ],
+    ):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "root" in str(e).lower() or "object" in str(e).lower()
+        else:
+            raise AssertionError("non-object stream JSON root accepted")
+
+    # Stream record is not an object
+    with patch(
+        "pixvqa_simplevqa.adapter.subprocess.run",
+        side_effect=[
+            _completed(0, stdout='{"streams":["not-a-dict"]}'),
+            _completed(0, stdout='{"format":{}}'),
+        ],
+    ):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "stream" in str(e).lower() and "object" in str(e).lower()
+        else:
+            raise AssertionError("non-object stream element accepted")
+
+    # Format JSON root not an object
+    with patch(
+        "pixvqa_simplevqa.adapter.subprocess.run",
+        side_effect=[
+            _completed(0, stdout=json.dumps({"streams": [{**stream_base, "nb_frames": 120}]})),
+            _completed(0, stdout='"format-as-string"'),
+        ],
+    ):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "format" in str(e).lower() and "object" in str(e).lower()
+        else:
+            raise AssertionError("non-object format JSON root accepted")
+
+    # format value not an object
+    with patch(
+        "pixvqa_simplevqa.adapter.subprocess.run",
+        side_effect=[
+            _completed(0, stdout=json.dumps({"streams": [{**stream_base, "nb_frames": 120}]})),
+            _completed(0, stdout=json.dumps({"format": "bad"})),
+        ],
+    ):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "format" in str(e).lower() and "object" in str(e).lower()
+        else:
+            raise AssertionError("non-object format record accepted")
+
+    # ffprobe launch failure
+    def _boom(*_a, **_k):
+        raise OSError("no ffprobe")
+
+    with patch("pixvqa_simplevqa.adapter.subprocess.run", side_effect=_boom):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "ffprobe" in str(e).lower()
+        else:
+            raise AssertionError("missing ffprobe not SetupError")
+
+    # --- upstream subprocess diagnostics (run) ---
+    ok_stream = {**stream_base, "nb_frames": 120}
+    ok_fmt = {"duration": "2.0"}
+    with patch(
+        "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
+    ), patch("pixvqa_simplevqa.adapter.subprocess.run") as mock_run:
+        ffprobe_calls = {"n": 0}
+
+        def _dual_run(cmd, *args, **kwargs):
+            if cmd and cmd[0] == "ffprobe":
+                ffprobe_calls["n"] += 1
+                if ffprobe_calls["n"] == 1:
+                    return _completed(0, json.dumps({"streams": [ok_stream]}))
+                return _completed(0, json.dumps({"format": ok_fmt}))
+            return _completed(1, stderr="upstream stderr tail for diagnostics")
+
+        mock_run.side_effect = _dual_run
+        try:
+            run(repo, checkpoint, video, device="cpu")
+        except InferenceError as e:
+            assert "upstream" in str(e).lower()
+            assert "stderr" in str(e).lower() or "failed" in str(e).lower()
+        else:
+            raise AssertionError("failed upstream accepted")
+
+    with patch(
+        "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
+    ), patch("pixvqa_simplevqa.adapter.subprocess.run") as mock_run2:
+        ffprobe_calls2 = {"n": 0}
+
+        def _dual_run2(cmd, *args, **kwargs):
+            if cmd and cmd[0] == "ffprobe":
+                ffprobe_calls2["n"] += 1
+                if ffprobe_calls2["n"] == 1:
+                    return _completed(0, json.dumps({"streams": [ok_stream]}))
+                return _completed(0, json.dumps({"format": ok_fmt}))
+            return _completed(1, stdout="print fail", stderr="")
+
+        mock_run2.side_effect = _dual_run2
+        try:
+            run(repo, checkpoint, video, device="cpu")
+        except InferenceError as e:
+            assert "stdout" in str(e).lower() or "fail" in str(e).lower()
+        else:
+            raise AssertionError("empty-stderr failure not surfaced")
+
     checkpoint.unlink()
     try:
         validate(repo, checkpoint, video, check_imports=False, probe_video=False)
@@ -98,4 +325,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     else:
         raise AssertionError("missing checkpoint accepted")
 
-print("PASS: SimpleVQA reference adapter setup, staging, output, unsupported transfer and errors")
+print(
+    "PASS: SimpleVQA reference adapter preflight, staging, output, "
+    "PQ/HLG rejection, score/ffprobe/upstream error handling"
+)

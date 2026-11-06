@@ -13,13 +13,18 @@
 - Official model checkpoint: downloaded separately from the link in upstream README.
   The file must be readable and correspond to `UGC_BVQA_model.pth`.
 - SlowFast pretrained model: upstream `test_demo.py` calls
-  `slowfast_r50(pretrained=True)`; it may require online download or an
-  existing PyTorch hub cache. A successful import preflight does not guarantee
-  the pretrained SlowFast weights are cached.
+  `slowfast_r50(pretrained=True)`. **This wrapper does not open sockets or run
+  downloader code** — but the upstream process may still pull PyTorchVideo hub
+  weights into the local cache when that line executes. There is no guard here
+  against a randomly initialized backbone; if the hub/cache path fails, treat it
+  as an upstream/runtime failure, not a validated reference.
 - Python: PyTorch, torchvision, PyTorchVideo, opencv-python, Pillow, NumPy
   and their transitive dependencies. Check an isolated compatible environment.
 
 ## Running the unmodified upstream reference
+
+All paths are expanded and resolved before validation and before passing `--dist`
+to upstream, so the demo sees a single deterministic absolute input path.
 
 With the official upstream repo and its trained checkpoint available:
 
@@ -38,11 +43,32 @@ PYTHONPATH=python /path/to/learned-env/bin/python -m pixvqa_simplevqa \
 ```
 
 The runner executes upstream `test_demo.py` in an isolated temporary working
-directory using symlinks to the original sources/checkpoint. It does not edit
-the upstream checkout. Output is one JSON record containing the pooled quality
-score, model SHA-256, revision and input metadata. Failure exits: 2 for setup,
-1 for runtime/inference. At present it runs the upstream processing without
-a frame cap, optimizer, temporal score trace or QCS.
+directory using symlinks to the original sources and a symlink for
+`ckpts/UGC_BVQA_model.pth` pointing at your checkpoint. It does not edit the
+upstream checkout or copy full trees. Output is one JSON record containing the
+pooled quality score, model SHA-256, revision and input metadata (including
+`duration_seconds` and `color_transfer` when ffprobe reports them). Failure
+exits: 2 for setup, 1 for runtime/inference. At present it runs the upstream
+processing without a frame cap, optimizer, temporal score trace or QCS.
+
+### Preflight (ffprobe)
+
+- `ffprobe` must succeed for stream + format queries. OSError, non-zero exit,
+  or invalid JSON is a **setup** error (exit 2).
+- **SDR only:** `color_transfer` values indicating PQ or HLG (e.g. `smpte2084`,
+  `arib-std-b67`, and common aliases) are rejected. Unknown/missing transfer is
+  allowed for preflight only; do not assume HDR safety from metadata gaps.
+- **Length:** upstream effectively needs at least ~one second at the reported
+  frame rate. If `nb_frames` is present, it must parse as a non-negative
+  integer; malformed values fail preflight. If both duration and `nb_frames` are
+  missing from metadata, preflight fails (indeterminate length). Sub-second
+  duration (when known) or frame counts below one rounded-FPS second are
+  rejected.
+- **Raw filenames:** `.yuv` / `.raw` inputs are rejected regardless of metadata
+  because transport is ambiguous for OpenCV; use tagged compressed derivatives.
+
+If the upstream Python process exits non-zero, stderr (or a short stdout tail
+when stderr is empty) is included in the error text for diagnosis.
 
 ## Known upstream limitations to address before integration
 
@@ -56,8 +82,9 @@ a frame cap, optimizer, temporal score trace or QCS.
   video, not raw YUV. Raw sources in the NR corpus must be converted to
   format-tagged, deterministic compressed derivatives first.
 - The model is designed for SDR UGC; PQ and HLG are unsupported.
-- The reference process may download pretrained SlowFast weights unless
-  pre-populated in the expected PyTorchVideo cache.
+- The reference **upstream** process may download pretrained SlowFast weights unless
+  pre-populated in the expected PyTorchVideo cache; this repo’s wrapper does not
+  add downloads of its own.
 - The wrapper test uses a **mock upstream script** to verify invocation and
   result parsing, not numerical validation. Actual parity needs authentic
   checkpoints, inputs, and verified reference scores.
