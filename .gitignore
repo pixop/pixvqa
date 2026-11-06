@@ -97,3 +97,6 @@ baselines/numerical_conformance/comprehensive.json
 /review.txt
 # Private engineering documentation, preserved locally and never published.
 /internal/
+
+# Local external NR video corpus paths (example manifest is tracked)
+/config/nr_validation_corpus.local.json
