@@ -3,5 +3,5 @@
   "approved": true,
   "approved_profile": "comprehensive",
   "baseline": "comprehensive.json",
-  "note": "The comprehensive baseline is approved and tracked. Other profiles may require separate candidate review and approval. See scripts/numerical_conformance/README.md."
+  "note": "The comprehensive baseline is approved and tracked. Other profiles may require separate candidate review and approval. See numerical-conformance scripts and their inline help."
 }

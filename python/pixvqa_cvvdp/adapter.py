@@ -62,7 +62,7 @@ def resolve_cvvdp_binary(cvvdp_bin: str | None) -> str:
             return str(beside)
     binary = shutil.which("cvvdp")
     if not binary:
-        raise PreflightError("cvvdp executable not found; see docs/COLORVIDEOVDP.md")
+        raise PreflightError("cvvdp executable not found; see docs/LEARNED_METRICS.md")
     return binary
 
 

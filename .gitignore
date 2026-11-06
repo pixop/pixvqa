@@ -95,3 +95,5 @@ baselines/numerical_conformance/comprehensive.json
 /artifacts/
 /pixvqa_cli_consistency_sources.zip
 /review.txt
+# Private engineering documentation, preserved locally and never published.
+/internal/

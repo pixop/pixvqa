@@ -1,5 +1,5 @@
 # Incremental PixVQA builds: make cpu | swdec | full
-# Paths: scripts/deps_layout.sh + environment (internal/docs/BUILD_MAKE.md).
+# Dependency paths: scripts/deps_layout.sh; manual setup: docs/INSTALL.md.
 # install_pixvqa.sh still uses build.sh / build_decode.sh / build_cuda.sh.
 
 ROOT := $(abspath .)

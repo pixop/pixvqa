@@ -300,7 +300,7 @@ void print_help_advanced() {
       "  --cvqahdr-output-json PATH  Persist NR run record.\n"
       "  --cvqa-nr-sample-interval-sec N  Temporal sampling interval (default 1 second).\n"
       "  --cvqa-nr-chunk-size-sec N  Video seconds per GPU inference chunk (default 8).\n"
-      "  Options override config defaults; see docs/LEARNED_METRICS_CONFIG.md.\n"
+      "  Options override config defaults; see docs/LEARNED_METRICS.md.\n"
       "\n"
       "Advanced HDR settings\n"
       "  --hdr-primaries, --hdr-matrix, --hdr-range, --hdr-chroma-loc,\n"
@@ -338,7 +338,7 @@ void print_help_hdr() {
       "\n"
       "  --hdr-transfer auto|pq|hlg|sdr|linear\n"
       "  --hdr-primaries auto|bt2020|bt709\n"
-      "  --hdr-matrix auto|bt2020nc|bt709\n"
+      "  --hdr-matrix auto|bt2020nc|bt2020c|bt709\n"
       "  --hdr-range auto|limited|full\n"
       "  --hdr-chroma-loc auto|left|center|topleft\n"
       "  --hdr-chroma-up bilinear|nearest\n"
@@ -1192,7 +1192,7 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
   return true;
 }
 
-// Values read from config/learned_metrics.local.toml (see docs/LEARNED_METRICS_CONFIG.md).
+// Values read from config/learned_metrics.local.toml (see docs/LEARNED_METRICS.md).
 struct LearnedConfig {
   std::string path;
   std::string python;

@@ -37,7 +37,7 @@ VMAF uses one interval for every SDR and HDR model. PU21-PSNR uses the PSNR inte
 Enable QCS with `--qcs`. Override a default interval with `--qcs-range metric=lower:upper`. `--qcs-range` requires `--qcs`. Several intervals may be comma-separated in one option, and the option may be repeated. The two forms can be combined. Naming one metric again with a different interval is an error; the same interval is unchanged. Every selected native metric receives a QCS value, whether that metric runs on the CPU or the GPU. `cvvdp` receives one from its per-frame JOD-equivalent sequence and `cvqa-hdr-nr` from its sampled frames.
 ```bash
 pixvqa --metrics psnr,vmaf \
-  --model model/vmaf_v1.0.16_3d0h.json \
+  --hdr-transfer sdr --model model/vmaf_v1.0.16_3d0h.json \
   --qcs --qcs-range psnr=40:55,vmaf=30:100 \
   -r samples/ref_hevc.mp4 \
   -t samples/dist_hevc.mp4

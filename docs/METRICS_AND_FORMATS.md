@@ -46,8 +46,8 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
 - SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- QCS can be applied to any metric using `--qcs`. CVVDP QCS integrates a per-frame JOD-equivalent sequence taken from the official full-video pass. CompressedVQA-HDR NR QCS uses selected frames at a configurable interval (default approximately one sample per second). Both default to [0, 10], which is used only for QCS and never clamps the reported scores.
-- `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select a fixed set per transfer and fill its colorimetry and display. The set is not the ✅ column: PQ and HLG also include PSNR, XPSNR, SSIM, and MS-SSIM, which stay ⚠️ for HDR perceptual assessment. CVVDP HLG uses the upstream `standard_hdr_hlg` display. CompressedVQA-HDR NR is included for SDR and PQ and excluded for HLG. See [metric groups](CLI_USAGE.md#metric-groups).
+- QCS is available for supported native and learned metrics; see [QCS](QCS.md).
+- Metric groups configure transfer/display defaults and include additional conventional metrics even for HDR; see [CLI Usage](CLI_USAGE.md#metric-groups).
 
 ## Metric Capabilities
 
@@ -56,7 +56,7 @@ PixVQA supports native and Python-based quality metrics. Metrics can be combined
 | Metric | Reference (`-r`) | Test (`-t`) | QCS | Execution |
 |---|---|---|---|---|
 | Native metrics | Raw YUV or compressed video | Raw YUV or compressed video | Per-frame scores; metric-specific default ranges | PixVQA |
-| `cvvdp` | Raw YUV (YUV420p10le PQ/HLG) or compressed video | Raw YUV (YUV420p10le PQ/HLG) or compressed video | Per-frame JOD-equivalent scores; default range [0, 10] | Python adapter |
+| `cvvdp` | Raw YUV420p10le (SDR/PQ/HLG) or compressed | Raw YUV420p10le (SDR/PQ/HLG) or compressed | Per-frame JOD-equivalent scores; default range [0, 10] | Python adapter |
 | `cvqa-hdr-nr` | Not required | Compressed video only | Sampled-frame scores; default range [0, 10] | Python adapter |
 
 **Decoding:** Native metrics require `make swdec` or `make full` for compressed video. Python-based metrics decode compressed video independently of the build.
@@ -73,9 +73,9 @@ PixVQA supports raw YUV and compressed video through FFmpeg.
 
 Compressed video support depends on the available FFmpeg decoders. PixVQA accepts planar 8-bit and 10-bit YUV in 4:2:0, 4:2:2, and 4:4:4 formats; unsupported pixel formats are rejected rather than converted. 4:2:0 requires even width and height. Samples are planar, little-endian, with the low bits occupied.
 
-For AV1 software decoding, FFmpeg must include libdav1d or libaom-av1. NVIDIA NVDEC is limited to HEVC and AV1; `--decode gpu` does not fall back to software decoding. `--decode auto` prefers a linked software decoder. AV1 uses NVDEC only when no software AV1 decoder is linked, and VVC stays on software. There is no codec or container allowlist. A FIFO stays raw.
+AV1 software decoding requires an FFmpeg build with an AV1 decoder (for example, dav1d). NVDEC supports selected HEVC/AV1 formats; `--decode gpu` has no software fallback. `--decode auto` selects a supported decoder when available.
 
-The two inputs are decoded independently and paired in presentation order. Timestamps do not drop, repeat, or resynchronize frames. A length or geometry mismatch is an error.
+Inputs are paired in presentation order. If lengths differ, full-reference metrics evaluate the common frame prefix and emit a warning; incompatible geometry remains an error. PixVQA does not resynchronize timestamps.
 
 ## CPU and GPU Support
 
@@ -91,17 +91,13 @@ The two inputs are decoded independently and paired in presentation order. Times
 | PU21-SSIM | ✅ | ✅ | ✅ | ✅ |
 | PU21-MS-SSIM | ✅ | ✅ | ✅ | ✅ |
 
-Bundled HDR VMAF v1.1.8 assumes limited-range 10-bit 4:2:0 PQ/BT.2020 with the
-BT.2020 non-constant-luminance matrix; users must ensure the input matches.
-PU21 requires PQ or HLG. A dash means that metric has no CUDA implementation.
-VMAF still runs on CPU libvmaf when a GPU is requested. CUDA PSNR, SSIM, and
-MS-SSIM use FP64.
+Bundled HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020 non-constant-luminance samples. PU21 requires PQ or HLG. A dash indicates no CUDA implementation. VMAF always executes on CPU libvmaf.
 
-NVDEC accepts HEVC Main 10 4:2:0 and AV1 8-bit or 10-bit 4:2:0. `--decode gpu` rejects other codecs, including VVC. `--device gpu` has no CPU substitute for a metric that cannot run on the GPU. `--device auto`, the default, runs PSNR, SSIM, MS-SSIM, XPSNR, and the PU21 metrics on CUDA when three things hold: the build includes CUDA, a device with compute capability 8.9 or later is visible, and the input fits that metric's CUDA path. GPU PU21 also needs even chroma geometry. Any other selected metric runs on the CPU, and the execution summary prints the reason, for example `PSNR: cpu (auto: no usable CUDA device: ...)`. VMAF stays on CPU libvmaf without a warning. Because CUDA SSIM and MS-SSIM use FP64 and a different summation order, an `auto` result on a GPU machine can differ from a CPU run in the last printed digits. `--threads auto` uses half of the processors visible to this process, at most 8 and at least 1, for metric workers. Software decoding keeps its own pool of 8 threads on each compressed input.
+`--device auto` uses CUDA for supported metrics when the build, GPU and input format permit; otherwise it uses CPU. `--device gpu` requests GPU execution without silently substituting CPU for GPU-only requests. `--decode gpu` supports selected HEVC/AV1 formats via NVDEC. CPU and GPU floating-point results may differ slightly.
 
 **Limitations:**
 - HDR transfer characteristics (PQ/HLG) come from the stream or from `--hdr-transfer`. They are not inferred from bit depth, BT.2020 primaries, or the filename.
 - A variable frame rate is not treated as constant. XPSNR then requires `--fps`.
 - Unsupported pixel formats are rejected rather than automatically converted.
 
-Option names and defaults are in `pixvqa --help` and `pixvqa --help-hdr`. QCS is in [docs/QCS.md](QCS.md). PQ and HLG setup is in [docs/PU21.md](PU21.md).
+For options see [CLI Usage](CLI_USAGE.md), `pixvqa --help` and `pixvqa --help-hdr`. HDR usage: [PU21](PU21.md).

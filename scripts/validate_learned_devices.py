@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 # Absolute CPU-vs-CUDA tolerances. The cause and the observed spread are in
-# internal/docs/LEARNED_DEVICES.md; CVVDP JOD is on its 0-10 scale, NR on its 0-10
+# docs/LEARNED_METRICS.md; CVVDP JOD is on its 0-10 scale, NR on its 0-10
 # calibrated scale, QCS in percentage points.
 TOLERANCES = {
     "cvvdp_jod": 1e-3,

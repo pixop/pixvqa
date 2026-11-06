@@ -1,6 +1,6 @@
 # Installation & Builds
 
-PixVQA supports Linux x86-64 (Ubuntu 22.04/24.04, including WSL2). Native Windows builds are not validated.
+PixVQA supports Ubuntu 22.04/24.04 x86-64 (including WSL2). Native Windows builds are not validated.
 
 ## Guided installation (recommended)
 
@@ -11,47 +11,33 @@ bash install_pixvqa.sh
 ./bin/pixvqa --version
 ```
 
-The installer offers a dav1d/FFmpeg software-decoding build and optional CUDA/NVDEC support. The NVIDIA build requires a compatible driver and CUDA 12.8 installed beforehand. To isolate PixVQA-managed dependencies under this checkout, instead run:
+The installer offers FFmpeg software decoding and optional CUDA/NVDEC support. NVIDIA requires a compatible driver and CUDA 12.8 already installed. To isolate downloaded dependencies inside the checkout, use `PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh`.
 
-```bash
-PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh
-```
+For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1` and `PIXVQA_ENABLE_NVIDIA=0|1`. Python-backed metrics require [separate setup](LEARNED_METRICS.md).
 
-For unattended installation, use `PIXVQA_ENABLE_DAV1D=0|1` and `PIXVQA_ENABLE_NVIDIA=0|1` to answer the corresponding prompts. **The installer does not install Python-backed metrics**; set them up separately in [Optional Metrics](LEARNED_METRICS.md).
+## Build variants
 
-## Build with GNU Make
+If dependencies are **already installed**, use GNU Make (no downloads):
 
-With dependencies already installed, choose a target (Make does not download dependencies):
-
-| Command | Inputs / acceleration | Executable |
+| Command | Input / acceleration | Output |
 |---|---|---|
-| `make cpu` | Raw YUV; CPU metrics | `build/cpu/pixvqa` |
-| `make swdec` | FFmpeg compressed decoding; CPU metrics | `build/swdec/pixvqa` |
+| `make cpu` | Raw YUV, CPU metrics | `build/cpu/pixvqa` |
+| `make swdec` | FFmpeg compressed decoding, CPU metrics | `build/swdec/pixvqa` |
 | `make full` | FFmpeg, CUDA metrics and NVDEC | `build/full/pixvqa` |
-| `make test-cpu` | CPU self-tests | `build/cpu/selftest` |
 
 ```bash
 make -j"$(nproc)" swdec
-./build/swdec/pixvqa --version
 make install VARIANT=swdec PREFIX="$PWD"
 ./bin/pixvqa --version
 ```
 
-`make` does not replace `bin/pixvqa`; run `make install VARIANT=cpu|swdec|full PREFIX="$PWD"` after building the desired variant. If using checkout-local dependencies, export `PIXVQA_DEPS_ROOT="$PWD/deps"` before `make`.
+`make install` is required to update `bin/pixvqa`; building a variant alone does not. See [Manual Installation](INSTALL.md) for prerequisites and environment variables.
 
-## Try it
-
-For FFmpeg-enabled builds:
+## First evaluation
 
 ```bash
 ./bin/pixvqa --metrics psnr,ssim,msssim \
   -r samples/ref_hevc.mp4 -t samples/dist_hevc.mp4
 ```
 
-For raw YUV (supported by CPU builds), see [CLI Usage](CLI_USAGE.md#raw-yuv). For a basic installation check:
-
-```bash
-python3 scripts/run_qa.py --profile smoke
-```
-
-If automatic installation fails, see the detailed [Manual Installation](INSTALL.md). The smoke test is a user-facing check, not a numerical-conformance certification.
+For raw YUV, color/HDR options, and metric groups, see [CLI Usage](CLI_USAGE.md). Check installed capabilities with `./bin/pixvqa --version`.

@@ -18,11 +18,7 @@ These stay under their own terms. Keep their notices when you redistribute or sh
 | FFmpeg (user-built dependency) | LGPL 2.1 or later when built without `--enable-gpl` and without `--enable-version3` | `docs/INSTALL.md`, `THIRD_PARTY_NOTICES.md` |
 | libdav1d (user-built dependency) | BSD-2-Clause | `THIRD_PARTY_NOTICES.md` |
 | PU21 reference attribution | BSD-3-Clause | `licenses/PU21_BSD.txt` |
-| XPSNR | Implementation in this tree; academic reference in README | ICASSP 2020 paper cited in README |
-| QCS descriptor | Formula implemented in this tree; external reference implementation cited in QA docs | Not a ninth metric; see README |
+| XPSNR | Implementation in this tree; academic reference in [References](REFERENCES.md) | ICASSP 2020 paper cited in README |
+| QCS descriptor | Formula implemented in this tree; external reference implementation in [QCS](QCS.md) | Not a ninth metric; see README |
 
 Do not treat dependency notices or model files as if they were MIT-licensed by the root `LICENSE` alone.
-
-## Historical note
-
-Before this release candidate, `docs/LICENSING.md` compared MIT and BSD-3-Clause without selecting either. The user selected MIT for the PixVQA project contribution.
