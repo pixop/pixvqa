@@ -18,6 +18,8 @@ cp config/learned_metrics.example.toml config/learned_metrics.local.toml
 
 Edit `config/learned_metrics.local.toml` with your paths; it is Git-ignored. CompressedVQA-HDR NR needs its upstream checkout, `.pth` checkpoint and `.npy` calibration profile. The [example configuration](../config/learned_metrics.example.toml) lists the available fields. CVVDP needs its installed executable; for compressed files, `ffmpeg` and `ffprobe` must be on `PATH`.
 
+> ⚠️ **CVVDP GPU resource usage:** High-resolution video and concurrent CVVDP jobs can require substantial GPU memory and compute. Monitor GPU utilization and available VRAM (for example, with `nvidia-smi`) and verify that the workload fits your GPU before running large batches. CVVDP has been verified on NVIDIA GeForce RTX 4070 and RTX 5080; this does not guarantee sufficient resources for every resolution, configuration or degree of parallelism. The optional `--cvvdp-gpu-mem GB` setting provides a memory budget, but is not a substitute for monitoring actual usage.
+
 ## Examples
 
 ```bash

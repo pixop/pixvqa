@@ -61,6 +61,8 @@ Install their environments/assets first: [Learned Metrics](LEARNED_METRICS.md).
 
 CVVDP accepts compressed, raw 10-bit YUV420, and mixed raw/compressed inputs; raw input needs geometry, frame rate and appropriate color interpretation. CVQA-HDR NR does not accept raw YUV or HLG; default sampling is approximately 1 Hz. Both accept `--frames`. When native metrics are selected, learned metrics use the successfully compared frame prefix.
 
+For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; see the [GPU usage warning](LEARNED_METRICS.md#setup).
+
 ## Metric groups
 
 Groups select several metrics and transfer/display defaults. A group can be combined with individual metric names, but not with a different group. All selected backends must be installed.
