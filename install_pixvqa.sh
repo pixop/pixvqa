@@ -91,6 +91,17 @@ case "$nvidia_choice" in
 esac
 printf 'dav1d: %s\n' "$( (( WITH_DAV1D )) && printf yes || printf no )"
 printf 'NVIDIA: %s\n' "$( (( WITH_NVIDIA )) && printf yes || printf no )"
+# Optional learned metrics are Python backends, independent of the native build.
+learned_choice="$(pixvqa_choice PIXVQA_ENABLE_LEARNED)"
+case "$learned_choice" in
+    yes) WITH_LEARNED=1 ;;
+    no) WITH_LEARNED=0 ;;
+    unset)
+        if ask 'Install optional learned metrics (ColorVideoVDP / CompressedVQA-HDR NR)? [y/N] ' no; then WITH_LEARNED=1; else WITH_LEARNED=0; fi
+        ;;
+    *) die 'PIXVQA_ENABLE_LEARNED must be 1/yes or 0/no.' ;;
+esac
+printf 'Learned metrics: %s\n' "$( (( WITH_LEARNED )) && printf yes || printf no )"
 
 # build_decode.sh expects a concrete dav1d library path in the documented setup.
 # Rather than claim untested no-dav1d decoder support, choose the raw-YUV CPU build.
@@ -414,6 +425,10 @@ bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$PIXVQA_EXPECT_BUILD" "$PIXVQ
 
 info 'Running smoke QA on the installed executable'
 pixvqa_run_installed_smoke "$PIXVQA_SRC" "$PREFIX"
+if (( WITH_LEARNED )); then
+    info 'Setting up optional learned metrics'
+    bash "$PIXVQA_SRC/scripts/install_learned_metrics.sh"
+fi
 PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"

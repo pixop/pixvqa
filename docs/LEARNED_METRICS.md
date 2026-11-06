@@ -11,14 +11,16 @@ Both can be combined with native metrics in `--metrics`. The `sdr`, `pq`, and `h
 
 ## Setup
 
-The upstream repositories provide the model implementations and assets. For the tested Python dependencies, create the shared environment using:
+During the guided installation (`bash install_pixvqa.sh`), select **Install optional learned metrics** to create the Python environment and local configuration. This step is independent of CPU/CUDA build selection and is skipped by default. Python 3.12 with `venv` support is required; model checkpoints are not downloaded. Set `PIXVQA_ENABLE_LEARNED=1` (or `0`) for noninteractive installation. Existing environments and local configuration are preserved.
+
+To set up learned metrics separately, run:
 
 ```bash
 scripts/setup_learned_env.sh ~/pixvqa-learned-env ~/src/ColorVideoVDP
 cp config/learned_metrics.example.toml config/learned_metrics.local.toml
 ```
 
-The CompressedVQA-HDR NR checkout, model checkpoint (`.pth`), and calibration profile (`.npy`) must be supplied separately. Edit the local TOML paths (it is ignored by Git). For example:
+The CompressedVQA-HDR NR checkout, model checkpoint (`.pth`), and calibration profile (`.npy`) must still be supplied separately. Edit the local TOML paths (it is ignored by Git). For example:
 
 ```toml
 [learned]

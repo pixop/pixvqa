@@ -14,6 +14,7 @@ bash -n scripts/install_choices.sh
 bash -n scripts/ci/verify_install.sh
 bash -n scripts/ci/prepare_vvc_fixture.sh
 bash -n install_pixvqa.sh
+bash -n scripts/install_learned_metrics.sh
 # shellcheck disable=SC1091
 source "$ROOT/scripts/install_prefix.sh"
 # shellcheck disable=SC1091
@@ -25,15 +26,18 @@ grep -q 'pixvqa_git_clone' install_pixvqa.sh || fail 'installer clones without t
 grep -q 'PIXVQA_QA_CPU' scripts/run_qa.py || fail 'QA runner ignores the installed binary'
 grep -q 'pixvqa_choice' install_pixvqa.sh || fail 'installer has no noninteractive choice'
 grep -q 'Install dav1d' install_pixvqa.sh || fail 'installer dropped the interactive dav1d prompt'
+grep -q 'Install optional learned metrics' install_pixvqa.sh || fail 'installer dropped learned-metrics choice'
 # shellcheck disable=SC1091
 source "$ROOT/scripts/install_choices.sh"
 (
-    unset PIXVQA_ENABLE_DAV1D PIXVQA_ENABLE_NVIDIA
+    unset PIXVQA_ENABLE_DAV1D PIXVQA_ENABLE_NVIDIA PIXVQA_ENABLE_LEARNED
     [[ "$(pixvqa_choice PIXVQA_ENABLE_DAV1D)" == unset ]]
     [[ "$(PIXVQA_ENABLE_DAV1D=1 pixvqa_choice PIXVQA_ENABLE_DAV1D)" == yes ]]
     [[ "$(PIXVQA_ENABLE_DAV1D=yes pixvqa_choice PIXVQA_ENABLE_DAV1D)" == yes ]]
     [[ "$(PIXVQA_ENABLE_NVIDIA=0 pixvqa_choice PIXVQA_ENABLE_NVIDIA)" == no ]]
     [[ "$(PIXVQA_ENABLE_NVIDIA=no pixvqa_choice PIXVQA_ENABLE_NVIDIA)" == no ]]
+    [[ "$(PIXVQA_ENABLE_LEARNED=1 pixvqa_choice PIXVQA_ENABLE_LEARNED)" == yes ]]
+    [[ "$(PIXVQA_ENABLE_LEARNED=0 pixvqa_choice PIXVQA_ENABLE_LEARNED)" == no ]]
     [[ "$(PIXVQA_ENABLE_DAV1D=maybe pixvqa_choice PIXVQA_ENABLE_DAV1D)" == invalid ]]
     [[ "$(PIXVQA_ENABLE_DAV1D= pixvqa_choice PIXVQA_ENABLE_DAV1D)" == invalid ]]
 )

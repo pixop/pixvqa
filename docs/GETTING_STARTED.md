@@ -17,7 +17,7 @@ cd pixvqa
 bash install_pixvqa.sh
 ```
 
-The installer downloads and builds the required dependencies and asks which capabilities to enable. **FFmpeg software decoding** supports compressed video; **NVIDIA CUDA/NVDEC** acceleration is optional and requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed.
+The installer downloads and builds the required dependencies and asks which capabilities to enable. **FFmpeg software decoding** supports compressed video; **NVIDIA CUDA/NVDEC** acceleration is optional and requires a compatible NVIDIA driver and CUDA toolkit 12.8 already installed. The installer also offers an independent, optional learned-metrics Python setup (Python 3.12 required); model assets must be provided separately.
 
 By default, the installer installs the chosen build into **`bin/pixvqa`** inside the checkout.
 

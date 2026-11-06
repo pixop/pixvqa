@@ -2,6 +2,8 @@
 
 This guide builds PixVQA **manually**, using the same pinned dependencies as the guided `install_pixvqa.sh` installer. It targets Linux x86-64 (Ubuntu 22.04/24.04, including WSL2). Native Windows and Git Bash are not supported. The GPU option requires an existing NVIDIA driver and CUDA **12.8** toolkit; this guide does not install either.
 
+The guided installer also offers optional Python-based learned-metrics setup (`PIXVQA_ENABLE_LEARNED=1` to enable noninteractively); it requires Python 3.12 and does not download learned-model assets. See [Learned Metrics](LEARNED_METRICS.md).
+
 The guided installer asks about dav1d and NVIDIA on a terminal. Set `PIXVQA_ENABLE_DAV1D` and `PIXVQA_ENABLE_NVIDIA` to `1` or `0` to answer without a terminal. When either variable is unset, that question is still asked.
 
 **Run only the commands inside Bash code blocks.** Run the blocks in order. Each installation block runs inside `( ... )`, a *subshell*: a failed command stops that block **without closing your interactive Ubuntu terminal**. Look for `PASS:` at the end of each block. **Do not continue after a missing PASS.** Do not run the guided installer during this manual test.

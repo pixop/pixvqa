@@ -21,7 +21,7 @@ Supported formats, backends, and metric-specific restrictions are documented in 
 ## Quick start
 
 **Platform:** Linux x86-64, including Ubuntu 22.04/24.04 and WSL2. Native Windows builds are not validated.
-
+ 
 ```bash
 git clone https://github.com/pixop/pixvqa.git
 cd pixvqa
@@ -29,7 +29,7 @@ bash install_pixvqa.sh
 ./bin/pixvqa --version
 ```
 
-The guided installer lets you choose CPU-only, FFmpeg software decoding, or optional CUDA/NVDEC functionality. CUDA/NVDEC requires a suitable NVIDIA driver and CUDA toolkit 12.8. For the examples below, choose an FFmpeg-enabled build.
+The guided installer lets you choose CPU-only, FFmpeg software decoding, or optional CUDA/NVDEC functionality. It also offers optional learned-metrics environment setup (Python 3.12 required); model assets are supplied separately. CUDA/NVDEC requires a suitable NVIDIA driver and CUDA toolkit 12.8. For the examples below, choose an FFmpeg-enabled build.
 
 Compare the bundled HEVC samples:
 
@@ -49,13 +49,15 @@ For raw YUV, build variants (`make cpu`, `make swdec`, `make full`), and install
 
 ## Common workflows
 
-**Individual metrics:** use `--metrics psnr,ssim,msssim,vmaf` or another comma-separated list. **Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
+**Performance-optimized native metrics:** use `--metrics psnr,ssim,msssim,vmaf` or another comma-separated list.
 
-**Learned metrics:** ColorVideoVDP (`cvvdp`, full-reference) and CompressedVQA-HDR NR (`cvqa-hdr-nr`, no-reference) require external Python dependencies and model files. They can be combined with **native metrics** in `--metrics` and are included in compatible metric groups. See [Learned metrics](docs/LEARNED_METRICS.md).
+**Optional Python-backed metrics:** ColorVideoVDP (`cvvdp`, full-reference) and CompressedVQA-HDR NR (`cvqa-hdr-nr`, no-reference) require external Python dependencies and model files. They can be combined with **native metrics** in `--metrics` and are included in compatible metric groups. See [Learned metrics](docs/LEARNED_METRICS.md).
+
+**Metric groups:** `--metrics sdr`, `--metrics pq`, and `--metrics hlg` select transfer-appropriate metrics and defaults; see [CLI metric groups](docs/CLI_USAGE.md#metric-groups).
 
 **Device selection:** `--device cpu|gpu|auto` controls supported metric implementations. GPU availability and numerical agreement depend on the specific metric and environment; see [Learned Devices](docs/LEARNED_DEVICES.md).
 
-**QCS:** `--qcs` enables temporal quality-consistency analysis where supported. Its interval and learned-metric semantics are described in [QCS](docs/QCS.md).
+**Quality Consistency Score (QCS):** `--qcs` enables temporal quality-consistency analysis where supported. Its interval and learned-metric semantics are described in [QCS](docs/QCS.md).
 
 For full command-line examples, including raw inputs and mixed native/learned evaluations, see [CLI Usage](docs/CLI_USAGE.md). Use `./bin/pixvqa --help`, `--help-advanced`, and `--help-hdr` for the corresponding option groups.
 
