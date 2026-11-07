@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
+BIN = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa")).resolve()
 W = H = 32
 P = [0.353487901, 0.3734658629, 8.277049286e-05, 0.9062562627, 0.09150303166, 0.9099517204, 596.3148142]
 FAILS = 0
