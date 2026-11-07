@@ -2,9 +2,10 @@
 """Mocked compatibility suite for mixed native, CVVDP, and CompressedVQA-HDR NR runs.
 
 No GPU, PyTorch, checkpoint, or upstream checkout is needed. The learned backends are
-replaced by mock Python packages on PYTHONPATH. Cases that need a native decoder use
-PIXVQA_DECODE_BIN (default build/swdec/pixvqa) and ffmpeg; they print SKIP when either
-is absent.
+replaced by mock Python packages on PYTHONPATH. Mocked CLI cases pin the CPU binary
+(build/cpu/pixvqa) even when PIXVQA_BIN points at a decode build. Cases that need a
+native decoder use PIXVQA_DECODE_BIN (default build/swdec/pixvqa) and ffmpeg; they
+print SKIP when either is absent.
 """
 from __future__ import annotations
 
@@ -19,9 +20,41 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PIXVQA = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
+CLI_BIN_DEFAULT = ROOT / "build" / "cpu" / "pixvqa"
 DECODE_BIN = Path(os.environ.get("PIXVQA_DECODE_BIN", ROOT / "build" / "swdec" / "pixvqa"))
 FFMPEG = os.environ.get("PIXVQA_TEST_FFMPEG") or shutil.which("ffmpeg")
+
+
+def decode_profile(binary: Path) -> str:
+    if not binary.is_file():
+        return "missing"
+    try:
+        proc = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    for line in (proc.stdout + proc.stderr).splitlines():
+        if line.startswith("decode:"):
+            return line.split(":", 1)[1].strip()
+    return "unknown"
+
+
+def resolve_cli_binary() -> Path:
+    """CPU-only pixvqa for mocked CLI tests (no FFmpeg probe, no libvmaf)."""
+    override = os.environ.get("PIXVQA_BIN")
+    if not override:
+        return CLI_BIN_DEFAULT
+    path = Path(override)
+    if path.resolve() == CLI_BIN_DEFAULT.resolve():
+        return path
+    if decode_profile(path) != "none":
+        if CLI_BIN_DEFAULT.is_file():
+            print(f"note: PIXVQA_BIN={path} has a decoder; mocked CLI tests use {CLI_BIN_DEFAULT}",
+                  file=sys.stderr)
+            return CLI_BIN_DEFAULT
+    return path
+
+
+PIXVQA = resolve_cli_binary()
 
 
 def decode_bin_current() -> bool:

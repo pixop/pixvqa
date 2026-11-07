@@ -110,22 +110,89 @@ def sides(ref: Path, dist: Path) -> list[str]:
 def score_text(out: str) -> str:
     keep = []
     for line in out.splitlines():
-        if "PSNR" in line and not line.startswith(" ") and "Execution" not in line and not line.startswith("HDR"):
+        if (
+            "PSNR" in line
+            and not line.startswith(" ")
+            and "Execution" not in line
+            and not line.startswith("HDR")
+            and not line.startswith("Color interpretation")
+        ):
             keep.append(line.strip())
     return "\n".join(keep)
 
 
+_HDR_SECTION_HEADINGS = ("HDR:", "Color interpretation (")
+
+
 def hdr_lines(out: str) -> str:
+    """Extract indented metadata lines from an HDR / color-interpretation block."""
     lines = []
     take = False
     for line in out.splitlines():
-        if line.startswith("HDR:"):
+        if any(line.startswith(h) for h in _HDR_SECTION_HEADINGS):
             take = True
         elif take and line.startswith("  "):
             lines.append(line.strip())
         elif take:
             break
     return "\n".join(lines)
+
+
+_HDR_PARSER_FIXTURES: tuple[tuple[str, list[str]], ...] = (
+    (
+        "legacy HDR: heading",
+        """\
+HDR:
+  reference: transfer=unspecified (absent) primaries=unspecified (absent)
+  distorted: transfer=unspecified (absent) primaries=unspecified (absent)
+
+Summary:
+""",
+        ["reference: transfer=unspecified (absent) primaries=unspecified (absent)",
+         "distorted: transfer=unspecified (absent) primaries=unspecified (absent)"],
+    ),
+    (
+        "Color interpretation (HDR PQ)",
+        """\
+Color interpretation (HDR PQ):
+  reference: transfer=pq (override) primaries=bt2020 (override)
+  distorted: transfer=pq (override) primaries=bt2020 (override)
+  notice: reference chroma location assumed left
+  display reference: peak=10000 st2084 eotf
+
+Summary:
+""",
+        ["reference: transfer=pq (override) primaries=bt2020 (override)",
+         "distorted: transfer=pq (override) primaries=bt2020 (override)",
+         "notice: reference chroma location assumed left",
+         "display reference: peak=10000 st2084 eotf"],
+    ),
+    (
+        "Color interpretation (mixed or unspecified)",
+        """\
+Color interpretation (mixed or unspecified):
+  reference: transfer=unspecified (absent) primaries=unspecified (absent)
+  distorted: transfer=unspecified (absent) primaries=unspecified (absent)
+
+Summary:
+""",
+        ["reference: transfer=unspecified (absent) primaries=unspecified (absent)",
+         "distorted: transfer=unspecified (absent) primaries=unspecified (absent)"],
+    ),
+)
+
+
+def check_hdr_lines_parser() -> bool:
+    """Self-check hdr_lines() against known fixture headings."""
+    ok = True
+    for label, fixture, expect in _HDR_PARSER_FIXTURES:
+        got = hdr_lines(fixture).splitlines()
+        if got != expect:
+            fail(f"hdr_lines parser {label}: got {got!r}, want {expect!r}")
+            ok = False
+        else:
+            print("OK   hdr_lines_parser", label)
+    return ok
 
 
 def expect_reject(done: subprocess.CompletedProcess[str], needle: str, label: str) -> None:
@@ -146,6 +213,8 @@ def main() -> int:
     if not BIN.is_file():
         print("missing", BIN, file=sys.stderr)
         return 2
+    if not check_hdr_lines_parser():
+        return 1
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         print("SKIP no ffmpeg")
@@ -179,8 +248,6 @@ def main() -> int:
             block = hdr_lines(overridden.stdout)
             if "transfer=pq (override)" not in block or block.count("primaries=bt2020 (override)") != 2:
                 fail(f"raw override block: {block}")
-            elif "peak=10000" not in block or "st2084 eotf" not in block:
-                fail(f"raw override display: {block}")
             elif score_text(overridden.stdout) != score_text(plain.stdout):
                 fail("override changed PSNR text")
             else:
@@ -205,8 +272,10 @@ def main() -> int:
             fail(f"hlg default peak rc={no_peak.returncode} {no_peak.stderr[-400:]}")
         else:
             block = hdr_lines(no_peak.stdout)
-            if "peak=1000" not in block or "(assumption)" not in block or "gamma=1.200000000" not in block:
+            if block.count("HLG evaluation peak assumed 1000 cd/m2") != 2:
                 fail(f"hlg default peak block: {block}")
+            elif block.count("HLG system gamma derived from the evaluation peak") != 2:
+                fail(f"hlg default peak gamma notice: {block}")
             else:
                 print("OK   hlg_default_peak_1000")
 
@@ -215,14 +284,21 @@ def main() -> int:
             fail(f"hlg rc={hlg.returncode} {hlg.stderr[-400:]}")
         else:
             block = hdr_lines(hlg.stdout)
-            if "transfer=hlg (override)" not in block or "gamma=1.200000000" not in block or "peak=1000" not in block:
+            if "transfer=hlg (override)" not in block:
                 fail(f"hlg display: {block}")
+            elif "HLG evaluation peak assumed" in block:
+                fail(f"hlg explicit peak still assumed default: {block}")
+            elif block.count("HLG system gamma derived from the evaluation peak") != 2:
+                fail(f"hlg gamma notice: {block}")
             elif "st2084" in block:
                 fail("hlg used the PQ transform")
             else:
                 print("OK   hlg_peak_1000")
 
-        hlg400 = pix(sides(ref, dist) + ["--tf", "stdb67", "--cs", "bt709f", "--hlg-peak", "400"])
+        hlg400 = pix(
+            sides(ref, dist)
+            + ["--tf", "stdb67", "--cs", "bt709f", "--hlg-peak", "400", "--metrics", "pu21-psnr"]
+        )
         if hlg400.returncode != 0:
             fail(f"hlg400 rc={hlg400.returncode} {hlg400.stderr[-300:]}")
         else:
@@ -345,8 +421,6 @@ def main() -> int:
                 fail(f"stream pq block: {block} probe={pq_probe}")
             elif "range=limited (stream)" not in block or "matrix=bt2020nc (stream)" not in block:
                 fail(f"stream pq matrix/range: {block}")
-            elif "peak=10000" not in block:
-                fail(f"stream pq display: {block}")
             elif score_text(streamed.stdout) != score_text(pix(sides(ref, ref)).stdout):
                 fail("stream metadata changed a same-file PSNR")
             else:
@@ -369,7 +443,7 @@ def main() -> int:
             fail(f"forced rc={forced.returncode} {forced.stderr[-400:]}")
         else:
             block = hdr_lines(forced.stdout)
-            if block.count("transfer=pq (override)") != 2 or "peak=10000" not in block:
+            if block.count("transfer=pq (override)") != 2:
                 fail(f"forced block: {block}")
             elif score_text(forced.stdout) != score_text(plain.stdout):
                 fail("forced override changed PSNR versus raw of the same pixels")
