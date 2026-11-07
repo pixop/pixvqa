@@ -15,6 +15,19 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def _maybe_reexec_with_repo_venv() -> None:
+    """Use the repository-local .venv when system Python lacks NumPy."""
+    try:
+        import numpy  # noqa: F401
+    except ModuleNotFoundError:
+        venv_py = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python"
+        if venv_py.is_file() and Path(sys.executable).resolve() != venv_py.resolve():
+            os.execv(str(venv_py), [str(venv_py), *sys.argv])
+
+
+_maybe_reexec_with_repo_venv()
+
 import numpy as np
 import torch
 from pytorch_msssim import ms_ssim
@@ -30,7 +43,7 @@ CUDA_FP32_ATOL = 1.5e-4
 WEIGHTS = np.array([0.0448, 0.2856, 0.3001, 0.2363, 0.1333], dtype=np.float64)
 WIN = 11
 SCORE = re.compile(
-    r"\[ MS-SSIM  y:([0-9.eE+-]+) u:([0-9.eE+-]+) v:([0-9.eE+-]+) avg:([0-9.eE+-]+) \]"
+    r"\[ MS-SSIM y:([0-9.eE+-]+) u:([0-9.eE+-]+) v:([0-9.eE+-]+) avg:([0-9.eE+-]+) \]"
 )
 COMP = re.compile(
     r"msssim_comp ([yuv]) (\d+) (\d+) (\d+) ([0-9.eE+-]+) ([0-9.eE+-]+)"

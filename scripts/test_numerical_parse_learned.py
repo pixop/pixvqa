@@ -111,12 +111,13 @@ Total frames:5
 
 def test_metric_name_collision_matrix() -> None:
     stdout = (
-        "[ PU21-PSNR     r:24.0 g:24.0 b:24.0 avg:24.0 ]\n"
-        "[ PU21-SSIM     y:0.80 u:n/a v:n/a avg:0.80 ]\n"
-        "[ PU21-MS-SSIM  y:0.88 u:n/a v:n/a avg:0.88 ]\n"
-        "[ MS-SSIM  y:0.98 u:0.98 v:0.98 avg:0.98 ]\n"
-        "[ SSIM  y:0.99 u:inf v:inf avg:0.99 ]\n"
-        "[ PSNR  y:40.0 u:40.0 v:40.0 avg:40.0 ] [ MSE  y:0 u:0 v:0 avg:0 ]\n"
+        "[ PU21-PSNR r:24.0 g:24.0 b:24.0 avg:24.0 ]\n"
+        "[ PU21-SSIM y:0.80 u:n/a v:n/a avg:0.80 ]\n"
+        "[ PU21-MS-SSIM y:0.88 u:n/a v:n/a avg:0.88 ]\n"
+        "[ MS-SSIM y:0.98 u:0.98 v:0.98 avg:0.98 ]\n"
+        "[ SSIM y:0.99 u:inf v:inf avg:0.99 ]\n"
+        "[ PSNR y:40.0 u:40.0 v:40.0 avg:40.0 ]\n"
+        "[ MSE y:0 u:0 v:0 avg:0 ]\n"
         "[ XPSNR y:52.2602 u:inf v:inf avg:54.0211 min:52.2602 ]\n"
     )
     parsed = parse_run(stdout, "", 0)
@@ -135,7 +136,7 @@ def test_metric_name_collision_matrix() -> None:
 
 
 def test_ssim_inf_chroma_finite_avg() -> None:
-    stdout = "[ SSIM  y:0.990000 u:inf v:inf avg:0.990000 ]\n"
+    stdout = "[ SSIM y:0.990000 u:inf v:inf avg:0.990000 ]\n"
     parsed = parse_run(stdout, "", 0)
     assert parsed.ssim_avg == 0.99
 

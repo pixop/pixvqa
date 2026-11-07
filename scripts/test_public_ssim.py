@@ -16,6 +16,19 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def _maybe_reexec_with_repo_venv() -> None:
+    """Use the repository-local .venv when system Python lacks NumPy."""
+    try:
+        import numpy  # noqa: F401
+    except ModuleNotFoundError:
+        venv_py = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python"
+        if venv_py.is_file() and Path(sys.executable).resolve() != venv_py.resolve():
+            os.execv(str(venv_py), [str(venv_py), *sys.argv])
+
+
+_maybe_reexec_with_repo_venv()
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,10 +38,10 @@ PRINT_ATOL = 5.1e-7
 FAILS = 0
 
 SSIM_RE = __import__("re").compile(
-    r"\[ SSIM  y:(-?[0-9.]+) u:(-?[0-9.]+) v:(-?[0-9.]+) avg:(-?[0-9.]+) \]"
+    r"\[ SSIM y:(-?[0-9.]+) u:(-?[0-9.]+) v:(-?[0-9.]+) avg:(-?[0-9.]+) \]"
 )
 MS_RE = __import__("re").compile(
-    r"\[ MS-SSIM  y:(-?[0-9.]+) u:(-?[0-9.]+) v:(-?[0-9.]+) avg:(-?[0-9.]+) \]"
+    r"\[ MS-SSIM y:(-?[0-9.]+) u:(-?[0-9.]+) v:(-?[0-9.]+) avg:(-?[0-9.]+) \]"
 )
 
 
