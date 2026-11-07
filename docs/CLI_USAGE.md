@@ -48,7 +48,7 @@ Auto-selection does not support HLG, other resolutions, ambiguous transfer, or u
 
 ### Optional learned metrics
 
-Install one Python environment for **ColorVideoVDP** and **CompressedVQA-HDR NR**, and (with the same interpreter) the **SimpleVQA** reference module — supply upstream repos and checkpoints separately; SimpleVQA is not a `pixvqa --metrics` name yet. See [Learned Metrics](LEARNED_METRICS.md) and [SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md).
+Install one Python environment for **ColorVideoVDP**, **CompressedVQA-HDR NR**, and **SimpleVQA** — supply upstream repos and checkpoints separately (PixVQA does not download weights). Use `pixvqa --metrics simplevqa` for SDR compressed video, or `python -m pixvqa_simplevqa` for the reference module. See [Learned Metrics](LEARNED_METRICS.md) and [SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md).
 
 ```bash
 # ColorVideoVDP (full-reference):

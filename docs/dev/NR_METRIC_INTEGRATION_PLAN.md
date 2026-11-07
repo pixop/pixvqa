@@ -1,6 +1,8 @@
 # NR metric integration plan (development)
 
-Status: proposed implementation contracts; **no SimpleVQA/ChipQA inference implemented yet**.
+Status: proposed implementation contracts; **standalone SimpleVQA upstream reference runner**
+(`python -m pixvqa_simplevqa`, [`SIMPLEVQA_REFERENCE.md`](SIMPLEVQA_REFERENCE.md)) exists for external parity runs.
+**ChipQA** is not integrated. **`pixvqa --metrics simplevqa`** (SDR-only NR, Python backend) is implemented in `src/main.cpp` with tests in `scripts/test_learned_metrics_cli.py`.
 
 ## Existing integration points
 

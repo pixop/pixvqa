@@ -18,6 +18,7 @@ from pixvqa_simplevqa.adapter import (
     inspect_video,
     parse_score,
     run,
+    runtime_stack_versions,
     validate,
 )
 
@@ -73,8 +74,13 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     ):
         info = validate(repo, checkpoint, video)
         assert info["input"] == probe
+        rs = info["runtime_stack"]
+        assert isinstance(rs, dict)
+        assert rs.get("python_version")
+        assert "python_implementation" in rs
         result = run(repo, checkpoint, video, device="cpu")
         assert result["quality_score"] == 0.723456
+        assert result["runtime_stack"] == rs
         assert result["temporal_semantics"] == "pooled-video"
         assert result["checkpoint_sha256"]
         assert result["backend"] == "upstream-test_demo"
@@ -324,6 +330,11 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         pass
     else:
         raise AssertionError("missing checkpoint accepted")
+
+    # Pip metadata snapshot (stdlib only; optional wheels may be absent in CI)
+    meta = runtime_stack_versions()
+    assert meta.get("python_version")
+    assert meta.get("python_implementation")
 
 print(
     "PASS: SimpleVQA reference adapter preflight, staging, output, "

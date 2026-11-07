@@ -7,9 +7,11 @@ This is a parity baseline, not a native implementation.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import importlib.util
 import json
 import math
+import platform
 import re
 import subprocess
 import sys
@@ -26,6 +28,15 @@ class InferenceError(RuntimeError):
 
 
 REQUIRED_IMPORTS = ("torch", "torchvision", "pytorchvideo", "cv2", "PIL", "numpy")
+# Pip distribution names for metadata.version (no import of torch / cv2 required).
+_RUNTIME_DIST_NAMES = (
+    ("torch", "torch"),
+    ("torchvision", "torchvision"),
+    ("pytorchvideo", "pytorchvideo"),
+    ("numpy", "numpy"),
+    ("opencv_python", "opencv-python"),
+    ("pillow", "Pillow"),
+)
 MODEL_FILES = ("test_demo.py", "model/UGC_BVQA_model.py")
 SCORE_RE = re.compile(r"^\s*(.+),\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*$")
 
@@ -45,6 +56,24 @@ def digest(path: Path) -> str:
         for chunk in iter(lambda: inp.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def runtime_stack_versions() -> dict[str, str | None]:
+    """Best-effort versions for experiment manifests (pip metadata only; no heavy imports).
+
+    Values are None when the distribution is not installed in the current interpreter
+    (e.g. minimal CI). CUDA / compiled feature flags are not queried here.
+    """
+    versions: dict[str, str | None] = {
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+    }
+    for key, dist in _RUNTIME_DIST_NAMES:
+        try:
+            versions[key] = importlib.metadata.version(dist)
+        except importlib.metadata.PackageNotFoundError:
+            versions[key] = None
+    return versions
 
 
 def _run_ffprobe(ffprobe: str, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -259,7 +288,14 @@ def validate(repo: Path, checkpoint: Path, video: Path, *,
     tr = meta.get("transfer")
     if isinstance(tr, str) and tr.strip().lower() in _HDR_TRANSFER_REJECT:
         raise SetupError("SimpleVQA reference backend supports SDR only; PQ/HLG rejected")
-    return {"repo": str(repo), "checkpoint": str(checkpoint), "video": str(video), "input": meta}
+    out: dict[str, object] = {
+        "repo": str(repo),
+        "checkpoint": str(checkpoint),
+        "video": str(video),
+        "input": meta,
+        "runtime_stack": runtime_stack_versions(),
+    }
+    return out
 
 
 def parse_score(text: str, expected_video: Path) -> float:
@@ -350,6 +386,7 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
         "video": str(video), "video_metadata": info["input"],
         "backend": "upstream-test_demo", "temporal_semantics": "pooled-video",
         "slowfast_pretrained_source": "upstream PyTorchVideo pretrained cache/download",
+        "runtime_stack": info.get("runtime_stack") or runtime_stack_versions(),
     }
 
 

@@ -6,7 +6,7 @@
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP** and no-reference **CompressedVQA-HDR NR**. The same optional **repository-local** `.venv` can also satisfy dependencies for the **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`), which is not yet registered under `pixvqa --metrics` — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
+PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP**, no-reference **CompressedVQA-HDR NR**, and no-reference **SimpleVQA** (`pixvqa --metrics simplevqa`, SDR compressed video only). The same optional **repository-local** `.venv` can also satisfy the standalone **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`) — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
 
 PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build. CPU, optional CUDA metric acceleration, and NVDEC are available depending on the build.
 

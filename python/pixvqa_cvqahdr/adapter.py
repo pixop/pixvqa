@@ -106,6 +106,11 @@ def sampling_plan(frame_count: int, fps: float, interval_sec: float = 1.0) -> di
             f"clip has {frame_count} frames but the official NR sampler needs at least "
             f"{interval_frames} frames at rounded {rounded_fps} fps"
         )
+    if sampled_frames < 2:
+        raise PreflightError(
+            f"NR sampling buffer: clip has only {sampled_frames} complete interval(s); need at least 2 "
+            f"({2 * interval_frames} frames at rounded {rounded_fps} fps)"
+        )
     return {
         "opencv_frame_count": frame_count,
         "opencv_fps": fps,

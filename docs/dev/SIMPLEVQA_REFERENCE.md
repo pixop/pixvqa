@@ -1,7 +1,9 @@
-# SimpleVQA reference runner: integration in progress
+# SimpleVQA reference runner
 
-**Status:** standalone upstream reference runner; **not yet exposed by**
-`pixvqa --metrics simplevqa`. No numerical parity or speedup has been claimed.
+**Status:** standalone upstream reference runner (`python -m pixvqa_simplevqa`) and
+**public CLI dispatch** via `pixvqa --metrics simplevqa` (SDR-only NR; pooled score
+semantics; QCS integrates the pooled score only). Numerical parity is verified on the
+official upstream clip below; no speedup claims.
 
 ## Upstream and dependencies
 
@@ -49,7 +51,8 @@ The runner executes upstream `test_demo.py` in an isolated temporary working
 directory using symlinks to the original sources and a symlink for
 `ckpts/UGC_BVQA_model.pth` pointing at your checkpoint. It does not edit the
 upstream checkout or copy full trees. Output is one JSON record containing the
-pooled quality score, model SHA-256, revision and input metadata (including
+pooled quality score, model SHA-256, upstream revision, **runtime stack**
+(pip `importlib.metadata` versions for torch/torchvision/pytorchvideo/NumPy/OpenCV/Pillow when installed, plus Python implementation/version), and input metadata (including
 `duration_seconds` and `color_transfer` when ffprobe reports them). Failure
 exits: 2 for setup, 1 for runtime/inference. At present it runs the upstream
 processing without a frame cap, optimizer, temporal score trace or QCS.
@@ -94,8 +97,10 @@ when stderr is empty) is included in the error text for diagnosis.
 
 ## Validation gates for promotion to public CLI
 
-1. Resolve upstream source revision, model checkpoint hash, and SlowFast weight
-   artifact hash in the experiment manifest.
+1. Resolve upstream source revision, model checkpoint hash, SlowFast weight
+   artifact hash, and **pinned pip versions** (see `runtime_stack` in JSON and
+   [`python/requirements/learned-env.txt`](../../python/requirements/learned-env.txt))
+   in the experiment manifest.
 2. Generate bounded SDR reference clips from the local real-video corpus.
 3. Compare direct official demo output to wrapper output for CPU/CUDA with
    identical inputs and pinned dependencies.

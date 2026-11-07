@@ -6,7 +6,7 @@ Up to **three** Python-backed stacks share one interpreter when you use the lock
 |---|---|---|
 | `cvvdp` ([ColorVideoVDP](https://github.com/gfxdisp/ColorVideoVDP)) | Full-reference JOD (`pixvqa --metrics cvvdp`) | Compressed or raw YUV420p10le, including mixed raw/compressed |
 | `cvqa-hdr-nr` ([CompressedVQA-HDR](https://github.com/sunwei925/CompressedVQA-HDR)) | No-reference (`pixvqa --metrics cvqa-hdr-nr`) | Compressed SDR and HDR10; not raw YUV or HLG |
-| SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | **Standalone reference only** — `PYTHONPATH=python …/bin/python -m pixvqa_simplevqa` ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)); **not** a `pixvqa --metrics` name yet | Compressed **SDR** only (wrapper rejects PQ/HLG); raw YUV rejected |
+| SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | No-reference (`pixvqa --metrics simplevqa`); same module also runs standalone ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)) | Compressed **SDR** only (explicit PQ/HLG rejected; unknown/missing stream transfer is allowed at the C++ gate—Python still ffprobes); raw YUV rejected |
 
 What you must provide falls into **two** buckets:
 

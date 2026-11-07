@@ -30,11 +30,23 @@ def decode_bin_current() -> bool:
     if not DECODE_BIN.is_file() or not main_cpp.is_file():
         return False
     return DECODE_BIN.stat().st_mtime >= main_cpp.stat().st_mtime
+
+
+def decode_bin_has_vmaf() -> bool:
+    """True when the pinned libvmaf static library is present for decode builds."""
+    prefix = Path(os.environ.get("LIBVMAF_PREFIX", ROOT / "deps/libvmaf-74f930d"))
+    for candidate in (prefix / "lib", prefix / "lib64", prefix / "lib/x86_64-linux-gnu"):
+        if (candidate / "libvmaf.a").is_file():
+            return True
+    return False
+
+
 FAILS = 0
 
 CVVDP_JOD = "9.311432838439941"
 NR_SCORE = "7.40969689895428"
 NR_RAW = "-0.1277415007352829"
+SVQA_SCORE = "3.141592653589793"
 # frame_index, time_seconds, raw quality1, calibrated score (120 frames at 60000/1001)
 NR_SAMPLES = [
     [30, 30 / (60000 / 1001), -0.10000000149011612, 7.3],
@@ -95,6 +107,9 @@ if value("--protocol") == "lines":
                       "pixvqa-value temporal_basis per-frame-jod-equivalent"]
             for i, (q, jod) in enumerate(frames):
                 lines.append("pixvqa-sample %d %d %r %r %r" % (i, i, i / 60.0, q, jod))
+    elif NAME == "simplevqa":
+        lines += ["pixvqa-value quality_score " + os.environ.get("MOCK_SVQA_SCORE", "@SVQA_SCORE@"),
+                  "pixvqa-value temporal_semantics pooled-video"]
     else:
         samples = json.loads(os.environ.get("MOCK_NR_SAMPLES", "@SAMPLES@"))
         padded = os.environ.get("MOCK_NR_PADDED", "0" if "--verify-decoded-frames" in args else "unknown")
@@ -116,6 +131,10 @@ elif NAME == "cvvdp":
                        "reference": value("--ref"), "test": value("--test"),
                        "output_json": None if transient else record,
                        "backend_record": record}, separators=(",", ":")) + "\n"
+elif NAME == "simplevqa":
+    text = json.dumps({"metric": "simplevqa", "quality_score": @SVQA_SCORE@,
+                       "device": value("--device"), "test": value("--test"),
+                       "output_json": None if transient else record}, separators=(",", ":")) + "\n"
 else:
     text = json.dumps({"metric": "cvqa-hdr-nr", "quality_score": @SCORE@,
                        "raw_model_score": @RAW@, "sampled_frames": 2, "device": value("--device"),
@@ -149,12 +168,17 @@ def ok(name: str) -> None:
 
 
 def write_mocks(root: Path) -> None:
-    for package, name, env in (("pixvqa_cvvdp", "cvvdp", "CVVDP"), ("pixvqa_cvqahdr", "cvqa-hdr-nr", "NR")):
+    for package, name, env in (
+            ("pixvqa_cvvdp", "cvvdp", "CVVDP"),
+            ("pixvqa_cvqahdr", "cvqa-hdr-nr", "NR"),
+            ("pixvqa_simplevqa", "simplevqa", "SVQA"),
+    ):
         directory = root / package
         directory.mkdir()
         (directory / "__init__.py").write_text("", encoding="utf-8")
         source = (MOCK.replace("@NAME@", name).replace("@ENV@", env).replace("@JOD@", CVVDP_JOD)
                   .replace("@SCORE@", NR_SCORE).replace("@RAW@", NR_RAW)
+                  .replace("@SVQA_SCORE@", SVQA_SCORE)
                   .replace("@SAMPLES@", json.dumps(NR_SAMPLES))
                   .replace("@CVVDP_FRAMES@", json.dumps(CVVDP_FRAMES)))
         (directory / "__main__.py").write_text(source, encoding="utf-8")
@@ -182,15 +206,70 @@ class Suite:
         self.fake_mp4 = tmp / "fake.mp4"
         self.fake_mp4.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 64)
 
+        def touch_copy(rel: str) -> Path:
+            p = tmp / rel
+            shutil.copyfile(self.fake_mp4, p)
+            return p
+
+        # Placeholder paths so classify_side(stat) succeeds (minimal valid ftyp box).
+        self.ref_mp4 = touch_copy("ref.mp4")
+        self.dist_mp4 = touch_copy("dist.mp4")
+        self.ref_mkv = touch_copy("ref.mkv")
+        self.dist_mkv = touch_copy("dist.mkv")
+        self.r_mkv = touch_copy("r.mkv")
+        self.d_mkv = touch_copy("d.mkv")
+        self.a_mp4 = touch_copy("a.mp4")
+        self.b_mp4 = touch_copy("b.mp4")
+        self.x_mp4 = touch_copy("x.mp4")
+
+        # Isolate tests from a developer's real config/learned_metrics.local.toml and
+        # supply minimal on-disk NR assets so --metrics all / sdr can reach CVVDP errors.
+        nr_repo = tmp / "stub-CompressedVQA-HDR"
+        (nr_repo / "NR").mkdir(parents=True)
+        (nr_repo / "NR" / "NR_model.py").write_text("# stub\n", encoding="utf-8")
+        (nr_repo / "NR_HDR_VQA.pth").write_bytes(b"x")
+        (nr_repo / "NR_HDR_VQA.npy").write_bytes(b"x")
+        cfg = tmp / "learned_metrics.local.toml"
+        cfg.write_text(
+            f'[learned]\npython = "{sys.executable}"\nadapter_path = "{self.mocks}"\n\n'
+            f'[cvqa-hdr-nr]\nrepository = "{nr_repo}"\n'
+            f'checkpoint = "{nr_repo / "NR_HDR_VQA.pth"}"\nprofile = "{nr_repo / "NR_HDR_VQA.npy"}"\n',
+            encoding="utf-8",
+        )
+        self.learned_stub_config = cfg
+
+        # 1920x1080 raw YUV for VMAF auto model selection (bundled JSON models).
+        self.hd_ref = tmp / "hd-ref.yuv"
+        self.hd_test = tmp / "hd-test.yuv"
+        self.hd_pair_ok = False
+        if FFMPEG:
+            ok = True
+            for path in (self.hd_ref, self.hd_test):
+                made = subprocess.run(
+                    [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=60",
+                     "-frames:v", "2", "-pix_fmt", "yuv420p10le", "-f", "rawvideo", str(path)],
+                    capture_output=True, text=True,
+                )
+                if made.returncode != 0:
+                    ok = False
+                    break
+            self.hd_pair_ok = ok
+
+    def raw_pair_hd(self, hdr_transfer: str | None = None) -> list[str]:
+        """1920x1080 420p10le pair; optional --hdr-transfer for VMAF auto on raw YUV."""
+        extra = ["--hdr-transfer", hdr_transfer] if hdr_transfer else []
+        return [*extra, "-r", str(self.hd_ref), "-t", str(self.hd_test), "-s", "1920x1080",
+                "-f", "420p:10", "--fps", "60"]
+
     def env(self, **extra: str) -> dict[str, str]:
         env = os.environ.copy()
         for key in list(env):
             if key.startswith("MOCK_") or key in ("PIXVQA_CVVDP_PYTHON", "PIXVQA_CVQAHDR_PYTHON",
-                                                  "PIXVQA_QCS_TRACE"):
+                                                  "PIXVQA_SIMPLEVQA_PYTHON", "PIXVQA_QCS_TRACE"):
                 env.pop(key)
         env["PYTHONPATH"] = str(self.mocks)
         env["MOCK_LOG"] = str(self.log)
-        env["PIXVQA_LEARNED_CONFIG"] = "none"
+        env["PIXVQA_LEARNED_CONFIG"] = str(self.learned_stub_config)
         env.update(extra)
         return env
 
@@ -231,6 +310,10 @@ class Suite:
     def nr(self) -> list[str]:
         return ["--cvqahdr-python", sys.executable, "--cvqahdr-repo", "/upstream",
                 "--cvqahdr-checkpoint", "/checkpoint.pth", "--cvqahdr-profile", "/profile.npy"]
+
+    def sv(self) -> list[str]:
+        return ["--simplevqa-python", sys.executable, "--simplevqa-repo", "/upstream_simplevqa",
+                "--simplevqa-checkpoint", "/simplevqa.pth"]
 
     def raw_pair(self, ref: Path | None = None, test: Path | None = None) -> list[str]:
         return ["-r", str(ref or self.ref), "-t", str(test or self.test), "-s", "16x16", "-f", "420p:10",
@@ -279,7 +362,7 @@ def geometry_bind_cases(s: Suite) -> None:
 
 
 def verbosity_cases(s: Suite) -> None:
-    proc = s.run(["-v", "1", "--metrics", "cvvdp", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp()])
+    proc = s.run(["-v", "1", "--metrics", "cvvdp", "-r", str(s.ref_mkv), "-t", str(s.dist_mkv), *s.cvvdp()])
     if proc.returncode == 2 and "incompatible" in proc.stderr and "-v" in proc.stderr:
         fail("cvvdp-v1-learned-only", proc.stderr[-400:])
     elif expect("cvvdp-v1-learned-only", proc, 0, needles=["mock cvvdp warning"]):
@@ -302,12 +385,14 @@ def verbosity_cases(s: Suite) -> None:
     elif proc.returncode == 0:
         ok("native-cvvdp-v0-summary-only")
 
-    if not DECODE_BIN.is_file() or not FFMPEG or not decode_bin_current():
-        print("SKIP pq -v cases (need current PIXVQA_DECODE_BIN built from this tree; make swdec or full)")
+    if (not DECODE_BIN.is_file() or not FFMPEG or not decode_bin_current() or not s.hd_pair_ok
+            or not decode_bin_has_vmaf()):
+        print("SKIP pq -v cases (need current PIXVQA_DECODE_BIN with libvmaf, ffmpeg, "
+              "and 1920x1080 raw YUV)")
     else:
         dist = s.tmp / "pq-dist.mp4"
         made = subprocess.run(
-            [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=16x16:rate=60",
+            [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=60",
              "-frames:v", "2", "-c:v", "libx264", "-qp", "28", "-pix_fmt", "yuv420p10le",
              "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
              str(dist)],
@@ -316,8 +401,8 @@ def verbosity_cases(s: Suite) -> None:
         if made.returncode != 0:
             print(f"SKIP pq -v cases (ffmpeg: {made.stderr.strip()[-120:]})")
         else:
-            pq_run = ["--metrics", "pq", "-r", str(s.ref), "-t", str(dist),
-                      "-s", "16x16", "-f", "420p:10", "--fps", "60", *s.cvvdp(), *s.nr()]
+            pq_run = ["--metrics", "pq", "-r", str(s.hd_ref), "-t", str(dist),
+                      "-s", "1920x1080", "-f", "420p:10", "--fps", "60", *s.cvvdp(), *s.nr()]
             proc = s.run([*pq_run, "-v", "1"], binary=DECODE_BIN)
             if expect("pq-v1", proc, 0, stdout_needles=["Summary:", "[ PSNR"]):
                 frames = [m for m in re.finditer(r"^\d+\s*:", proc.stdout, re.M)]
@@ -338,13 +423,13 @@ def cli_cases(s: Suite) -> None:
     native_args = ["--metrics", "psnr", "--qcs", *s.raw_pair()]
     native = s.run(native_args)
     if expect("native-only", native, 0, stdout_needles=["Summary:", "[ PSNR", "[ PSNR-QCS value:"],
-              absent_stdout=["CVVDP", "CVQA-HDR-NR"]) and not s.backend_log():
+              absent_stdout=["CVVDP", "CVQA-HDR-NR", "SimpleVQA"]) and not s.backend_log():
         ok("native-only")
     elif native.returncode == 0:
         fail("native-only", f"backend ran: {s.backend_log()}")
 
     # CVVDP only keeps the standalone JSON on stdout; warnings stay on stderr.
-    proc = s.run(["--metrics", "cvvdp", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp()])
+    proc = s.run(["--metrics", "cvvdp", "-r", str(s.ref_mkv), "-t", str(s.dist_mkv), *s.cvvdp()])
     if expect("cvvdp-only", proc, 0, needles=["mock cvvdp warning"]):
         payload = json.loads(proc.stdout)
         if repr(payload["jod"]) != CVVDP_JOD or "warning" in proc.stdout or s.backend_log() != ["cvvdp run"]:
@@ -352,7 +437,7 @@ def cli_cases(s: Suite) -> None:
         else:
             ok("cvvdp-only-standalone-json")
 
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", "dist.mp4", *s.nr()])
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", str(s.dist_mp4), *s.nr()])
     if expect("nr-only", proc, 0, needles=["mock cvqa-hdr-nr warning"]):
         payload = json.loads(proc.stdout)
         if (repr(payload["quality_score"]) != NR_SCORE or repr(payload["raw_model_score"]) != NR_RAW
@@ -361,12 +446,47 @@ def cli_cases(s: Suite) -> None:
         else:
             ok("nr-only-standalone-json-full-precision")
 
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "-r", "/no/such/reference.mp4", "-t", "dist.mp4", *s.nr()])
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "-r", "/no/such/reference.mp4", "-t", str(s.dist_mp4), *s.nr()])
     if expect("nr-ignores-reference", proc, 0, needles=["ignoring -r /no/such/reference.mp4"]):
         if "--ref" in s.backend_args("cvqa-hdr-nr") or json.loads(proc.stdout)["reference"] is not None:
             fail("nr-ignores-reference", "reference reached the backend")
         else:
             ok("nr-unnecessary-reference-ignored-unopened")
+
+    proc = s.run(["--metrics", "simplevqa", "-t", str(s.dist_mp4), *s.sv()])
+    if expect("svqa-only", proc, 0, needles=["mock simplevqa warning"]):
+        payload = json.loads(proc.stdout)
+        if repr(payload["quality_score"]) != SVQA_SCORE or "reference" in payload:
+            fail("svqa-only", proc.stdout)
+        else:
+            ok("simplevqa-only-standalone-json")
+
+    proc = s.run(["--metrics", "simplevqa", "-r", "/no/such/reference.mp4", "-t", str(s.dist_mp4), *s.sv()])
+    if expect("svqa-ignores-reference", proc, 0, needles=["ignoring -r /no/such/reference.mp4"]):
+        if "--ref" in " ".join(s.backend_args("simplevqa")):
+            fail("svqa-ignores-reference", "reference reached the backend")
+        else:
+            ok("simplevqa-unnecessary-reference-ignored")
+
+    proc = s.run(["--metrics", "simplevqa", "--qcs", "--qcs-range", "simplevqa=0:10", "-t", str(s.dist_mp4), *s.sv()])
+    if expect("svqa-qcs-range", proc, 2, needles=["--qcs-range simplevqa is unsupported"]):
+        ok("simplevqa-qcs-range-rejected")
+
+    proc = s.run(["--metrics", "bogus-metric", "-t", str(s.x_mp4)])
+    if expect("unknown-metric", proc, 2, needles=["unsupported metric bogus-metric"]):
+        ok("unknown-metric-lists-simplevqa")
+
+    proc = s.run(["--simplevqa-repo", "/x", "-t", str(s.dist_mp4)])
+    if expect("svqa-flag-without-metric", proc, 2, needles=["--simplevqa-* options require --metrics simplevqa"]):
+        ok("simplevqa-options-require-metric")
+
+    proc = s.run(["--metrics", "simplevqa", "-t", "dist.yuv", *s.sv()])
+    if expect("svqa-raw-extension", proc, 2, needles=["simplevqa supports compressed video only"]):
+        ok("simplevqa-raw-extension-rejected")
+
+    proc = s.run(["--metrics", "pq,simplevqa", "-r", str(s.a_mp4), "-t", str(s.b_mp4), *s.sv()])
+    if expect("group-pq-svqa", proc, 2, needles=["incompatible with simplevqa"]):
+        ok("group-pq-rejects-simplevqa")
 
     # Native + CVVDP on raw YUV420p10le PQ.
     out = s.tmp / "native-cvvdp.out"
@@ -425,7 +545,7 @@ def cli_cases(s: Suite) -> None:
             ok(name)
 
     # CVVDP + NR without native metrics: text report, preflight both, then run in order.
-    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp(), *s.nr()])
+    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-r", str(s.ref_mkv), "-t", str(s.dist_mkv), *s.cvvdp(), *s.nr()])
     if expect("cvvdp-nr", proc, 0,
               stdout_needles=[f"[ CVVDP jod:{CVVDP_JOD} frames:2 display:standard_hdr_pq interpretation:pq "
                               "device:auto ]",
@@ -440,7 +560,7 @@ def cli_cases(s: Suite) -> None:
             ok("cvvdp-nr-preflight-then-ordered-run")
 
     # Reference and test requirements.
-    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-t", "dist.mkv", *s.cvvdp(), *s.nr()])
+    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-t", str(s.dist_mkv), *s.cvvdp(), *s.nr()])
     if expect("missing-reference", proc, 2, needles=["required by full-reference metrics: cvvdp\n"]) \
             and not s.backend_log():
         ok("missing-reference-learned")
@@ -448,7 +568,7 @@ def cli_cases(s: Suite) -> None:
     if expect("missing-reference-native", proc, 2, needles=["required by full-reference metrics: psnr\n"]) \
             and not s.backend_log():
         ok("missing-reference-native-plus-nr")
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "-r", "ref.mp4", *s.nr()])
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "-r", str(s.ref_mp4), *s.nr()])
     if expect("missing-test", proc, 2, needles=["-t <distorted> is required"]) and not s.backend_log():
         ok("missing-test")
 
@@ -459,32 +579,33 @@ def cli_cases(s: Suite) -> None:
     proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", "dist.yuv", *s.nr()])
     if expect("nr-raw-extension", proc, 2, needles=["raw YUV is unsupported"]):
         ok("nr-raw-extension-rejected")
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", "dist.mp4", "-s", "16x16", *s.nr()])
-    if expect("nr-raw-option", proc, 2, needles=["-s is incompatible with cvqa-hdr-nr"]):
-        ok("nr-raw-option-rejected")
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", str(s.dist_mp4), "-s", "16x16", *s.nr()])
+    if expect("nr-raw-option", proc, 0, needles=["cvqa-hdr-nr reads compressed video directly",
+                                                 "ignoring supplied raw-video options"]):
+        ok("nr-raw-option-ignored-with-info")
     proc = s.run(["--metrics", "psnr,cvqa-hdr-nr", "-r", str(s.fake_mp4), "-t", str(s.fake_mp4), *s.nr()])
     if expect("cpu-build-compressed", proc, 2, needles=["no FFmpeg decoder for native metrics"]) \
             and not s.backend_log():
         ok("cpu-build-native-compressed-clear-error")
-    proc = s.run(["--metrics", "cvvdp", "--threads", "2", "-r", "r.mkv", "-t", "d.mkv", *s.cvvdp()])
+    proc = s.run(["--metrics", "cvvdp", "--threads", "2", "-r", str(s.r_mkv), "-t", str(s.d_mkv), *s.cvvdp()])
     if expect("native-option-alone", proc, 2, needles=["--threads is incompatible with cvvdp alone"]):
         ok("native-only-option-rejected-without-native-metric")
 
     # --frames is accepted for NR and limits the scored interval.
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "--frames", "5", "-t", "dist.mp4", *s.nr()])
-    if expect("frames-nr", proc, 2, needles=["cannot open test file"]) and not s.backend_log():
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "--frames", "5", "-t", str(s.dist_mp4), *s.nr()])
+    if expect("frames-nr", proc, 0, needles=["mock cvqa-hdr-nr warning"]) and s.backend_log():
         ok("frames-nr-accepted")
     proc = s.run(["--metrics", "psnr,cvqa-hdr-nr", "--frames", "5",
-                  "-r", str(s.ref), "-t", str(s.fake_mp4), *s.nr()])
+                  "-r", str(s.fake_mp4), "-t", str(s.fake_mp4), *s.nr()])
     if expect("frames-native-nr", proc, 2, needles=["no FFmpeg decoder for native metrics"]) and not s.backend_log():
         ok("frames-native-nr-not-rejected-for-frame-cap")
 
     # Invalid environments fail preflight with exit 2 and nothing runs.
-    proc = s.run(["--metrics", "cvvdp", "-r", "r.mkv", "-t", "d.mkv", "--cvvdp-interpretation", "pq",
+    proc = s.run(["--metrics", "cvvdp", "-r", str(s.r_mkv), "-t", str(s.d_mkv), "--cvvdp-interpretation", "pq",
                   "--cvvdp-display", "standard_hdr_pq", "--cvvdp-python", "/no/such/python"])
     if expect("missing-interpreter", proc, 2, needles=["could not execute CVVDP interpreter"]):
         ok("missing-interpreter-exit-2")
-    args = ["--metrics", "cvvdp,cvqa-hdr-nr", "-r", "r.mkv", "-t", "d.mkv", *s.cvvdp(), *s.nr()]
+    args = ["--metrics", "cvvdp,cvqa-hdr-nr", "-r", str(s.r_mkv), "-t", str(s.d_mkv), *s.cvvdp(), *s.nr()]
     proc = s.run(args, MOCK_NR_PREFLIGHT_FAIL="1")
     if expect("model-preflight", proc, 2, needles=["mock cvqa-hdr-nr preflight failed",
                                                    "CVQA-HDR-NR preflight failed"]):
@@ -516,7 +637,7 @@ def cli_cases(s: Suite) -> None:
         ok("malformed-protocol-is-runtime-failure")
 
     # NR QCS defaults to [0, 10], like CVVDP. An explicit range still overrides it.
-    nr_only = ["--metrics", "cvqa-hdr-nr", "-t", "dist.mp4", *s.nr()]
+    nr_only = ["--metrics", "cvqa-hdr-nr", "-t", str(s.dist_mp4), *s.nr()]
     calibrated = [sample[3] for sample in NR_SAMPLES]
     proc = s.run([*nr_only, "--qcs"], PIXVQA_QCS_TRACE="1")
     default_qcs = f"value:{expected_qcs(calibrated, 0.0, 10.0):.6f} range:[0,10]"
@@ -551,11 +672,11 @@ def cli_cases(s: Suite) -> None:
         ok("nr-qcs-backend-failure")
 
     # Stream isolation under load: 2 MiB of stderr interleaved with stdout.
-    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-r", "r.mkv", "-t", "d.mkv", *s.cvvdp(), *s.nr()],
+    proc = s.run(["--metrics", "cvvdp,cvqa-hdr-nr", "-r", str(s.r_mkv), "-t", str(s.d_mkv), *s.cvvdp(), *s.nr()],
                  MOCK_FLOOD="1")
     if expect("flood-report", proc, 0, stdout_needles=[f"[ CVVDP jod:{CVVDP_JOD}"], absent_stdout=["eeee"]):
         ok("no-deadlock-report-mode")
-    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", "dist.mp4", *s.nr()], MOCK_FLOOD="1")
+    proc = s.run(["--metrics", "cvqa-hdr-nr", "-t", str(s.dist_mp4), *s.nr()], MOCK_FLOOD="1")
     if expect("flood-json", proc, 0) and repr(json.loads(proc.stdout)["quality_score"]) == NR_SCORE:
         ok("no-deadlock-standalone-json")
 
@@ -577,9 +698,16 @@ def cli_cases(s: Suite) -> None:
         ok("persistent-record-kept")
 
     # --metrics all selects every metric without selecting a transfer group.
-    proc = s.run(["--metrics", "all", "-r", "ref.mp4", "-t", "dist.mp4"])
-    if expect("metrics-all", proc, 2, needles=["--cvvdp-interpretation"]) and not s.backend_log():
-        ok("metrics-all-selects-cvvdp")
+    if not s.hd_pair_ok:
+        print("SKIP metrics-all (need ffmpeg for 1920x1080 raw YUV fixtures)")
+    else:
+        proc = s.run(["--metrics", "all", *s.raw_pair_hd("sdr")])
+        if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
+            ok("metrics-all-no-libvmaf")
+        elif expect("metrics-all", proc, 2, needles=["--cvvdp-interpretation"]) and not s.backend_log():
+            ok("metrics-all-selects-cvvdp")
+        else:
+            fail("metrics-all", proc.stderr[-800:])
     group_cases(s)
     config_cases(s)
     device_cases(s)
@@ -587,7 +715,7 @@ def cli_cases(s: Suite) -> None:
 
 def device_cases(s: Suite) -> None:
     """--device: auto stays auto for the adapters, gpu becomes cuda."""
-    pair = ["--metrics", "cvvdp,cvqa-hdr-nr", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp(), *s.nr()]
+    pair = ["--metrics", "cvvdp,cvqa-hdr-nr", "-r", str(s.ref_mkv), "-t", str(s.dist_mkv), *s.cvvdp(), *s.nr()]
     for flag, choice, token in (("--device", "cpu", "cpu"), ("--device", "gpu", "cuda"), ("--device", "auto", "auto"),
                                 (None, None, "auto")):
         name = f"device-{flag or 'default'}-{choice or 'none'}"
@@ -616,7 +744,7 @@ def device_cases(s: Suite) -> None:
             and not s.backend_log():
         ok("device-invalid-rejected")
 
-    base = ["--metrics", "cvvdp", "-r", "ref.mkv", "-t", "dist.mkv", *s.cvvdp()]
+    base = ["--metrics", "cvvdp", "-r", str(s.ref_mkv), "-t", str(s.dist_mkv), *s.cvvdp()]
     for value in ("0", "-1", "none"):
         proc = s.run([*base, "--cvvdp-gpu-mem", value])
         if expect(f"cvvdp-gpu-mem-{value}", proc, 2,
@@ -633,13 +761,20 @@ def device_cases(s: Suite) -> None:
 
 def group_cases(s: Suite) -> None:
     """--metrics pq|hlg|sdr: recommended metrics, transfer, and CVVDP defaults."""
-    proc = s.run(["--metrics", "pq", "--metrics", "vmaf", "-r", "ref.mp4", "-t", "dist.mp4"])
-    if expect("group-pq-selects", proc, 2, needles=["--cvqahdr-repo"]) and not s.backend_log():
-        if "requires --cvvdp-interpretation" in proc.stderr or "requires --model" in proc.stderr:
-            fail("group-pq-selects", proc.stderr)
+    if not s.hd_pair_ok:
+        print("SKIP group-pq-selects (need ffmpeg for 1920x1080 raw YUV fixtures)")
+    else:
+        proc = s.run(["--metrics", "pq", "--metrics", "vmaf", *s.raw_pair_hd()])
+        if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
+            ok("group-pq-selects-no-libvmaf")
+        elif expect("group-pq-selects", proc, 2, needles=["--cvvdp-interpretation"]) and not s.backend_log():
+            if "requires --model" in proc.stderr:
+                fail("group-pq-selects", proc.stderr)
+            else:
+                ok("group-pq-selects-nr-and-fills-cvvdp")
         else:
-            ok("group-pq-selects-nr-and-fills-cvvdp")
-    proc = s.run(["--metrics", "pq", "--metrics", "pq", "--hdr-transfer", "hlg", "-r", "a.mp4", "-t", "b.mp4"])
+            fail("group-pq-selects", proc.stderr[-800:])
+    proc = s.run(["--metrics", "pq", "--metrics", "pq", "--hdr-transfer", "hlg", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-pq-transfer", proc, 2, needles=["--metrics pq uses pq; transfer hlg conflicts"]):
         ok("group-pq-rejects-hlg-transfer")
     hlg_ref, hlg_test = s.tmp / "hlg-ref.yuv", s.tmp / "hlg-test.yuv"
@@ -656,40 +791,48 @@ def group_cases(s: Suite) -> None:
             fail("group-hlg", str(args))
         else:
             ok("group-hlg-selects-pu21-and-cvvdp-hlg")
-    proc = s.run(["--metrics", "hlg,vmaf", "-r", "a.mp4", "-t", "b.mp4"])
+    proc = s.run(["--metrics", "hlg,vmaf", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-hlg-vmaf", proc, 2, needles=["excludes vmaf"]) and not s.backend_log():
         ok("group-hlg-rejects-vmaf")
-    proc = s.run(["--metrics", "hlg,cvqa-hdr-nr", "-r", "a.mp4", "-t", "b.mp4"])
+    proc = s.run(["--metrics", "hlg,cvqa-hdr-nr", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-hlg-nr", proc, 2, needles=["excludes cvqa-hdr-nr"]) and not s.backend_log():
         ok("group-hlg-rejects-nr")
-    proc = s.run(["--metrics", "hlg", "--cvvdp-display", "standard_hdr_pq", "-r", "a.mp4", "-t", "b.mp4"])
+    proc = s.run(["--metrics", "hlg", "--cvvdp-display", "standard_hdr_pq", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-hlg-display", proc, 2, needles=["uses --cvvdp-display standard_hdr_hlg"]) \
             and not s.backend_log():
         ok("group-hlg-rejects-pq-display")
-    proc = s.run(["--metrics", "sdr", "-r", "a.mp4", "-t", "b.mp4"])
-    if expect("group-sdr-display", proc, 2, needles=["--metrics sdr needs --cvvdp-display"]) \
-            and not s.backend_log():
-        ok("group-sdr-requires-display")
-    proc = s.run(["--metrics", "sdr,pu21-psnr", "-r", "a.mp4", "-t", "b.mp4"])
+    if not s.hd_pair_ok:
+        print("SKIP group-sdr-display (need ffmpeg for 1920x1080 raw YUV fixtures)")
+    else:
+        proc = s.run(["--metrics", "sdr", *s.raw_pair_hd("sdr")])
+        if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
+            ok("group-sdr-display-no-libvmaf")
+        elif expect("group-sdr-display", proc, 2, needles=["--cvvdp-interpretation"]) and not s.backend_log():
+            ok("group-sdr-needs-cvvdp-interpretation")
+        else:
+            fail("group-sdr-display", proc.stderr[-800:])
+    proc = s.run(["--metrics", "sdr,pu21-psnr", *s.raw_pair()])
     if expect("group-sdr-pu21", proc, 2, needles=["excludes pu21-psnr"]) and not s.backend_log():
         ok("group-sdr-rejects-pu21")
     proc = s.run(["--metrics", "pq", *s.raw_pair(), *s.nr()])
-    if proc.returncode == 2 and ("no libvmaf" in proc.stderr or
-                                 "cvqa-hdr-nr supports compressed video only" in proc.stderr):
+    if proc.returncode == 2 and (
+            "no libvmaf" in proc.stderr
+            or "cvqa-hdr-nr supports compressed video only" in proc.stderr
+            or "VMAF auto model supports only" in proc.stderr):
         if "requires --cvvdp" in proc.stderr or "requires --model" in proc.stderr:
             fail("group-pq-fills", proc.stderr)
         else:
             ok("group-pq-fills-cvvdp-and-hdr-vmaf-model")
     else:
         fail("group-pq-fills", f"exit {proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-    proc = s.run(["--metrics", "pq", "--hdr-primaries", "bt709", "-r", "a.mp4", "-t", "b.mp4"])
+    proc = s.run(["--metrics", "pq", "--hdr-primaries", "bt709", *s.raw_pair()])
     if expect("group-pq-primaries", proc, 2, needles=["uses BT.2020 primaries"]):
         ok("group-pq-rejects-bt709-primaries")
     proc = s.run(["--metrics", "psnr,xpsnr", *s.raw_pair()])
     if expect("individual-metrics", proc, 0, stdout_needles=["[ PSNR", "[ XPSNR"],
               absent_stdout=["[ SSIM", "[ CVVDP", "PU21", "[ VMAF"]):
         ok("comma-separated-metrics-unchanged")
-    proc = s.run(["--metrics", "sdr,pq", "-r", "a.mp4", "-t", "b.mp4"])
+    proc = s.run(["--metrics", "sdr,pq", *s.raw_pair()])
     if expect("group-combine", proc, 2, needles=["--metrics sdr and pq cannot be combined"]):
         ok("group-rejects-two-groups")
 
@@ -702,10 +845,13 @@ def config_cases(s: Suite) -> None:
     (cfg_dir / "repo").mkdir(exist_ok=True)
     (cfg_dir / "nr.pth").write_bytes(b"x")
     (cfg_dir / "nr.npy").write_bytes(b"x")
+    (cfg_dir / "sv_repo").mkdir(exist_ok=True)
+    (cfg_dir / "sv.pth").write_bytes(b"x")
     cfg.write_text(f'# comment\n[learned]\npython = "{sys.executable}"\nadapter_path = "{s.mocks}"\n\n'
                    '[cvqa-hdr-nr]\nrepository = "./repo"  # relative to this file\n'
-                   'checkpoint = "./nr.pth"\nprofile = "./nr.npy"\n', encoding="utf-8")
-    nr_only = ["--metrics", "cvqa-hdr-nr", "-t", "dist.mp4"]
+                   'checkpoint = "./nr.pth"\nprofile = "./nr.npy"\n\n'
+                   '[simplevqa]\nrepository = "./sv_repo"\ncheckpoint = "./sv.pth"\n', encoding="utf-8")
+    nr_only = ["--metrics", "cvqa-hdr-nr", "-t", str(s.dist_mp4)]
     proc = s.run([*nr_only, "--learned-config", str(cfg)], PYTHONPATH="")
     if expect("config-nr", proc, 0, needles=[f"learned-metric config {cfg}"],
               stdout_needles=[f'"quality_score":{NR_SCORE}']):
@@ -748,8 +894,18 @@ def config_cases(s: Suite) -> None:
     proc = s.run([*nr_only, "--learned-config", str(cfg_dir / "missing.toml")])
     if expect("config-missing", proc, 2, needles=["missing.toml"]) and not s.backend_log():
         ok("config-explicit-missing-file-fails")
+    sv_only = ["--metrics", "simplevqa", "-t", str(s.dist_mp4)]
+    proc = s.run([*sv_only, "--learned-config", str(cfg)], PYTHONPATH="")
+    if expect("config-sv", proc, 0, needles=[f"learned-metric config {cfg}"],
+              stdout_needles=[f'"quality_score":{SVQA_SCORE}']):
+        args = s.backend_args("simplevqa")
+        if args[args.index("--repo") + 1] != str(cfg_dir / "sv_repo"):
+            fail("config-sv", str(args))
+        else:
+            ok("config-supplies-simplevqa-paths")
+
     proc = s.run(["--metrics", "psnr", *s.raw_pair(), "--learned-config", str(cfg)])
-    if expect("config-native-only", proc, 2, needles=["--learned-config requires cvvdp or cvqa-hdr-nr"]):
+    if expect("config-native-only", proc, 2, needles=["--learned-config requires cvvdp, cvqa-hdr-nr, or simplevqa"]):
         ok("config-rejected-without-learned-metric")
     proc = s.run(["--metrics", "psnr", *s.raw_pair()], PIXVQA_LEARNED_CONFIG=str(cfg_dir / "config-unknown-key.toml"))
     if expect("config-native-ignored", proc, 0, absent_stdout=["CVQA"]) and "learned-metric config" not in proc.stderr:
@@ -887,7 +1043,7 @@ def adapter_cases() -> None:
     plan24 = sampling_plan(60, 24)
     if [e["frame_index"] for e in sample_schedule(plan24)] != [12, 36]:
         fail("sample-schedule-24", str(sample_schedule(plan24)))
-    for frames, needle in ((50, "at least"), (100, "sampling-buffer")):
+    for frames, needle in ((50, "at least"), (100, "sampling buffer")):
         try:
             sampling_plan(frames, 60)
         except PreflightError as exc:

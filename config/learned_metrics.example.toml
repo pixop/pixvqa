@@ -1,17 +1,15 @@
-# PixVQA learned-metric configuration for cvvdp and cvqa-hdr-nr. The same
-# interpreter (see [learned].python) also holds dependencies for the standalone
-# SimpleVQA reference: `PYTHONPATH=python …/.venv/bin/python -m pixvqa_simplevqa` — not
-# wired to `pixvqa --metrics` yet; see docs/dev/SIMPLEVQA_REFERENCE.md.
+# PixVQA learned-metric configuration for cvvdp, cvqa-hdr-nr, and simplevqa. The same
+# interpreter (see [learned].python) satisfies CVVDP, NR, and SimpleVQA deps.
 #
 # Copy to config/learned_metrics.local.toml (ignored by Git) and edit the paths.
-# PixVQA reads it only when cvvdp or cvqa-hdr-nr is selected. Lookup order:
+# PixVQA reads it when cvvdp, cvqa-hdr-nr, or simplevqa is selected. Lookup order:
 #   1. --learned-config PATH
 #   2. PIXVQA_LEARNED_CONFIG=PATH  (PIXVQA_LEARNED_CONFIG=none disables lookup)
 #   3. config/learned_metrics.local.toml in the checkout that holds the
 #      executable (bin/pixvqa or build/<kind>/pixvqa)
 #
 # Precedence for every value: command-line option, then environment variable
-# (PIXVQA_CVVDP_PYTHON, PIXVQA_CVQAHDR_PYTHON), then the metric section, then
+# (PIXVQA_CVVDP_PYTHON, PIXVQA_CVQAHDR_PYTHON, PIXVQA_SIMPLEVQA_PYTHON), then the metric section, then
 # [learned], then the built-in default.
 #
 # Values are quoted strings. "~/" expands to $HOME. Relative paths are relative
@@ -36,14 +34,15 @@ path = "~/bin"
 # python = "../.venv/bin/python"
 
 [cvqa-hdr-nr]
+# Optional defaults beside the binary checkout: deps/CompressedVQA-HDR,
+# deps/CompressedVQA-HDR/NR_HDR_VQA.pth, deps/CompressedVQA-HDR/NR_HDR_VQA.npy
 repository = "~/src/CompressedVQA-HDR"
 checkpoint = "~/models/compressedvqa-hdr/NR_HDR_VQA.pth"
 profile = "~/models/compressedvqa-hdr/NR_HDR_VQA.npy"
 # python = "../.venv/bin/python"
 
-# SimpleVQA is not loaded by pixvqa's TOML parser. Document repo/checkpoint paths
-# here for your own notes, or keep them in SIMPLEVQA_REFERENCE.md:
-#
-# SimpleVQA upstream Git checkout (e.g. deps/SimpleVQA), and UGC_BVQA_model.pth.
+[simplevqa]
+# Upstream SimpleVQA checkout and official UGC checkpoint (see docs/dev/SIMPLEVQA_REFERENCE.md).
 # repository = "../deps/SimpleVQA"
-# checkpoint = "~/models/simplevqa/UGC_BVQA_model.pth"
+# checkpoint = "../deps/SimpleVQA/ckpts/UGC_BVQA_model.pth"
+# python = "../.venv/bin/python"
