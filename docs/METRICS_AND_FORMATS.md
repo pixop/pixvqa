@@ -22,30 +22,27 @@ PU21 is a perceptually uniform encoding of display light for HDR quality assessm
 
 Select VQA metrics using `--metrics`; enable the QCS descriptor separately using `--qcs`.
 
-## Recommended Metrics for SDR and HDR Video
+## Video Format Support by Metric
 
-| Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
-|---|:---:|:---:|:---:|
-| PSNR | ✅ | ⚠️ | ⚠️ |
-| XPSNR | ✅ | ⚠️ | ⚠️ |
-| SSIM | ✅ | ⚠️ | ⚠️ |
-| MS-SSIM | ✅ | ⚠️ | ⚠️ |
-| VMAF (SDR v1.0.16 models) | ✅ | ❌ | ❌ |
-| VMAF (HDR v1.1.8 models) | ❌ | ✅ | ❌ |
-| PU21-PSNR | ❌ | ✅ | ✅ |
-| PU21-SSIM | ❌ | ✅ | ✅ |
-| PU21-MS-SSIM | ❌ | ✅ | ✅ |
-| CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
-| SimpleVQA (`simplevqa`) | ✅ | ❌ | ❌ |
-| HDR-ChipQA (`hdr-chipqa`) | ✅ | ✅ | 🔬 |
+| Metric | Type | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
+|---|:---:|:---:|:---:|:---:|
+| PSNR | FR | ✅ | ✅ | ✅ |
+| XPSNR | FR | ✅ | ✅ | ✅ |
+| SSIM | FR | ✅ | ✅ | ✅ |
+| MS-SSIM | FR | ✅ | ✅ | ✅ |
+| VMAF (SDR v1.0.16 models) | FR | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | FR | ❌ | ✅ | ❌ |
+| PU21-PSNR | FR | ❌ | ✅ | ✅ |
+| PU21-SSIM | FR | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
+| CVVDP (`sdr` / `pq` / `hlg` interpretation) | FR | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR NR | NR | ✅ | ✅ | ❌ |
+| SimpleVQA (`simplevqa`) | NR | ✅ | ❌ | ❌ |
+| HDR-ChipQA (`hdr-chipqa`) | NR | ✅ | ✅ | 🔬 |
 
-**Legend:**
+**Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
 
-- ✅ **Recommended** — validated choice for that transfer and use case
-- ⚠️ **Supported, not recommended** — conventional pixel metrics on HDR samples; perceptually misleading
-- 🔬 **Experimental** — implemented and callable; scores not paper-validated (HDR-ChipQA on HLG)
-- ❌ **Unsupported** — rejected at setup or adapter preflight
+**PU21 metrics:** PSNR, SSIM and MS-SSIM can be computed after applying the PU21 perceptually uniform transfer function. PU21 transforms HDR luminance values to better approximate the nonlinear sensitivity of human vision. As a result, PU21 provides a perceptually motivated signal representation for conventional full-reference metrics.
 
 **Notes:**
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
@@ -103,23 +100,9 @@ Inputs are paired in presentation order. If lengths differ, full-reference metri
 | SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
 | HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
 
-A checkmark identifies the metric's **primary computation backend**, not every library used for decoding, preprocessing, or orchestration. The native CUDA column refers to C++/CUDA metric implementations, not GPU video decoding. VMAF uses CPU `libvmaf`; HDR-ChipQA uses CPU Python with NumPy, SciPy, and scikit-learn. ColorVideoVDP uses PyTorch tensor operations but is not a neural-network metric. SimpleVQA's optional persistent CUDA worker is available through its Python module, not through the native PixVQA CLI. QCS is omitted because it aggregates eligible per-frame scores rather than implementing an independent VQA backend.
+A ✅ shows where each metric runs. The table refers to **metric computation**, not video decoding. VMAF runs on CPU through `libvmaf`, while HDR-ChipQA uses Python with NumPy and SciPy. ColorVideoVDP uses PyTorch but is not a neural-network model. For SimpleVQA, the persistent CUDA worker is available through its standalone Python module, not yet through the PixVQA CLI.
 
-## CPU and GPU Support
-
-| Metric | CPU 8-bit | CPU 10-bit | CUDA 8-bit | CUDA 10-bit |
-|---|:---:|:---:|:---:|:---:|
-| PSNR | ✅ | ✅ | ✅ | ✅ |
-| XPSNR | ✅ | ✅ | ✅ | ✅ |
-| SSIM | ✅ | ✅ | ✅ | ✅ |
-| MS-SSIM | ✅ | ✅ | ✅ | ✅ |
-| VMAF (SDR models) | ✅ | ✅ | — | — |
-| VMAF (HDR models) | ❌ | ✅ | — | — |
-| PU21-PSNR | ✅ | ✅ | ✅ | ✅ |
-| PU21-SSIM | ✅ | ✅ | ✅ | ✅ |
-| PU21-MS-SSIM | ✅ | ✅ | ✅ | ✅ |
-
-Bundled HDR VMAF requires limited-range 10-bit 4:2:0 PQ/BT.2020 non-constant-luminance samples. PU21 requires PQ or HLG. A dash indicates no CUDA implementation. VMAF always executes on CPU libvmaf.
+**Input bit depth:** PSNR, XPSNR, SSIM, MS-SSIM, and PU21 metrics accept 8-bit and 10-bit input on CPU and CUDA. PU21 requires PQ or HLG video with the correct HDR settings. VMAF runs on CPU: SDR models accept 8-bit and 10-bit input, while HDR models require 10-bit 4:2:0 PQ/BT.2020 video (limited range, non-constant luminance). For Python-based metrics, see [Metric Capabilities](#metric-capabilities) and [Learned Metrics](LEARNED_METRICS.md).
 
 `--device auto` uses CUDA for supported metrics when the build, GPU and input format permit; otherwise it uses CPU. `--device gpu` requests GPU execution without silently substituting CPU for GPU-only requests. `--decode gpu` supports selected HEVC/AV1 formats via NVDEC. CPU and GPU floating-point results may differ slightly.
 

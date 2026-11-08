@@ -9,7 +9,7 @@ Up to **four** Python-backed stacks can share configuration via [`config/learned
 | SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | No-reference (`pixvqa --metrics simplevqa`); same module also runs standalone ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)); **CPU supported** via staged overlay; **CUDA batch opt-in** `--use-worker` on `python -m pixvqa_simplevqa` only (not forwarded by `pixvqa` yet) | Compressed **SDR** only (explicit PQ/HLG rejected; unknown/missing stream transfer is allowed at the C++ gate—Python still ffprobes); raw YUV rejected |
 | `hdr-chipqa` ([HDR-ChipQA](https://github.com/Netflix/hdr_chipqa)) | No-reference pooled MOS-like score | SDR BT.709, PQ HDR, and **experimental** HLG; raw YUV420 8/10-bit or compressed |
 
-For SDR/PQ/HLG recommendations and input caveats (YUV layout, transfer tags, QCS), see [Recommended Metrics for SDR and HDR Video](METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video).
+For SDR/PQ/HLG format support and input caveats (YUV layout, transfer tags, QCS), see [Video Format Support by Metric](METRICS_AND_FORMATS.md#video-format-support-by-metric).
 
 What you must provide falls into **two** buckets:
 

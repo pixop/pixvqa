@@ -4,7 +4,7 @@
 
 # PixVQA — Video Quality Assessment by Pixop
 
-[![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![FFmpeg](https://img.shields.io/badge/FFmpeg-n8.1.3-blue)](https://ffmpeg.org/) [![libvmaf](https://img.shields.io/badge/libvmaf-74f930d-blue)](https://github.com/Netflix/vmaf/commit/74f930d17de8c58e7c2ce55e2b897b0030ebd8ef) [![zimg](https://img.shields.io/badge/zimg-3.0.6-blue)](https://github.com/sekrit-twc/zimg) [![CUDA optional](https://img.shields.io/badge/CUDA-12.8%20optional-blue)](https://developer.nvidia.com/cuda-toolkit) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP**; no-reference **CompressedVQA-HDR NR**, **SimpleVQA**, and **HDR-ChipQA** (`pixvqa --metrics simplevqa` or `hdr-chipqa`). The same optional **repository-local** `.venv` can also satisfy the standalone **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`) — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
 
@@ -12,27 +12,29 @@ PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build
 
 ## Metrics at a glance
 
-**Full-reference (FR)** metrics need a reference and a distorted video; **no-reference (NR)** metrics score the distorted video alone. The tables below list **recommended** choices by transfer characteristic. Input requirements (raw YUV, compressed, tags) are stricter than model availability — see [Metrics & Formats](docs/METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video) and [Learned Metrics](docs/LEARNED_METRICS.md).
+**Full-reference (FR)** metrics need a reference and a distorted video; **no-reference (NR)** metrics score the distorted video alone. The tables below show **supported** metrics by transfer characteristic. Input requirements (raw YUV, compressed, tags) are stricter than model availability — see [Metrics & Formats](docs/METRICS_AND_FORMATS.md#video-format-support-by-metric) and [Learned Metrics](docs/LEARNED_METRICS.md).
 
-### Recommended metrics by video format
+### Video format support by metric
 
-| Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
-|---|:---:|:---:|:---:|
-| PSNR | ✅ | ⚠️ | ⚠️ |
-| XPSNR | ✅ | ⚠️ | ⚠️ |
-| SSIM | ✅ | ⚠️ | ⚠️ |
-| MS-SSIM | ✅ | ⚠️ | ⚠️ |
-| VMAF (SDR v1.0.16 models) | ✅ | ❌ | ❌ |
-| VMAF (HDR v1.1.8 models) | ❌ | ✅ | ❌ |
-| PU21-PSNR | ❌ | ✅ | ✅ |
-| PU21-SSIM | ❌ | ✅ | ✅ |
-| PU21-MS-SSIM | ❌ | ✅ | ✅ |
-| CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
-| SimpleVQA (`simplevqa`) | ✅ | ❌ | ❌ |
-| HDR-ChipQA (`hdr-chipqa`) | ✅ | ✅ | 🔬 |
+| Metric | Type | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
+|---|:---:|:---:|:---:|:---:|
+| PSNR | FR | ✅ | ✅ | ✅ |
+| XPSNR | FR | ✅ | ✅ | ✅ |
+| SSIM | FR | ✅ | ✅ | ✅ |
+| MS-SSIM | FR | ✅ | ✅ | ✅ |
+| VMAF (SDR v1.0.16 models) | FR | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | FR | ❌ | ✅ | ❌ |
+| PU21-PSNR | FR | ❌ | ✅ | ✅ |
+| PU21-SSIM | FR | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
+| CVVDP (`sdr` / `pq` / `hlg` interpretation) | FR | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR NR | NR | ✅ | ✅ | ❌ |
+| SimpleVQA (`simplevqa`) | NR | ✅ | ❌ | ❌ |
+| HDR-ChipQA (`hdr-chipqa`) | NR | ✅ | ✅ | 🔬 |
 
-**Legend:** ✅ Recommended · ⚠️ Supported, but not generally recommended for HDR perceptual assessment · 🔬 Experimental (runs in PixVQA; scores not paper-validated) · ❌ Unsupported. NR metrics **SimpleVQA** and **HDR-ChipQA** report one pooled score per video and do not support QCS. See [Metrics & Formats](docs/METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video) for YUV format and transfer-tag caveats.
+**Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
+
+**PU21 metrics:** PSNR, SSIM and MS-SSIM can be computed after applying the PU21 perceptually uniform transfer function. PU21 transforms HDR luminance values to better approximate the nonlinear sensitivity of human vision. As a result, PU21 provides a perceptually motivated signal representation for conventional full-reference metrics.
 
 ### Metric execution backends
 
@@ -51,7 +53,7 @@ PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build
 | SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
 | HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
 
-✅ Available primary computation backend · — Not implemented for that backend. Python-based metrics may use other libraries for decoding or preprocessing; CUDA C++ refers to native CUDA metric kernels. QCS is a temporal descriptor derived from eligible frame scores, not a separate execution backend. See [Metrics & Formats](docs/METRICS_AND_FORMATS.md#metric-execution-backends) for details.
+✅ Available primary computation backend · — Not implemented for that backend. Python-based metrics may use other libraries for decoding or preprocessing; CUDA C++ refers to native CUDA metric kernels. QCS is a temporal descriptor derived from eligible frame scores, not a separate execution backend.
 
 ## Install
 
