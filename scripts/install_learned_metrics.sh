@@ -133,6 +133,11 @@ fi
 # Resolve the directory only, never the Python symlink inside the venv.
 selected_python="$(cd -- "$env_dir" && pwd -P)/bin/python"
 
+# The old venv stamp proves only the CVVDP bootstrap version, not that every
+# learned backend was provisioned. Repair SimpleVQA imports on every rerun.
+bash "$root/scripts/ensure_simplevqa_dependencies.sh" \
+  "$selected_python" "$root/python/requirements/learned-env.txt"
+
 # --- HDR-ChipQA dual interpreters ---
 feature_python="$selected_python"
 if [[ -n "${PIXVQA_HDR_CHIPQA_FEATURE_PYTHON:-}" ]]; then

@@ -80,7 +80,11 @@ print("ok")
 
 def probe_simplevqa_load(python: str, checkpoint: Path) -> str | None:
     code = """
-import sys, torch
+import sys, importlib.util, torch
+missing = [m for m in ("torch", "torchvision", "pytorchvideo", "cv2", "PIL", "numpy")
+           if importlib.util.find_spec(m) is None]
+if missing:
+    raise SystemExit("SimpleVQA missing required imports: " + ", ".join(missing))
 ckpt = sys.argv[1]
 sd = torch.load(ckpt, map_location="cpu", weights_only=True)
 if not isinstance(sd, dict) or not sd:

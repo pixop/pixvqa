@@ -151,6 +151,9 @@ def default_config_paths(root: Path, learned_python: str, feature_python: str, i
         "cvqa-hdr-nr.repository": rel("deps/CompressedVQA-HDR"),
         "cvqa-hdr-nr.checkpoint": rel("deps/CompressedVQA-HDR/NR_HDR_VQA.pth"),
         "cvqa-hdr-nr.profile": rel("deps/CompressedVQA-HDR/NR_HDR_VQA.npy"),
+        # Explicitly bind the backend to the dependency-checked shared venv;
+        # legacy [learned].python can point to a different base interpreter.
+        "simplevqa.python": learned_python,
         "simplevqa.repository": rel("deps/SimpleVQA"),
         "simplevqa.checkpoint": rel(f"deps/SimpleVQA/ckpts/{SIMPLEVQA_CHECKPOINT_NAME}"),
         "hdr-chipqa.repository": rel("deps/hdr_chipqa"),
