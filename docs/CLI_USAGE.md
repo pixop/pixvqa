@@ -48,34 +48,41 @@ Auto-selection does not support HLG, other resolutions, ambiguous transfer, or u
 
 ### Optional learned metrics
 
-Install one Python environment for **ColorVideoVDP**, **CompressedVQA-HDR NR**, and **SimpleVQA** — supply upstream repos and checkpoints separately (PixVQA does not download weights). Use `pixvqa --metrics simplevqa` for SDR compressed video, or `python -m pixvqa_simplevqa` for the reference module. See [Learned Metrics](LEARNED_METRICS.md) and [SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md).
+Install learned metrics once with `bash scripts/install_learned_metrics.sh`. It prepares Python dependencies and downloads/verifies the required model checkpoints; see [Learned Metrics](LEARNED_METRICS.md). Native metrics require no learned-model installation.
+
+All metrics can be selected individually. **SimpleVQA supports SDR compressed video only**, but other metrics support SDR too (see [Compatible inputs](#compatible-inputs)).
 
 ```bash
-# ColorVideoVDP (full-reference):
-./bin/pixvqa --metrics cvvdp -r reference.mp4 -t distorted.mp4 \
-  --cvvdp-interpretation pq --cvvdp-display standard_hdr_pq
+# No-reference SDR quality:
+./bin/pixvqa --metrics simplevqa -t distorted.mp4
 
-# CompressedVQA-HDR NR (no reference; compressed SDR or HDR10 only):
+# No-reference SDR or HDR10 quality:
 ./bin/pixvqa --metrics cvqa-hdr-nr -t distorted.mp4
+
+# Full-reference ColorVideoVDP (opt-in, GPU-intensive):
+./bin/pixvqa --metrics cvvdp --hdr-transfer pq -r reference.mp4 -t distorted.mp4
+
+# HDR-ChipQA (opt-in, host-memory-intensive):
+./bin/pixvqa --metrics hdr-chipqa -t distorted.mp4
 ```
 
-CVVDP accepts compressed, raw 10-bit YUV420, and mixed raw/compressed inputs; raw input needs geometry, frame rate and appropriate color interpretation. CVQA-HDR NR does not accept raw YUV or HLG; default sampling is approximately 1 Hz. Both accept `--frames`. When native metrics are selected, learned metrics use the successfully compared frame prefix.
-
-For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; see the [GPU usage warning](LEARNED_METRICS.md#setup). For concurrent HDR-ChipQA runs, host RAM is a separate concern: a five-job 1080p workload triggered WSL2 OOM kills with a 10 GB RAM limit. See the [HDR-ChipQA host-memory warning](LEARNED_METRICS.md#setup); omit `hdr-chipqa` from constrained parallel benchmarks or measure it separately.
+**Resource limits:** CVVDP can use substantial **GPU VRAM**; HDR-ChipQA can use substantial **host RAM**, especially with several jobs in parallel. See [Performance considerations](LEARNED_METRICS.md#performance-considerations).
 
 ## Metric groups
 
-Groups select baseline native (and applicable NR) metrics, **HDR-ChipQA**, and transfer/display defaults. Append individual metrics to a group (e.g. `--metrics pq,cvvdp`). A group cannot combine with a different group. All selected backends must be installed.
+Use a group for a common set of metrics and matching SDR/HDR interpretation. Append any optional metric by name (for example, `--metrics pq,cvvdp`).
 
-| Group | Includes | Interpretation |
+| Group | Included metrics | Color interpretation |
 |---|---|---|
-| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVQA-HDR NR, HDR-ChipQA | SDR |
-| `pq` | SDR group metrics plus PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA | PQ/BT.2020 non-constant luminance, limited range |
-| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA (experimental) | HLG/BT.2020 non-constant luminance, limited range; no VMAF or NR |
+| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVQA-HDR NR | SDR |
+| `pq` | SDR group's metrics + PU21-PSNR, PU21-SSIM, PU21-MS-SSIM | PQ / BT.2020, limited range |
+| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR, PU21-SSIM, PU21-MS-SSIM | HLG / BT.2020, limited range |
 
-**CVVDP** (`cvvdp`) is **not** in group baselines (GPU-intensive). Add it explicitly when needed, e.g. `--metrics pq,cvvdp` or `--metrics sdr,cvvdp`. Groups that include CVVDP fill `--cvvdp-interpretation` and `--cvvdp-display` from the group (unless overridden). **HDR-ChipQA** runs automatically in every group; HLG scores are experimental. You can also select it alone with `--metrics hdr-chipqa`. `all` still selects every metric including CVVDP (but not HDR-ChipQA unless added by name or via a group). With `--qcs`, each eligible metric in the selection gets a QCS line; **HDR-ChipQA** stays pooled-only and emits no QCS (see [QCS](QCS.md)).
+**CVVDP and HDR-ChipQA are excluded from these presets** because of their resource requirements. Both can be added explicitly. `simplevqa` can be added to `sdr` but not to PQ/HLG groups. `all` retains its existing broad selection, including CVVDP but excluding HDR-ChipQA.
 
-Metric groups assign interpretation; they do not convert pixel values. See [Metrics & Formats](METRICS_AND_FORMATS.md).
+When you add CVVDP to a group, PixVQA selects the matching interpretation and display preset (`standard_fhd` for SDR, `standard_hdr_pq` for PQ, `standard_hdr_hlg` for HLG). An incompatible manual value is rejected rather than silently overriding the group; SDR also permits `standard_4k`.
+
+Groups interpret samples; they do not convert video pixel values. With `--qcs`, eligible frame-based metrics produce QCS results; pooled-video metrics such as HDR-ChipQA and SimpleVQA do not. See [QCS](QCS.md) and [Metrics & Formats](METRICS_AND_FORMATS.md).
 
 ## Compatible inputs
 

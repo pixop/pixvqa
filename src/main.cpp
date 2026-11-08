@@ -279,8 +279,8 @@ void usage(const char* argv0) {
   std::fputs(
       "\n"
       "Compare reference and distorted sequences. Select metrics with --metrics.\n"
-      "Groups: sdr, pq, hlg include HDR-ChipQA (HLG experimental); append metrics, e.g. pq,cvvdp.\n"
-      "CVVDP is opt-in (GPU workload); not included in sdr/pq/hlg groups.\n"
+      "Groups: sdr, pq, hlg; add resource-intensive metrics explicitly (e.g. pq,cvvdp).\n"
+      "CVVDP and HDR-ChipQA are opt-in; neither is included in sdr/pq/hlg groups.\n"
       "\n"
       "Input\n"
       "  -r, -t PATH          Reference and distorted inputs (-r optional for NR only).\n"
@@ -378,8 +378,8 @@ void print_help_hdr() {
       "\n"
       "PU21 metrics: pu21-psnr, pu21-ssim, pu21-msssim. See docs/PU21.md.\n"
       "Group defaults: sdr selects SDR VMAF; pq selects PQ/BT.2020/limited and HDR VMAF;\n"
-      "hlg selects HLG/BT.2020/limited (no VMAF or NR). All groups include HDR-ChipQA\n"
-      "(HLG scores experimental). Append cvvdp for GPU JOD (e.g. --metrics pq,cvvdp);\n"
+      "hlg selects HLG/BT.2020/limited (no VMAF or NR).\n"
+      "Add CVVDP or HDR-ChipQA explicitly (e.g. --metrics pq,cvvdp);\n"
       "group then fills CVVDP interpretation/display.\n"
       "Order for every field: per-input option, shared option, stream metadata,\n"
       "then the documented default.\n"
@@ -866,7 +866,6 @@ bool add_metric_name(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahd
     }
     opt.metric_group = name;
     opt.enable_psnr = opt.enable_xpsnr = opt.enable_ssim = opt.enable_msssim = true;
-    hdr_chipqa.selected = true;
     if (name == "sdr") {
       opt.enable_vmaf = true;
       cvqahdr.selected = true;
@@ -1384,10 +1383,9 @@ bool validate_hdr_chipqa_geometry(const Options& opt, const SideSpec& test) {
   return true;
 }
 
-// Metric groups select native metrics, HDR-ChipQA, and fill HDR/VMAF defaults; CVVDP when selected.
+// Metric groups select baseline metrics and HDR/VMAF defaults; optional backends are explicit.
 bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr,
-                               SimplevqaOptions& simplevqa,
-                               HdrChipqaOptions& hdr_chipqa) {
+                               SimplevqaOptions& simplevqa) {
   const std::string& kind = opt.metric_group;
   if (kind.empty()) return true;
   const std::string who = "--metrics " + kind;
@@ -4061,7 +4059,7 @@ int run_cli(int argc, char** argv) {
   opt.test_path = test_side.path;
   opt.ref_input = ref_side.input;
   opt.test_input = test_side.input;
-  if (!apply_processing_defaults(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa)) return 2;
+  if (!apply_processing_defaults(opt, cvvdp, cvqahdr, simplevqa)) return 2;
   const bool native = native_selected(opt);
   const bool learned = cvvdp.selected || cvqahdr.selected || simplevqa.selected ||
                        hdr_chipqa.selected;

@@ -17,7 +17,7 @@ Status: proposed implementation contracts; **standalone SimpleVQA upstream refer
 - `simplevqa`: NR, SDR only, initially Python/PyTorch reference implementation.
 - `hdr-chipqa`: NR, SDR (BT.709 gamma YUV via `color_space=BT709`), PQ HDR (`color_space=BT2020`), and **experimental** HLG (same BT2020 feature path, uncalibrated). Standalone ChipQA removed.
 - `cvqa-hdr-nr`: retain existing SDR/PQ support and behavior.
-- Preserve `--metrics sdr|pq|hlg` grouping; HDR-ChipQA is included in all three groups; do not make implicit HLG-to-PQ conversions.
+- Preserve `--metrics sdr|pq|hlg` grouping; HDR-ChipQA is opt-in for all three groups (changed after memory-concurrency investigation); do not make implicit HLG-to-PQ conversions.
 - Preserve the current mixed FR+NR command shape: `-r REF -t DIST`, while NR backends consume only DIST.
 - Record the resolved transfer, source revision, preprocessing variant, model/checkpoint identity, device, sampling plan, and number of evaluated samples.
 - A pooled prediction must not be labeled per-frame or passed to per-frame QCS. Windowed/temporal outputs require explicit documented semantics.

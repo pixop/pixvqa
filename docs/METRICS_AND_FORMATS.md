@@ -51,7 +51,7 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 - **SimpleVQA** (`simplevqa`): compressed **SDR** only; PQ/HLG streams and explicit PQ/HLG `--hdr-transfer` are rejected (`src/main.cpp`, Python adapter). Raw YUV is rejected. One pooled score per video; **QCS unsupported**.
 - **HDR-ChipQA** (`hdr-chipqa`): YUV **4:2:0** 8- or 10-bit, raw or compressed. SDR uses BT.709 gamma-coded YUV (`color_space=BT709`); PQ HDR uses PQ-coded 10-bit YUV with stream PQ tags or `--hdr-transfer pq` (`color_space=BT2020`). Raw PQ/HLG requires `-f 420p:10` and `--fps`. **HLG** uses the same BT2020 feature path without EOTF and is **experimental** (monotonicity sanity checks only). One pooled score; **QCS unsupported**. See [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
 - QCS applies to per-frame or sampled metrics only; `simplevqa` and `hdr-chipqa` are pooled-only. See [QCS](QCS.md).
-- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics, **HDR-ChipQA** (HLG experimental), and transfer defaults. **SimpleVQA** is incompatible with `pq`/`hlg` groups (SDR-only). **CVVDP** is opt-in—append by name (e.g. `--metrics pq,cvvdp`) because of GPU cost; `all` still includes CVVDP. See [CLI Usage](CLI_USAGE.md#metric-groups).
+- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics and transfer defaults; **HDR-ChipQA** is opt-in because of host-RAM demands. **SimpleVQA** is incompatible with `pq`/`hlg` groups (SDR-only). **CVVDP** is also opt-in for groups because of GPU cost (e.g. `--metrics pq,cvvdp`); `all` still includes CVVDP. Add HDR-ChipQA explicitly (e.g. `--metrics pq,hdr-chipqa`). See [CLI Usage](CLI_USAGE.md#metric-groups).
 
 ## Metric Capabilities
 

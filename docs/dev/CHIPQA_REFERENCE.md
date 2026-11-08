@@ -61,7 +61,7 @@ python3.10 -m venv ~/.venvs/pixvqa-chipqa-ref
 
 ## Contract
 
-- **`hdr-chipqa`**: unified SDR + PQ HDR + **experimental HLG**; included automatically in `sdr`/`pq`/`hlg` groups; also selectable alone (`--metrics hdr-chipqa`) or appended redundantly (e.g. `--metrics pq,hdr-chipqa`).
+- **`hdr-chipqa`**: unified SDR + PQ HDR + **experimental HLG**; not included automatically in `sdr`/`pq`/`hlg` groups; selectable alone (`--metrics hdr-chipqa`) or added to a group (e.g. `--metrics pq,hdr-chipqa`).
 - HLG must not be silently inferred from 10-bit input; explicit stream tags or `--transfer hlg` / `arib-std-b67` required.
 - Unknown HDR transfers (e.g. smpte428) are rejected.
 - **QCS:** no `HDR-ChipQA-QCS` line (pooled scalar only); `--qcs` with **only** `hdr-chipqa` exits setup. Groups and mixes with eligible metrics keep QCS on the other selections.
