@@ -571,6 +571,12 @@ def cli_cases(s: Suite) -> None:
             fail("hdr-chipqa-hlg-raw", str(args))
         else:
             ok("hdr-chipqa-hlg-raw-dispatch")
+        # The Python adapter needs the interpreter path again for its own
+        # feature extraction subprocess. This must work without an env var.
+        if "--feature-python" not in args or args[args.index("--feature-python") + 1] != sys.executable:
+            fail("hdr-chipqa-feature-python-forwarding", str(args))
+        else:
+            ok("hdr-chipqa-feature-python-forwarded")
 
     proc = s.run(["--metrics", "hdr-chipqa", "-t", str(s.test), "-s", "16x16", "-f", "420p:10",
                   "--hdr-transfer", "hlg", *s.hc()])

@@ -2093,10 +2093,14 @@ bool hdr_chipqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
   const std::string output_json =
       hc.output_json_set ? hc.output_json : plan.hdr_chipqa_temporary.path + "/result.json";
   const std::string transfer = hdr_chipqa_resolved_transfer(plan.opt);
-  args = {backend_python(hc.feature_python, "PIXVQA_HDR_CHIPQA_FEATURE_PYTHON",
-                         g_learned_config.hdr_chipqa_feature_python),
-          "-m", "pixvqa_hdr_chipqa", "--repo", hc.repository, "--test", plan.opt.test_path,
-          "--output-json", output_json};
+  const std::string feature_python =
+      backend_python(hc.feature_python, "PIXVQA_HDR_CHIPQA_FEATURE_PYTHON",
+                     g_learned_config.hdr_chipqa_feature_python);
+  // The feature subprocess is launched by the Python adapter, not directly by
+  // PixVQA. Forward the resolved interpreter explicitly; merely executing the
+  // adapter with it does not configure resolve_python() within the adapter.
+  args = {feature_python, "-m", "pixvqa_hdr_chipqa", "--feature-python", feature_python,
+          "--repo", hc.repository, "--test", plan.opt.test_path, "--output-json", output_json};
   const bool raw_test = path_ends_with_yuv(plan.opt.test_path);
   if (raw_test) {
     args.push_back("--width");
