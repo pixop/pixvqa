@@ -10,5 +10,5 @@ for _name, _builtin in (
     ("object", object),
     ("str", str),
 ):
-    if not hasattr(np, _name):
+    if _name not in np.__dict__:
         setattr(np, _name, _builtin)

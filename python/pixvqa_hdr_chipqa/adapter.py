@@ -513,7 +513,20 @@ def extract_features(
         raise SetupError(f"could not start HDR-ChipQA feature extraction: {exc}") from exc
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "").strip()
-        raise InferenceError(f"HDR-ChipQA feature extraction failed: {err[-1500:] or proc.returncode}")
+        if proc.returncode < 0:
+            import signal
+            signum = -proc.returncode
+            try:
+                signal_name = signal.Signals(signum).name
+            except ValueError:
+                signal_name = f"signal {signum}"
+            reason = f"child terminated by {signal_name} ({signum})"
+            if signum == signal.SIGKILL:
+                reason += "; possible system/cgroup OOM kill or external termination; inspect dmesg/journalctl"
+        else:
+            reason = f"child exited with status {proc.returncode}"
+        details = err[-3000:] if err else "no child stderr/stdout (no Python traceback)"
+        raise InferenceError(f"HDR-ChipQA feature extraction failed: {reason}; {details}")
     if not features_z.is_file() or features_z.stat().st_size == 0:
         raise InferenceError("HDR-ChipQA feature extraction produced no output")
 
