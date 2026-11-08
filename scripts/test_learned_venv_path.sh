@@ -22,6 +22,11 @@ merge_config(root / 'config/learned_metrics.example.toml', config, {
 parsed = tomllib.loads(config.read_text())
 assert parsed['learned']['python'] == venv
 assert parsed['hdr-chipqa']['inference_python'] == venv
+# Older installer saved a valid base interpreter rather than the venv.
+base = str(pathlib.Path(sys.executable).resolve())
+config.write_text(f'[learned]\npython = "{base}"\n')
+merge_config(root / 'config/learned_metrics.example.toml', config, {'learned.python': venv})
+assert tomllib.loads(config.read_text())['learned']['python'] == venv
 config.write_text('[learned]\npython = "/custom/interpreter"\n')
 merge_config(root / 'config/learned_metrics.example.toml', config, {'learned.python': venv})
 assert tomllib.loads(config.read_text())['learned']['python'] == '/custom/interpreter'

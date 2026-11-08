@@ -141,6 +141,15 @@ fi
 inference_python="$(bash "$root/scripts/setup_hdr_chipqa_envs.sh" "$feature_python" "$chipqa_infer_dir")"
 
 # --- Upstream repos, checkpoints, config merge, validation ---
+# Google's large-file confirmation flow is not reliably handled by urllib.
+# Provision the dedicated downloader inside the existing learned .venv.
+if [[ -z "$offline" ]]; then
+  if ! "$selected_python" -c 'import gdown' >/dev/null 2>&1; then
+    echo 'Learned setup: installing pinned Google Drive downloader for SimpleVQA' >&2
+    "$selected_python" -m pip --disable-pip-version-check install --no-cache-dir 'gdown==5.2.0' >&2
+  fi
+fi
+export PIXVQA_LEARNED_DOWNLOADER_PYTHON="$selected_python"
 pyw="${PIXVQA_LEARNED_CONFIG_PYTHON:-python3}"
 if ! command -v "$pyw" >/dev/null 2>&1; then
   pyw=python3

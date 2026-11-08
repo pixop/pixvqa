@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
@@ -60,7 +61,22 @@ def merge_config(example: Path, destination: Path, defaults: dict[str, str]) -> 
                 "hdr-chipqa.feature_python", "hdr-chipqa.inference_python"
             )
             legacy_host_path = str(Path(value).resolve()) if interpreter_key else ""
-            if not (interpreter_key and current[1] == legacy_host_path and current[1] != value):
+            legacy_base = False
+            if name == "learned.python" and current[1] != value and Path(value).is_file():
+                # A previous installer persisted the base Python 3.12 executable
+                # instead of .venv/bin/python. Repair only that identifiable
+                # erroneous configuration, not a working custom virtualenv.
+                current_path = Path(current[1])
+                if current_path.is_file():
+                    try:
+                        result = subprocess.run(
+                            [str(current_path), "-c", "import sys; print(sys.prefix == sys.base_prefix)"],
+                            capture_output=True, text=True, timeout=8,
+                        )
+                        legacy_base = result.returncode == 0 and result.stdout.strip() == "True"
+                    except (OSError, subprocess.TimeoutExpired):
+                        pass
+            if not ((interpreter_key and current[1] == legacy_host_path and current[1] != value) or legacy_base):
                 messages.append(f"preserved [{section}].{key}")
                 continue
             messages.append(f"repaired legacy interpreter path [{section}].{key}")

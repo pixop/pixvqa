@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import subprocess
 import ssl
 import urllib.error
 import urllib.request
@@ -120,8 +121,34 @@ def fetch_url_to_file(url: str, dest: Path, *, label: str) -> None:
 
 
 def fetch_gdrive_to_file(file_id: str, dest: Path) -> None:
-    data = _gdrive_download(file_id)
-    atomic_write(dest, data)
+    """Acquire a Google Drive asset with gdown's cookie/confirmation handling.
+
+    The caller checks SHA-256 before treating the result as installed.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    temp = dest.with_suffix(dest.suffix + ".part")
+    py = os.environ.get("PIXVQA_LEARNED_DOWNLOADER_PYTHON", "")
+    if not py:
+        raise DownloadError("Google Drive downloader interpreter not configured")
+    try:
+        proc = subprocess.run(
+            [py, "-m", "gdown", "--id", file_id, "-O", str(temp)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.returncode != 0:
+            msg = (proc.stderr or proc.stdout or "unknown gdown error").strip()
+            raise DownloadError(f"gdown failed (exit {proc.returncode}): {msg[-600:]}")
+        if not temp.is_file():
+            raise DownloadError("gdown did not create a checkpoint file")
+        with temp.open("rb") as handle:
+            reject_html_payload(handle.read(4096), label="SimpleVQA Google Drive checkpoint")
+        os.replace(temp, dest)
+    except subprocess.TimeoutExpired as exc:
+        raise DownloadError("Google Drive download timed out") from exc
+    except OSError as exc:
+        raise DownloadError(f"Google Drive downloader could not run: {exc}") from exc
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def ensure_asset(
