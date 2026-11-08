@@ -13,20 +13,6 @@ import ffmpeg
 assert all(callable(getattr(ffmpeg, key, None)) for key in ('input', 'probe', 'run_async')), 'ffmpeg-python API unavailable or shadowed by PyPI ffmpeg'
 assert md.version('cvvdp') == '0.5.7', 'unexpected cvvdp version'
 PY
-# Install only genuinely missing declared dependencies; the FFmpeg executable
-# is external and `ffmpeg-python` is already installed in the common venv.
-missing="$("$py" - <<'PY'
-import importlib.metadata as md
-for name, spec in [('matplotlib', 'matplotlib>=3.8,<4'), ('PyEXR', 'PyEXR==0.5.0')]:
-    try: md.version(name)
-    except md.PackageNotFoundError: print(spec)
-PY
-)"
-if [[ -n "$missing" ]]; then
-  [[ -z "${PIXVQA_LEARNED_INSTALL_OFFLINE:-}" ]] || { echo 'CVVDP setup: missing declared packages in offline mode' >&2; exit 1; }
-  mapfile -t packages <<< "$missing"
-  "$py" -m pip --disable-pip-version-check install --no-cache-dir "${packages[@]}" >&2
-fi
 # Correct the known bad upstream packaging declaration, without mutating
 # checkouts, swapping ffmpeg modules, or editing installed dist-info in place.
 if "$py" - <<'PY'
@@ -49,6 +35,22 @@ p.write_text(s.replace(needle, ''), encoding='utf-8')
 PY
   echo 'CVVDP setup: repairing conflicting upstream ffmpeg package metadata (keeping ffmpeg-python)' >&2
   "$py" -m pip --disable-pip-version-check install --no-deps --no-build-isolation --force-reinstall "$export_dir" >&2
+fi
+# Fix cvvdp's stale metadata BEFORE pip installs any missing dependencies.
+# Otherwise pip reports a transient conflict against the old requirements.
+# Install only genuinely missing declared dependencies; the FFmpeg executable
+# is external and `ffmpeg-python` is already installed in the common venv.
+missing="$("$py" - <<'PY'
+import importlib.metadata as md
+for name, spec in [('matplotlib', 'matplotlib>=3.8,<4'), ('PyEXR', 'PyEXR==0.5.0')]:
+    try: md.version(name)
+    except md.PackageNotFoundError: print(spec)
+PY
+)"
+if [[ -n "$missing" ]]; then
+  [[ -z "${PIXVQA_LEARNED_INSTALL_OFFLINE:-}" ]] || { echo 'CVVDP setup: missing declared packages in offline mode' >&2; exit 1; }
+  mapfile -t packages <<< "$missing"
+  "$py" -m pip --disable-pip-version-check install --no-cache-dir "${packages[@]}" >&2
 fi
 "$py" - <<'PY'
 import importlib.metadata as md

@@ -34,4 +34,7 @@ with tempfile.TemporaryDirectory() as td:
     assert '--no-deps --no-build-isolation --force-reinstall' in shell
     assert 'pip check' in shell
     assert "('PyEXR', 'PyEXR==0.5.0')" in shell
+    # Installing PyEXR first triggers pip's misleading transient error about
+    # the stale ffmpeg requirement; metadata correction must precede pip repair.
+    assert shell.index("from importlib.metadata import distribution") < shell.index('missing="$("$py"')
 print('PASS pinned ColorVideoVDP dependency correction only removes conflicting ffmpeg')
