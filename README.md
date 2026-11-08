@@ -27,10 +27,10 @@ PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build
 | PU21-PSNR | FR | ❌ | ✅ | ✅ |
 | PU21-SSIM | FR | ❌ | ✅ | ✅ |
 | PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
-| CVVDP (`sdr` / `pq` / `hlg` interpretation) | FR | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR NR | NR | ✅ | ✅ | ❌ |
-| SimpleVQA (`simplevqa`) | NR | ✅ | ❌ | ❌ |
-| HDR-ChipQA (`hdr-chipqa`) | NR | ✅ | ✅ | 🔬 |
+| ColorVideoVDP | FR | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR | NR | ✅ | ✅ | ❌ |
+| SimpleVQA | NR | ✅ | ❌ | ❌ |
+| HDR-ChipQA | NR | ✅ | ✅ | 🔬 |
 
 **Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
 
