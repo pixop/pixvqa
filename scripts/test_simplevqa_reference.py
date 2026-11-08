@@ -15,6 +15,11 @@ sys.path.insert(0, str(ROOT / "python"))
 from pixvqa_simplevqa.adapter import (
     InferenceError,
     SetupError,
+    _CPU_OVERLAY_OLD_BLOCK,
+    _CUDA_SINGLE_DECODE_MAIN_OLD,
+    _CUDA_UNIFIED_FN_ANCHOR,
+    cpu_overlay_test_demo,
+    cuda_single_decode_overlay_test_demo,
     inspect_video,
     parse_score,
     run,
@@ -69,8 +74,13 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         "duration_seconds": 10.0,
         "transfer": "bt709",
     }
+    def _identity_overlay(src: Path) -> str:
+        return src.read_text(encoding="utf-8")
+
     with patch("pixvqa_simplevqa.adapter.inspect_video", return_value=probe), patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
+    ), patch("pixvqa_simplevqa.adapter.cpu_overlay_test_demo", side_effect=_identity_overlay), patch(
+        "pixvqa_simplevqa.adapter.cuda_single_decode_overlay_test_demo", side_effect=_identity_overlay
     ):
         info = validate(repo, checkpoint, video)
         assert info["input"] == probe
@@ -80,12 +90,15 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert "python_implementation" in rs
         result = run(repo, checkpoint, video, device="cpu")
         assert result["quality_score"] == 0.723456
+        assert result["device"] == "cpu"
+        assert result["upstream_test_demo"] == "cpu-overlay"
         assert result["runtime_stack"] == rs
         assert result["temporal_semantics"] == "pooled-video"
         assert result["checkpoint_sha256"]
         assert result["backend"] == "upstream-test_demo"
         result = run(repo, checkpoint, video, device="cuda")
         assert result["device"] == "cuda"
+        assert result["upstream_test_demo"] == "symlink-unmodified"
         try:
             run(repo, checkpoint, video, device="gpu")
         except SetupError:
@@ -282,7 +295,9 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     ok_fmt = {"duration": "2.0"}
     with patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
-    ), patch("pixvqa_simplevqa.adapter.subprocess.run") as mock_run:
+    ), patch("pixvqa_simplevqa.adapter.cpu_overlay_test_demo", side_effect=_identity_overlay), patch(
+        "pixvqa_simplevqa.adapter.subprocess.run"
+    ) as mock_run:
         ffprobe_calls = {"n": 0}
 
         def _dual_run(cmd, *args, **kwargs):
@@ -304,7 +319,9 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
 
     with patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
-    ), patch("pixvqa_simplevqa.adapter.subprocess.run") as mock_run2:
+    ), patch("pixvqa_simplevqa.adapter.cpu_overlay_test_demo", side_effect=_identity_overlay), patch(
+        "pixvqa_simplevqa.adapter.subprocess.run"
+    ) as mock_run2:
         ffprobe_calls2 = {"n": 0}
 
         def _dual_run2(cmd, *args, **kwargs):
@@ -335,6 +352,61 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     meta = runtime_stack_versions()
     assert meta.get("python_version")
     assert meta.get("python_implementation")
+
+    # --- CUDA single-decode overlay (no PyTorch) ---
+    real_upstream = ROOT / "deps/SimpleVQA/test_demo.py"
+    if real_upstream.is_file():
+        patched_cuda = cuda_single_decode_overlay_test_demo(real_upstream)
+        assert "video_processing_unified" in patched_cuda
+        assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
+        assert "video_processing_spatial(config.dist)" not in patched_cuda.split("def main")[1]
+        assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
+        bad_cuda = d / "bad_cuda_upstream"
+        bad_cuda.mkdir()
+        (bad_cuda / "test_demo.py").write_text("# no main block\n", encoding="utf-8")
+        try:
+            cuda_single_decode_overlay_test_demo(bad_cuda / "test_demo.py")
+        except SetupError as e:
+            assert "layout changed" in str(e).lower() or "not found" in str(e).lower()
+        else:
+            raise AssertionError("missing CUDA overlay block accepted")
+
+    # --- CPU overlay text generation (no PyTorch) ---
+    overlay_src = d / "overlay_upstream"
+    overlay_src.mkdir()
+    (overlay_src / "test_demo.py").write_text(
+        "# header\n" + _CPU_OVERLAY_OLD_BLOCK + "\nwith torch.no_grad():\n"
+        "    feature_motion = torch.zeros([n_clip, 2048+256])\n",
+        encoding="utf-8",
+    )
+    patched = cpu_overlay_test_demo(overlay_src / "test_demo.py")
+    assert "DataParallel" not in patched
+    assert "map_location=device" in patched
+    assert "torch.inference_mode()" in patched
+    assert "device=device" in patched
+    bad_src = d / "bad_upstream"
+    bad_src.mkdir()
+    (bad_src / "test_demo.py").write_text("# no matching block\n", encoding="utf-8")
+    try:
+        cpu_overlay_test_demo(bad_src / "test_demo.py")
+    except SetupError as e:
+        assert "layout changed" in str(e).lower() or "not found" in str(e).lower()
+    else:
+        raise AssertionError("missing overlay block accepted")
+
+    # Opt-in: full CPU inference on official fixture (slow; needs deps + GPU weights cache).
+    _smoke = ROOT / "deps/SimpleVQA"
+    _official = _smoke / "videos/2999049224_original_centercrop_960x540_8s.mp4"
+    _ckpt = _smoke / "ckpts/UGC_BVQA_model.pth"
+    if __import__("os").environ.get("SIMPLEVQA_CPU_SMOKE") == "1":
+        if not (_smoke / "test_demo.py").is_file() or not _official.is_file() or not _ckpt.is_file():
+            print("SKIP: SIMPLEVQA_CPU_SMOKE=1 but official deps/fixture missing", file=sys.stderr)
+        else:
+            rec = run(_smoke, _ckpt, _official, device="cpu", timeout=600)
+            assert rec["device"] == "cpu"
+            assert rec["upstream_test_demo"] == "cpu-overlay"
+            assert 0.0 < rec["quality_score"] < 10.0
+            print(f"PASS: CPU smoke score {rec['quality_score']}", file=sys.stderr)
 
 print(
     "PASS: SimpleVQA reference adapter preflight, staging, output, "

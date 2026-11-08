@@ -56,6 +56,11 @@ def main(argv=None) -> int:
         help="Internal: write JSON to --output-json path but do not persist naming in reports.",
     )
     ap.add_argument("--protocol", choices=("json", "lines"), default="json")
+    ap.add_argument(
+        "--use-worker",
+        action="store_true",
+        help="Opt-in: reuse a persistent CUDA worker to amortize import cost across clips.",
+    )
     args = ap.parse_args(argv)
     if args.max_frames not in (-1, 0):
         print("pixvqa-simplevqa: --max-frames is not enforced by the upstream demo (full-clip score)",
@@ -74,6 +79,7 @@ def main(argv=None) -> int:
                 device=dev,
                 ffprobe=args.ffprobe,
                 timeout=args.timeout,
+                use_worker=args.use_worker,
             )
     except SetupError as exc:
         print(f"pixvqa-simplevqa: setup: {exc}", file=sys.stderr)

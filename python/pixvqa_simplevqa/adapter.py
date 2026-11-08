@@ -2,7 +2,11 @@
 
 No PyTorch code is vendored. The official demo is executed in a temporary,
 isolated working directory to satisfy its fixed relative ckpts/ path.
-This is a parity baseline, not a native implementation.
+CPU runs a staged overlay (no DataParallel; ``map_location`` on load) because
+upstream unconditionally wraps the model in DataParallel. The default CUDA
+path symlinks upstream ``test_demo.py`` unchanged. Optional ``--use-worker``
+stages a parity-reviewed single-decode overlay and amortizes imports for batch
+CUDA scoring. This is a parity baseline, not a native implementation.
 """
 from __future__ import annotations
 
@@ -39,6 +43,102 @@ _RUNTIME_DIST_NAMES = (
 )
 MODEL_FILES = ("test_demo.py", "model/UGC_BVQA_model.py")
 SCORE_RE = re.compile(r"^\s*(.+),\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*$")
+
+# Upstream test_demo.py main() loads a CUDA-saved checkpoint through DataParallel even
+# when --is_gpu is absent. CPU hosts need a staged overlay (parity-reviewed; no math change).
+_CPU_OVERLAY_OLD_BLOCK = """    model = UGC_BVQA_model.resnet50(pretrained=False)
+    model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.load_state_dict(torch.load('ckpts/UGC_BVQA_model.pth'))"""
+_CPU_OVERLAY_NEW_BLOCK = """    model = UGC_BVQA_model.resnet50(pretrained=False)
+    _ckpt = torch.load('ckpts/UGC_BVQA_model.pth', map_location=device)
+    if any(_k.startswith('module.') for _k in _ckpt):
+        _ckpt = {_k.replace('module.', '', 1): _v for _k, _v in _ckpt.items()}
+    model.load_state_dict(_ckpt)
+    model = model.to(device=device)"""
+_CPU_OVERLAY_EXTRA = (
+    ("with torch.no_grad():", "with torch.inference_mode():"),
+    (
+        "feature_motion = torch.zeros([n_clip, 2048+256])",
+        "feature_motion = torch.zeros([n_clip, 2048+256], device=device)",
+    ),
+)
+
+# CUDA single-decode overlay: one OpenCV pass for spatial keyframes + motion clips.
+# Parity-reviewed on official 960x540/8s clip (exact FP32 score 2.9507508277893066).
+_CUDA_SINGLE_DECODE_MAIN_OLD = """        video_dist_spatial, video_name = video_processing_spatial(config.dist)
+        video_dist_motion, video_name = video_processing_motion(config.dist)"""
+_CUDA_SINGLE_DECODE_MAIN_NEW = """        video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)"""
+_CUDA_UNIFIED_FN_ANCHOR = "def pack_pathway_output(frames, device):"
+_CUDA_UNIFIED_FN = '''
+
+def video_processing_unified(dist):
+    """Single OpenCV decode pass for spatial keyframes and motion clip tensors."""
+    video_name = dist
+    video_name_dis = video_name
+    video_capture = cv2.VideoCapture()
+    video_capture.open(dist)
+    cap = cv2.VideoCapture(dist)
+    video_channel = 3
+    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_frame_rate = int(round(cap.get(cv2.CAP_PROP_FPS)))
+    video_length_read = int(video_length / video_frame_rate)
+    video_clip = int(video_length / video_frame_rate)
+    video_clip_min = 8
+    video_length_clip = 32
+
+    spatial_tf = transforms.Compose([
+        transforms.Resize(520), transforms.CenterCrop(448), transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    motion_tf = transforms.Compose([
+        transforms.Resize([224, 224]), transforms.ToTensor(),
+        transforms.Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
+    ])
+
+    transformed_video = torch.zeros([video_length_read, video_channel, 448, 448])
+    transformed_frame_all = torch.zeros([video_length, video_channel, 224, 224])
+    video_read_index = 0
+    frame_idx = 0
+    spatial_idx = 0
+
+    for i in range(video_length):
+        has_frames, frame = video_capture.read()
+        if not has_frames:
+            continue
+        read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        motion_frame = motion_tf(read_frame)
+        transformed_frame_all[video_read_index] = motion_frame
+        if (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0):
+            transformed_video[spatial_idx] = spatial_tf(read_frame)
+            spatial_idx += 1
+        video_read_index += 1
+        frame_idx += 1
+
+    if spatial_idx < video_length_read:
+        for i in range(spatial_idx, video_length_read):
+            transformed_video[i] = transformed_video[spatial_idx - 1]
+    if video_read_index < video_length:
+        for i in range(video_read_index, video_length):
+            transformed_frame_all[i] = transformed_frame_all[video_read_index - 1]
+
+    video_capture.release()
+    motion_clips = []
+    for i in range(video_clip):
+        clip_tensor = torch.zeros([video_length_clip, video_channel, 224, 224])
+        if (i * video_frame_rate + video_length_clip) <= video_length:
+            clip_tensor = transformed_frame_all[i * video_frame_rate : (i * video_frame_rate + video_length_clip)]
+        else:
+            n = video_length - i * video_frame_rate
+            clip_tensor[:n] = transformed_frame_all[i * video_frame_rate :]
+            for j in range(n, video_length_clip):
+                clip_tensor[j] = clip_tensor[n - 1]
+        motion_clips.append(clip_tensor)
+    if video_clip < video_clip_min:
+        for i in range(video_clip, video_clip_min):
+            motion_clips.append(motion_clips[video_clip - 1])
+    return transformed_video, motion_clips, video_name_dis
+'''
 
 # PQ / HLG and common alias strings from ffprobe color_transfer (SDR-only reference).
 _HDR_TRANSFER_REJECT = frozenset({
@@ -298,6 +398,56 @@ def validate(repo: Path, checkpoint: Path, video: Path, *,
     return out
 
 
+def cpu_overlay_test_demo(src: Path) -> str:
+    """Return CPU-safe test_demo.py text (no DataParallel; map_location honors device).
+
+    Fails explicitly when upstream layout differs from the pinned block (commit 017edda).
+    """
+    try:
+        text = src.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SetupError(f"could not read upstream test_demo.py: {exc}") from exc
+    if _CPU_OVERLAY_OLD_BLOCK not in text:
+        raise SetupError(
+            "upstream test_demo.py layout changed; CPU overlay block not found "
+            "(expected DataParallel + torch.load without map_location at main())"
+        )
+    text = text.replace(_CPU_OVERLAY_OLD_BLOCK, _CPU_OVERLAY_NEW_BLOCK, 1)
+    for old, new in _CPU_OVERLAY_EXTRA:
+        if old not in text:
+            raise SetupError(
+                f"upstream test_demo.py layout changed; expected snippet missing: {old!r}"
+            )
+        text = text.replace(old, new, 1)
+    return text
+
+
+def cuda_single_decode_overlay_test_demo(src: Path) -> str:
+    """Return CUDA test_demo.py with single OpenCV decode (parity-reviewed; no math change).
+
+    Upstream DataParallel, checkpoint, sampling, color pipeline, and tensor shapes
+    are unchanged. Fails explicitly when upstream layout differs from pinned anchors.
+    """
+    try:
+        text = src.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SetupError(f"could not read upstream test_demo.py: {exc}") from exc
+    if _CUDA_SINGLE_DECODE_MAIN_OLD not in text:
+        raise SetupError(
+            "upstream test_demo.py layout changed; single-decode main() block not found "
+            "(expected separate video_processing_spatial/motion calls)"
+        )
+    if _CUDA_UNIFIED_FN_ANCHOR not in text:
+        raise SetupError(
+            "upstream test_demo.py layout changed; pack_pathway_output anchor not found"
+        )
+    if "def video_processing_unified(" in text:
+        raise SetupError("upstream test_demo.py already contains video_processing_unified")
+    text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
+    text = text.replace(_CUDA_SINGLE_DECODE_MAIN_OLD, _CUDA_SINGLE_DECODE_MAIN_NEW, 1)
+    return text
+
+
 def parse_score(text: str, expected_video: Path) -> float:
     lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
@@ -320,7 +470,7 @@ def parse_score(text: str, expected_video: Path) -> float:
 
 def run(repo: Path, checkpoint: Path, video: Path, *,
         device: str = "cpu", ffprobe: str = "ffprobe",
-        timeout: int = 3600) -> dict:
+        timeout: int = 3600, use_worker: bool = False) -> dict:
     if device not in ("cpu", "cuda"):
         raise SetupError("device must be cpu or cuda")
     if timeout <= 0:
@@ -328,6 +478,25 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
     info = validate(repo, checkpoint, video, ffprobe=ffprobe)
     repo, checkpoint, video = Path(info["repo"]), Path(info["checkpoint"]), Path(info["video"])
     video_in = str(video)
+    if use_worker:
+        if device != "cuda":
+            raise SetupError("persistent worker backend requires device=cuda")
+        from .worker import run_via_worker
+
+        score = run_via_worker(
+            repo, checkpoint, video,
+            timeout=timeout,
+        )
+        return {
+            "metric": "simplevqa", "quality_score": score, "device": device,
+            "checkpoint_sha256": digest(checkpoint),
+            "upstream_repo": str(repo), "upstream_commit": git_revision(repo),
+            "upstream_test_demo": "cuda-single-decode-worker",
+            "video": str(video), "video_metadata": info["input"],
+            "backend": "persistent-worker", "temporal_semantics": "pooled-video",
+            "slowfast_pretrained_source": "upstream PyTorchVideo pretrained cache/download",
+            "runtime_stack": info.get("runtime_stack") or runtime_stack_versions(),
+        }
     # Check dependencies before launching the heavyweight upstream demo.
     # The demo internally loads slowfast_r50(pretrained=True); that call may
     # trigger PyTorchVideo/hub download and large full-video allocations — not
@@ -335,11 +504,25 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
     # failures or silently accept a randomly initialized backbone.
     with tempfile.TemporaryDirectory(prefix="pixvqa_simplevqa_") as tmp:
         root = Path(tmp)
+        upstream_demo = repo / "test_demo.py"
+        if device == "cpu":
+            try:
+                (root / "test_demo.py").write_text(
+                    cpu_overlay_test_demo(upstream_demo), encoding="utf-8"
+                )
+            except OSError as exc:
+                raise SetupError(f"could not stage CPU overlay test_demo.py: {exc}") from exc
+            upstream_test_demo = "cpu-overlay"
+        else:
+            try:
+                (root / "test_demo.py").symlink_to(upstream_demo, target_is_directory=False)
+            except OSError as exc:
+                raise SetupError(f"could not stage upstream test_demo.py symlink: {exc}") from exc
+            upstream_test_demo = "symlink-unmodified"
         try:
-            (root / "test_demo.py").symlink_to(repo / "test_demo.py")
             (root / "model").symlink_to(repo / "model", target_is_directory=True)
         except OSError as exc:
-            raise SetupError(f"could not stage upstream symlinks: {exc}") from exc
+            raise SetupError(f"could not stage upstream model symlink: {exc}") from exc
         (root / "ckpts").mkdir()
         try:
             (root / "ckpts" / "UGC_BVQA_model.pth").symlink_to(checkpoint)
@@ -383,6 +566,7 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
         "metric": "simplevqa", "quality_score": score, "device": device,
         "checkpoint_sha256": digest(checkpoint),
         "upstream_repo": str(repo), "upstream_commit": git_revision(repo),
+        "upstream_test_demo": upstream_test_demo,
         "video": str(video), "video_metadata": info["input"],
         "backend": "upstream-test_demo", "temporal_semantics": "pooled-video",
         "slowfast_pretrained_source": "upstream PyTorchVideo pretrained cache/download",
