@@ -65,13 +65,15 @@ For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; 
 
 ## Metric groups
 
-Groups select several metrics and transfer/display defaults. A group can be combined with individual metric names, but not with a different group. All selected backends must be installed.
+Groups select baseline native (and applicable NR) metrics, **HDR-ChipQA**, and transfer/display defaults. Append individual metrics to a group (e.g. `--metrics pq,cvvdp`). A group cannot combine with a different group. All selected backends must be installed.
 
 | Group | Includes | Interpretation |
 |---|---|---|
-| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVVDP, CVQA-HDR NR | SDR; specify an SDR CVVDP display (e.g. `standard_fhd`) |
-| `pq` | SDR group metrics plus PU21-PSNR/SSIM/MS-SSIM | PQ/BT.2020 non-constant luminance, limited range; HDR CVVDP display |
-| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, CVVDP | HLG/BT.2020 non-constant luminance, limited range; no VMAF or NR |
+| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVQA-HDR NR, HDR-ChipQA | SDR |
+| `pq` | SDR group metrics plus PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA | PQ/BT.2020 non-constant luminance, limited range |
+| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA (experimental) | HLG/BT.2020 non-constant luminance, limited range; no VMAF or NR |
+
+**CVVDP** (`cvvdp`) is **not** in group baselines (GPU-intensive). Add it explicitly when needed, e.g. `--metrics pq,cvvdp` or `--metrics sdr,cvvdp`. Groups that include CVVDP fill `--cvvdp-interpretation` and `--cvvdp-display` from the group (unless overridden). **HDR-ChipQA** runs automatically in every group; HLG scores are experimental. You can also select it alone with `--metrics hdr-chipqa`. `all` still selects every metric including CVVDP (but not HDR-ChipQA unless added by name or via a group). With `--qcs`, each eligible metric in the selection gets a QCS line; **HDR-ChipQA** stays pooled-only and emits no QCS (see [QCS](QCS.md)).
 
 Metric groups assign interpretation; they do not convert pixel values. See [Metrics & Formats](METRICS_AND_FORMATS.md).
 
@@ -91,7 +93,7 @@ This is the everyday option reference. `--help-advanced` and `--help-hdr` list a
 
 | Option | Purpose / default |
 |---|---|
-| `--metrics LIST` | Required; comma-separated metrics (`psnr,xpsnr,ssim,msssim,vmaf,pu21-psnr,pu21-ssim,pu21-msssim,cvvdp,cvqa-hdr-nr`) or `all,sdr,pq,hlg`. Repeatable. |
+| `--metrics LIST` | Required; comma-separated metrics (`psnr,xpsnr,ssim,msssim,vmaf,pu21-psnr,pu21-ssim,pu21-msssim,cvvdp,cvqa-hdr-nr,simplevqa,hdr-chipqa`) or `all,sdr,pq,hlg`. Repeatable. |
 | `-r PATH`, `-t PATH` | Reference (full-reference metrics) and required distorted video. |
 | `--input auto\|raw\|compressed` | Input-type override for subsequent inputs; default `auto`. |
 | `-s WxH`, `-f 420p\|422p\|444p[:8\|:10]` | Raw-video size and planar format; omitted bit depth means 10. |

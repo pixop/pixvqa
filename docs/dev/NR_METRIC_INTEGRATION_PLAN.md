@@ -2,7 +2,7 @@
 
 Status: proposed implementation contracts; **standalone SimpleVQA upstream reference runner**
 (`python -m pixvqa_simplevqa`, [`SIMPLEVQA_REFERENCE.md`](SIMPLEVQA_REFERENCE.md)) exists for external parity runs.
-**ChipQA / HDR-ChipQA** are integrated as separate NR metrics (`chipqa`, `hdr-chipqa`); see [`CHIPQA_REFERENCE.md`](CHIPQA_REFERENCE.md). **`pixvqa --metrics simplevqa`** (SDR-only NR, Python backend) is implemented in `src/main.cpp` with tests in `scripts/test_learned_metrics_cli.py`.
+**HDR-ChipQA** is integrated as a unified NR metric (`hdr-chipqa`) for SDR (BT.709) and PQ HDR; see [`CHIPQA_REFERENCE.md`](CHIPQA_REFERENCE.md). **`pixvqa --metrics simplevqa`** (SDR-only NR, Python backend) is implemented in `src/main.cpp` with tests in `scripts/test_learned_metrics_cli.py`.
 
 ## Existing integration points
 
@@ -15,9 +15,9 @@ Status: proposed implementation contracts; **standalone SimpleVQA upstream refer
 ## Proposed user contract
 
 - `simplevqa`: NR, SDR only, initially Python/PyTorch reference implementation.
-- `chipqa`: NR, SDR -> original ChipQA + its scaler/SVR; PQ -> HDR-ChipQA + its scaler/SVR; HLG -> unsupported.
+- `hdr-chipqa`: NR, SDR (BT.709 gamma YUV via `color_space=BT709`), PQ HDR (`color_space=BT2020`), and **experimental** HLG (same BT2020 feature path, uncalibrated). Standalone ChipQA removed.
 - `cvqa-hdr-nr`: retain existing SDR/PQ support and behavior.
-- Preserve `--metrics sdr|pq|hlg` grouping; do not make implicit HLG-to-PQ conversions.
+- Preserve `--metrics sdr|pq|hlg` grouping; HDR-ChipQA is included in all three groups; do not make implicit HLG-to-PQ conversions.
 - Preserve the current mixed FR+NR command shape: `-r REF -t DIST`, while NR backends consume only DIST.
 - Record the resolved transfer, source revision, preprocessing variant, model/checkpoint identity, device, sampling plan, and number of evaluated samples.
 - A pooled prediction must not be labeled per-frame or passed to per-frame QCS. Windowed/temporal outputs require explicit documented semantics.

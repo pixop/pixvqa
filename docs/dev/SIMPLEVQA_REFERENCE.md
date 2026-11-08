@@ -48,14 +48,40 @@ PYTHONPATH=python /path/to/learned-env/bin/python -m pixvqa_simplevqa \
 ```
 
 The runner executes upstream `test_demo.py` in an isolated temporary working
-directory using symlinks to the original sources and a symlink for
-`ckpts/UGC_BVQA_model.pth` pointing at your checkpoint. It does not edit the
-upstream checkout or copy full trees. Output is one JSON record containing the
-pooled quality score, model SHA-256, upstream revision, **runtime stack**
+directory. **CUDA** (`--device cuda` / `--is_gpu` upstream) symlinks the
+unchanged upstream script; **CPU** stages a parity-reviewed overlay that drops
+unconditional `DataParallel` and loads the checkpoint with `map_location` (upstream
+lines 191–194 otherwise fail on CPU). `model/` is always symlinked; checkpoint via
+`ckpts/UGC_BVQA_model.pth`. The upstream checkout is never modified. JSON output
+includes `upstream_test_demo` (`cpu-overlay` vs `symlink-unmodified`), the pooled
+quality score, model SHA-256, upstream revision, **runtime stack**
 (pip `importlib.metadata` versions for torch/torchvision/pytorchvideo/NumPy/OpenCV/Pillow when installed, plus Python implementation/version), and input metadata (including
 `duration_seconds` and `color_transfer` when ffprobe reports them). Failure
 exits: 2 for setup, 1 for runtime/inference. At present it runs the upstream
 processing without a frame cap, optimizer, temporal score trace or QCS.
+
+### Persistent CUDA worker (opt-in)
+
+For batch scoring on CUDA, `--use-worker` keeps one child process alive and
+reuses the loaded PyTorch/SlowFast stack across clips. The worker stages the
+parity-reviewed single-decode overlay (`cuda-single-decode-worker` metadata);
+the default subprocess CUDA path still symlinks upstream `test_demo.py`
+unchanged (`symlink-unmodified`).
+
+```bash
+PYTHONPATH=python .venv/bin/python -m pixvqa_simplevqa \
+  --repo deps/SimpleVQA --checkpoint deps/SimpleVQA/ckpts/UGC_BVQA_model.pth \
+  --test /path/to/clip.mp4 --device cuda --use-worker
+```
+
+`--use-worker` requires `--device cuda`. `pixvqa --metrics simplevqa` does
+**not** forward this flag today; use the module above or wire
+`--simplevqa-use-worker` in a future CLI revision for native dispatch.
+
+Lifecycle: JSON-line protocol on stdin/stdout; dedicated stderr drainer threads
+avoid pipe deadlocks; per-request UUID correlation; startup and per-score
+timeouts bound waits; crash or protocol failure kills the child (next request
+restarts). See `scripts/test_simplevqa_worker.py` for fast mock coverage.
 
 ### Preflight (ffprobe)
 

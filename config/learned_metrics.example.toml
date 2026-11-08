@@ -46,3 +46,10 @@ profile = "~/models/compressedvqa-hdr/NR_HDR_VQA.npy"
 # repository = "../deps/SimpleVQA"
 # checkpoint = "../deps/SimpleVQA/ckpts/UGC_BVQA_model.pth"
 # python = "../.venv/bin/python"
+
+[hdr-chipqa]
+# Unified SDR + PQ HDR (+ experimental HLG) NR via deps/hdr_chipqa (see docs/dev/CHIPQA_REFERENCE.md).
+# feature_python and inference_python may differ (sklearn 1.0.2 on Python 3.10 for SVR).
+# repository = "../deps/hdr_chipqa"
+# feature_python = "../.venv/bin/python"
+# inference_python = "~/.venvs/pixvqa-chipqa-ref/bin/python"

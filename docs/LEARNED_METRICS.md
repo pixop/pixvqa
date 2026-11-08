@@ -1,12 +1,13 @@
 # Optional Learned Metrics
 
-Up to **three** Python-backed stacks share one interpreter when you use the locked environment in [`python/requirements/learned-env.txt`](../python/requirements/learned-env.txt):
+Up to **four** Python-backed stacks can share configuration via [`config/learned_metrics.local.toml`](../config/learned_metrics.example.toml) and [`python/requirements/learned-env.txt`](../python/requirements/learned-env.txt):
 
 | Backend | Role in PixVQA | Supported inputs |
 |---|---|---|
 | `cvvdp` ([ColorVideoVDP](https://github.com/gfxdisp/ColorVideoVDP)) | Full-reference JOD (`pixvqa --metrics cvvdp`) | Compressed or raw YUV420p10le, including mixed raw/compressed |
 | `cvqa-hdr-nr` ([CompressedVQA-HDR](https://github.com/sunwei925/CompressedVQA-HDR)) | No-reference (`pixvqa --metrics cvqa-hdr-nr`) | Compressed SDR and HDR10; not raw YUV or HLG |
-| SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | No-reference (`pixvqa --metrics simplevqa`); same module also runs standalone ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)) | Compressed **SDR** only (explicit PQ/HLG rejected; unknown/missing stream transfer is allowed at the C++ gate—Python still ffprobes); raw YUV rejected |
+| SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | No-reference (`pixvqa --metrics simplevqa`); same module also runs standalone ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)); **CPU supported** via staged overlay; **CUDA batch opt-in** `--use-worker` on `python -m pixvqa_simplevqa` only (not forwarded by `pixvqa` yet) | Compressed **SDR** only (explicit PQ/HLG rejected; unknown/missing stream transfer is allowed at the C++ gate—Python still ffprobes); raw YUV rejected |
+| `hdr-chipqa` ([HDR-ChipQA](https://github.com/Netflix/hdr_chipqa)) | No-reference pooled MOS-like score | SDR BT.709, PQ HDR, and **experimental** HLG; raw YUV420 8/10-bit or compressed |
 
 What you must provide falls into **two** buckets:
 
@@ -56,10 +57,21 @@ Older documentation referred to `$HOME/pixvqa-learned-env`; that remains valid i
 # Combine with native metrics:
 ./bin/pixvqa --metrics psnr,cvvdp,cvqa-hdr-nr --hdr-transfer pq \
   -r reference.mp4 -t distorted.mp4
+
+# HDR-ChipQA (NR; also selected automatically by --metrics sdr|pq|hlg):
+./bin/pixvqa --metrics pq -r reference.mp4 -t distorted.mp4
 ```
+
+### Metric groups, CVVDP, and HDR-ChipQA
+
+- **`sdr`**, **`pq`**, and **`hlg`** groups include **HDR-ChipQA** automatically (HLG scores are experimental). Configure `[hdr-chipqa]` in `learned_metrics.local.toml` or pass `--hdr-chipqa-*` overrides.
+- **CVVDP** is **not** in group baselines (GPU cost). Append it explicitly, e.g. `--metrics pq,cvvdp`, `--metrics sdr,cvvdp`, or `--metrics hlg,cvvdp`; the group then fills `--cvvdp-interpretation` and `--cvvdp-display` when possible.
+- **`all`** still selects CVVDP (and native metrics) but does **not** imply a transfer group; it does not auto-select HDR-ChipQA.
 
 Compressed video metadata may supply transfer; when it cannot, set `--hdr-transfer` or `--cvvdp-interpretation`. Specify a suitable SDR display explicitly (e.g. `--cvvdp-display standard_fhd`). Raw CVVDP input requires geometry, format, rate and correct transfer/color interpretation.
 
 `--frames N` caps both learned metrics. In a mixed native/learned run, all metrics use the common successfully compared frame prefix. The NR model samples at approximately 1 Hz by default; adjust using `--cvqa-nr-sample-interval-sec` and `--cvqa-nr-chunk-size-sec`.
+
+HDR-ChipQA implementation details and validation evidence: [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
 
 See [CLI Usage](CLI_USAGE.md) for options and [Metrics & Formats](METRICS_AND_FORMATS.md) for compatibility.
