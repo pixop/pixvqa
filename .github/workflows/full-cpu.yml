@@ -25,6 +25,7 @@ jobs:
       PIXVQA_DEPS_ROOT: ${{ github.workspace }}/deps
       PIXVQA_ENABLE_DAV1D: "1"
       PIXVQA_ENABLE_NVIDIA: "0"
+      PIXVQA_ENABLE_LEARNED: "0"
       PIXVQA_KEEP_BUILD: "1"
     steps:
       - name: Checkout

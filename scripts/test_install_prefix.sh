@@ -29,6 +29,8 @@ grep -q 'PIXVQA_QA_CPU' scripts/run_qa.py || fail 'QA runner ignores the install
 grep -q 'pixvqa_choice' install_pixvqa.sh || fail 'installer has no noninteractive choice'
 grep -q 'Install dav1d' install_pixvqa.sh || fail 'installer dropped the interactive dav1d prompt'
 grep -q 'Install optional learned metrics' install_pixvqa.sh || fail 'installer dropped learned-metrics choice'
+grep -q 'PIXVQA_ENABLE_LEARNED' .github/workflows/install.yml ||
+  fail 'install workflow must pin PIXVQA_ENABLE_LEARNED for noninteractive CI'
 # shellcheck disable=SC1091
 source "$ROOT/scripts/install_choices.sh"
 (
