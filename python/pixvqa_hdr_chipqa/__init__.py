@@ -1,10 +1,14 @@
-"""PixVQA adapter for upstream HDR-ChipQA (PQ HDR, pooled video score)."""
+"""PixVQA adapter for upstream HDR-ChipQA (unified SDR BT.709 + PQ HDR NR VQA)."""
 
 PINNED_UPSTREAM_COMMIT = "916157dd2df2a99f2c34e8054d385778afa598f5"
 FEATURE_DIM = 612
 GOLDEN_FEATURE_SHA256 = "61a10beb7e398c456e2c52911291f2920e84fc29cb68263413a45d4b22ffd6fa"
 GOLDEN_SCORE = -77.42408692
 FIXTURE_LABEL = "DERIVED_REFERENCE_FIXTURE"
+
+# SDR path: dist_hevc.mp4 decoded to yuv420p 8-bit, hdr_chipqa.py --color_space BT709 --bit_depth 8
+SDR_GOLDEN_FEATURE_SHA256 = "f359dcb088342280cf56357ff847afe13a47144a0a8482ee3f13aa76046356f7"
+SDR_GOLDEN_SCORE = 100.80971697063475
 
 SCALER_NAME = "hdrchipqa_livehdr_fitted_scaler.z"
 SVR_NAME = "hdrchipqa_livehdr_trained_svr.z"
