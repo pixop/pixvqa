@@ -16,7 +16,7 @@ PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build
 
 ### Video format support by metric
 
-| Metric | Type | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
+| Metric | Type | SDR – BT.709 | PQ / HDR10 – BT.2020 | HLG – BT.2020 |
 |---|:---:|:---:|:---:|:---:|
 | PSNR | FR | ✅ | ✅ | ✅ |
 | XPSNR | FR | ✅ | ✅ | ✅ |

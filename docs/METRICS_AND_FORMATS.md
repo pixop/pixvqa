@@ -24,7 +24,7 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 
 ## Video Format Support by Metric
 
-| Metric | Type | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
+| Metric | Type | SDR – BT.709 | PQ / HDR10 – BT.2020 | HLG – BT.2020 |
 |---|:---:|:---:|:---:|:---:|
 | PSNR | FR | ✅ | ✅ | ✅ |
 | XPSNR | FR | ✅ | ✅ | ✅ |
@@ -35,10 +35,10 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 | PU21-PSNR | FR | ❌ | ✅ | ✅ |
 | PU21-SSIM | FR | ❌ | ✅ | ✅ |
 | PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
-| CVVDP (`sdr` / `pq` / `hlg` interpretation) | FR | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR NR | NR | ✅ | ✅ | ❌ |
-| SimpleVQA (`simplevqa`) | NR | ✅ | ❌ | ❌ |
-| HDR-ChipQA (`hdr-chipqa`) | NR | ✅ | ✅ | 🔬 |
+| ColorVideoVDP | FR | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR | NR | ✅ | ✅ | ❌ |
+| SimpleVQA | NR | ✅ | ❌ | ❌ |
+| HDR-ChipQA | NR | ✅ | ✅ | 🔬 |
 
 **Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
 
