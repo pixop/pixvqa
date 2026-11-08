@@ -6,7 +6,7 @@
 #   scripts/setup_hdr_chipqa_envs.sh FEATURE_PYTHON INFERENCE_VENV_DIR
 #
 # FEATURE_PYTHON is typically the shared learned .venv interpreter. This script installs
-# scikit-image into that environment when missing. INFERENCE_VENV_DIR must not exist unless
+# only missing feature packages into that environment. INFERENCE_VENV_DIR must not exist unless
 # it is already a recognized pinned sklearn-1.0.2 environment.
 set -euo pipefail
 
@@ -40,13 +40,32 @@ fi
   exit 2
 }
 
+# Reused learned environments may predate HDR-ChipQA or have only a subset
+# of its dependencies. Install missing modules individually without upgrading
+# already working torch/numpy/scipy/OpenCV stacks.
+feature_requirements=(
+  'numpy:numpy>=1.24,<3'
+  'scipy:scipy>=1.10,<2'
+  'skimage:scikit-image>=0.21,<0.26'
+  'cv2:opencv-python-headless==4.11.0.86'
+  'joblib:joblib>=1.1,<2'
+)
 pip_feature=("$feature_py" -m pip --disable-pip-version-check)
-if ! "$feature_py" -c 'import skimage' 2>/dev/null; then
-  echo "$0: installing scikit-image into feature interpreter (HDR-ChipQA feature extraction)" >&2
-  "${pip_feature[@]}" install --no-cache-dir 'scikit-image>=0.21,<0.26' 'joblib>=1.1,<2'
+missing_feature=()
+for entry in "${feature_requirements[@]}"; do
+  module="${entry%%:*}"
+  requirement="${entry#*:}"
+  if ! "$feature_py" -c "import $module" 2>/dev/null; then
+    missing_feature+=("$requirement")
+  fi
+done
+if (( ${#missing_feature[@]} )); then
+  printf '%s: installing missing HDR-ChipQA feature packages: %s\n' \
+    "$0" "${missing_feature[*]}" >&2
+  "${pip_feature[@]}" install --no-cache-dir "${missing_feature[@]}"
 fi
 "$feature_py" -c 'import numpy, scipy, skimage, cv2, joblib' || {
-  echo "$0: feature interpreter missing HDR-ChipQA dependencies" >&2
+  echo "$0: HDR-ChipQA feature dependencies are still unavailable after installation" >&2
   exit 1
 }
 
