@@ -103,3 +103,6 @@ baselines/numerical_conformance/comprehensive.json
 
 # Local external NR video corpus paths (example manifest is tracked)
 /config/nr_validation_corpus.local.json
+
+# Third-party research papers
+/docs/papers/
