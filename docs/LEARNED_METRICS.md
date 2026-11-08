@@ -22,6 +22,7 @@ The **guided installer** (`install_pixvqa.sh`) does **not** install learned metr
 - provisions HDR-ChipQA **inference** on private **CPython 3.10** (`$PIXVQA_DEPS_ROOT/python310` via micromamba when needed) with **sklearn 1.0.2** in `.venv-chipqa-inference` by default;
 - reuses the shared `.venv` for HDR-ChipQA **feature** extraction (adds `scikit-image` when missing);
 - clones or reuses pinned upstream repos, downloads verifiable checkpoints, merges `config/learned_metrics.local.toml` without overwriting your paths, and runs readiness checks (import/load probes).
+- prefetches SimpleVQA's auxiliary Kinetics SlowFast R50 pretrained checkpoint (`SLOWFAST_8x8_R50.pyth`, SHA-256 pinned) into `torch.hub.get_dir()/checkpoints`, the exact location used by PyTorchVideo at inference; reuses and verifies an existing checkpoint, and fails if it is missing in offline mode. Concurrent installers synchronize via a cache lock and the download is atomic. This does not change the SlowFast model weights or inference math.
 
 Set `PIXVQA_LEARNED_INSTALL_OFFLINE=1` to skip network fetch (verify-only). The installer **never** overwrites an existing file that matches the pin, **never** accepts HTML as a checkpoint, and **never** claims full installation when Google Drive or Dropbox fetches fail verification.
 

@@ -155,6 +155,11 @@ if [[ -z "$offline" ]]; then
   fi
 fi
 export PIXVQA_LEARNED_DOWNLOADER_PYTHON="$selected_python"
+# PyTorchVideo's upstream SimpleVQA implementation loads an auxiliary
+# SlowFast checkpoint on first inference. Verify/download it now, into the
+# same torch.hub cache used at runtime, with a hash pin and interprocess lock.
+PYTHONPATH="$root/python${PYTHONPATH:+:$PYTHONPATH}" "$selected_python" \
+  -m pixvqa_learned_install.backbones ${offline:+--offline}
 # The asset/config module uses stdlib tomllib (Python >=3.11). Ubuntu 22.04
 # provides Python 3.10 as `python3`; use the managed learned Python 3.12.
 pyw="${PIXVQA_LEARNED_CONFIG_PYTHON:-$selected_python}"
