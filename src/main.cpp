@@ -108,16 +108,6 @@ struct SimplevqaOptions {
   bool output_json_set = false;
 };
 
-struct ChipqaOptions {
-  bool selected = false;
-  bool options_seen = false;
-  std::string feature_python;
-  std::string inference_python;
-  std::string repository;
-  std::string output_json;
-  bool output_json_set = false;
-};
-
 struct HdrChipqaOptions {
   bool selected = false;
   bool options_seen = false;
@@ -156,17 +146,6 @@ struct TemporarySimplevqaDirectory {
   std::string path;
 
   ~TemporarySimplevqaDirectory() {
-    if (path.empty()) return;
-    const std::string json = path + "/result.json";
-    unlink(json.c_str());
-    rmdir(path.c_str());
-  }
-};
-
-struct TemporaryChipqaDirectory {
-  std::string path;
-
-  ~TemporaryChipqaDirectory() {
     if (path.empty()) return;
     const std::string json = path + "/result.json";
     unlink(json.c_str());
@@ -300,7 +279,8 @@ void usage(const char* argv0) {
   std::fputs(
       "\n"
       "Compare reference and distorted sequences. Select metrics with --metrics.\n"
-      "Groups: sdr (SDR), pq (HDR10/PQ), hlg (HLG); or choose a comma-separated list.\n"
+      "Groups: sdr, pq, hlg include HDR-ChipQA (HLG experimental); append metrics, e.g. pq,cvvdp.\n"
+      "CVVDP is opt-in (GPU workload); not included in sdr/pq/hlg groups.\n"
       "\n"
       "Input\n"
       "  -r, -t PATH          Reference and distorted inputs (-r optional for NR only).\n"
@@ -315,7 +295,7 @@ void usage(const char* argv0) {
       "  --metrics LIST       Required: sdr, pq, hlg, all, or comma-separated metrics.\n"
       "                       psnr, xpsnr, ssim, msssim, vmaf, pu21-psnr,\n"
       "                       pu21-ssim, pu21-msssim, cvvdp, cvqa-hdr-nr, simplevqa,\n"
-      "                       chipqa, hdr-chipqa.\n"
+      "                       hdr-chipqa (SDR BT.709 + PQ HDR; experimental HLG).\n"
       "  --model PATH|auto    VMAF model JSON; auto is the default (SDR/PQ 1080p/2160p).\n"
       "  --qcs                Report temporal quality consistency (docs/QCS.md).\n"
       "\n"
@@ -367,10 +347,6 @@ void print_help_advanced() {
       "  --simplevqa-repo PATH  Upstream SimpleVQA checkout.\n"
       "  --simplevqa-checkpoint PATH  UGC_BVQA_model.pth (or symlink).\n"
       "  --simplevqa-output-json PATH  Persist SimpleVQA run record.\n"
-      "  --chipqa-python PATH  Python for ChipQA feature extraction.\n"
-      "  --chipqa-inference-python PATH  Python 3.10 + sklearn 1.0.2 for ChipQA SVR.\n"
-      "  --chipqa-repo PATH  Upstream ChipQA checkout (deps/ChipQA).\n"
-      "  --chipqa-output-json PATH  Persist ChipQA run record.\n"
       "  --hdr-chipqa-python PATH  Python for HDR-ChipQA feature extraction.\n"
       "  --hdr-chipqa-inference-python PATH  Python 3.10 + sklearn 1.0.2 for HDR-ChipQA SVR.\n"
       "  --hdr-chipqa-repo PATH  Upstream hdr_chipqa checkout (deps/hdr_chipqa).\n"
@@ -391,8 +367,8 @@ void print_help_advanced() {
       "  --seek 0             Accepted no-op; nonzero seek unsupported.\n"
       "\n"
       "Unsupported: --wsssim, --wspsnr, --rfilter, --tfilter, --geom.\n"
-      "Run order: native, cvvdp, cvqa-hdr-nr, simplevqa, chipqa, hdr-chipqa. "
-      "chipqa/hdr-chipqa are incompatible with pu21-* metrics. Exit 0 success, 2 setup, 1 runtime.\n",
+      "Run order: native, cvvdp, cvqa-hdr-nr, simplevqa, hdr-chipqa. "
+      "Exit 0 success, 2 setup, 1 runtime.\n",
       stdout);
 }
 
@@ -401,9 +377,10 @@ void print_help_hdr() {
       "HDR parameters\n"
       "\n"
       "PU21 metrics: pu21-psnr, pu21-ssim, pu21-msssim. See docs/PU21.md.\n"
-      "Group defaults: sdr selects SDR VMAF and requires an explicit CVVDP display;\n"
-      "pq selects PQ/BT.2020/limited, HDR VMAF and standard_hdr_pq;\n"
-      "hlg selects HLG/BT.2020/limited and standard_hdr_hlg (no VMAF or NR).\n"
+      "Group defaults: sdr selects SDR VMAF; pq selects PQ/BT.2020/limited and HDR VMAF;\n"
+      "hlg selects HLG/BT.2020/limited (no VMAF or NR). All groups include HDR-ChipQA\n"
+      "(HLG scores experimental). Append cvvdp for GPU JOD (e.g. --metrics pq,cvvdp);\n"
+      "group then fills CVVDP interpretation/display.\n"
       "Order for every field: per-input option, shared option, stream metadata,\n"
       "then the documented default.\n"
       "\n"
@@ -627,7 +604,7 @@ bool assign_qcs_range(Options& opt, const std::string& spec) {
                  "pixvqa: --qcs-range simplevqa is unsupported (SimpleVQA reports one pooled score per "
                  "clip, not a per-frame sequence)\n");
     return false;
-  } else if (metric == "chipqa" || metric == "hdr-chipqa") {
+  } else if (metric == "hdr-chipqa") {
     std::fprintf(stderr,
                  "pixvqa: --qcs-range %s is unsupported (%s reports one pooled score per clip)\n",
                  metric.c_str(), metric.c_str());
@@ -847,7 +824,6 @@ constexpr MetricCaps kMetricCaps[] = {
     {"cvvdp", true, MetricExec::PythonBackend, true, true, MetricQcs::Unsupported},
     {"cvqa-hdr-nr", false, MetricExec::PythonBackend, false, false, MetricQcs::SampledFrames},
     {"simplevqa", false, MetricExec::PythonBackend, false, false, MetricQcs::Unsupported},
-    {"chipqa", false, MetricExec::PythonBackend, false, false, MetricQcs::Unsupported},
     {"hdr-chipqa", false, MetricExec::PythonBackend, false, false, MetricQcs::Unsupported},
 };
 
@@ -871,33 +847,8 @@ void select_all_metrics(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvq
   cvqahdr.selected = true;
 }
 
-bool chipqa_metrics_conflict(bool chipqa, bool hdr_chipqa) {
-  if (chipqa && hdr_chipqa) {
-    std::fprintf(stderr,
-                 "pixvqa: chipqa and hdr-chipqa cannot be selected in the same command "
-                 "(disjoint SDR vs PQ-HDR backends)\n");
-    return true;
-  }
-  return false;
-}
-
-bool chipqa_pu21_conflict(const Options& opt, bool chipqa, bool hdr_chipqa) {
-  if (!pu21_selected(opt)) return false;
-  if (chipqa) {
-    std::fprintf(stderr,
-                 "pixvqa: chipqa is incompatible with pu21-psnr, pu21-ssim, and pu21-msssim\n");
-    return true;
-  }
-  if (hdr_chipqa) {
-    std::fprintf(stderr,
-                 "pixvqa: hdr-chipqa is incompatible with pu21-psnr, pu21-ssim, and pu21-msssim\n");
-    return true;
-  }
-  return false;
-}
-
 bool add_metric_name(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr,
-                     SimplevqaOptions& simplevqa, ChipqaOptions& chipqa,
+                     SimplevqaOptions& simplevqa,
                      HdrChipqaOptions& hdr_chipqa, const std::string& name) {
   if (name.empty()) {
     std::fprintf(stderr, "pixvqa: empty --metrics entry\n");
@@ -915,7 +866,7 @@ bool add_metric_name(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahd
     }
     opt.metric_group = name;
     opt.enable_psnr = opt.enable_xpsnr = opt.enable_ssim = opt.enable_msssim = true;
-    cvvdp.selected = true;
+    hdr_chipqa.selected = true;
     if (name == "sdr") {
       opt.enable_vmaf = true;
       cvqahdr.selected = true;
@@ -939,12 +890,11 @@ bool add_metric_name(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahd
   else if (name == "cvvdp") cvvdp.selected = true;
   else if (name == "cvqa-hdr-nr") cvqahdr.selected = true;
   else if (name == "simplevqa") simplevqa.selected = true;
-  else if (name == "chipqa") chipqa.selected = true;
   else if (name == "hdr-chipqa") hdr_chipqa.selected = true;
   else {
     std::fprintf(stderr,
                  "pixvqa: unsupported metric %s (supported: psnr, xpsnr, ssim, msssim, vmaf, "
-                 "pu21-psnr, pu21-ssim, pu21-msssim, cvvdp, cvqa-hdr-nr, simplevqa, chipqa, "
+                 "pu21-psnr, pu21-ssim, pu21-msssim, cvvdp, cvqa-hdr-nr, simplevqa, "
                  "hdr-chipqa; groups: all, pq, hlg, sdr)\n",
                  name.c_str());
     return false;
@@ -953,11 +903,11 @@ bool add_metric_name(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahd
 }
 
 bool parse_metrics_list(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr,
-                        SimplevqaOptions& simplevqa, ChipqaOptions& chipqa,
+                        SimplevqaOptions& simplevqa,
                         HdrChipqaOptions& hdr_chipqa, const std::string& list) {
   std::string cur;
   auto flush = [&](const std::string& name) {
-    return add_metric_name(opt, cvvdp, cvqahdr, simplevqa, chipqa, hdr_chipqa, name);
+    return add_metric_name(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa, name);
   };
   for (char c : list) {
     if (c == ',') {
@@ -975,10 +925,17 @@ bool native_selected(const Options& opt) {
          opt.enable_vmaf || pu21_selected(opt);
 }
 
+bool qcs_eligible_selected(const Options& opt, const CvvdpOptions& cvvdp,
+                           const CvqaHdrNrOptions& cvqahdr,
+                           const SimplevqaOptions& simplevqa) {
+  if (native_selected(opt)) return true;
+  if (cvvdp.selected || cvqahdr.selected || simplevqa.selected) return true;
+  return false;
+}
+
 std::vector<const MetricCaps*> selected_metric_caps(const Options& opt, const CvvdpOptions& cvvdp,
                                                     const CvqaHdrNrOptions& cvqahdr,
                                                     const SimplevqaOptions& simplevqa,
-                                                    const ChipqaOptions& chipqa,
                                                     const HdrChipqaOptions& hdr_chipqa) {
   std::vector<const MetricCaps*> out;
   const std::pair<bool, const char*> picks[] = {
@@ -987,7 +944,7 @@ std::vector<const MetricCaps*> selected_metric_caps(const Options& opt, const Cv
       {opt.enable_vmaf, "vmaf"},           {opt.enable_pu21_psnr, "pu21-psnr"},
       {opt.enable_pu21_ssim, "pu21-ssim"}, {opt.enable_pu21_msssim, "pu21-msssim"},
       {cvvdp.selected, "cvvdp"},           {cvqahdr.selected, "cvqa-hdr-nr"},
-      {simplevqa.selected, "simplevqa"},   {chipqa.selected, "chipqa"},
+      {simplevqa.selected, "simplevqa"},
       {hdr_chipqa.selected, "hdr-chipqa"},
   };
   for (const auto& pick : picks) {
@@ -1338,62 +1295,6 @@ int validate_simplevqa_transfer(const Options& opt, SideSpec& test) {
   return 0;
 }
 
-bool assign_chipqa_value(std::string& field, const char* flag, const std::string& value) {
-  if (!field.empty() && field != value) {
-    std::fprintf(stderr, "pixvqa: conflicting %s values (%s vs %s)\n", flag, field.c_str(),
-                 value.c_str());
-    return false;
-  }
-  field = value;
-  return true;
-}
-
-bool fill_chipqa_defaults(ChipqaOptions& chipqa) {
-  if (chipqa.repository.empty()) {
-    const std::string beside = locate_beside_executable("deps/ChipQA");
-    if (!beside.empty()) chipqa.repository = beside;
-  }
-  return true;
-}
-
-bool validate_chipqa_options(ChipqaOptions& chipqa) {
-  fill_chipqa_defaults(chipqa);
-  if (chipqa.repository.empty()) {
-    std::fprintf(stderr,
-                 "pixvqa: chipqa requires --chipqa-repo or [chipqa] repository in the learned-metric "
-                 "config (default: deps/ChipQA beside the executable when present)\n");
-    return false;
-  }
-  return true;
-}
-
-int validate_chipqa_transfer(const Options& opt, SideSpec& test) {
-  if (simplevqa_explicit_hdr_cli(opt)) {
-    std::fprintf(stderr,
-                 "pixvqa: chipqa is SDR-only; explicit PQ or HLG transfer is not supported\n");
-    return 2;
-  }
-#ifdef PIXVQA_HAS_FFMPEG
-  if (test.compressed && !opt.test_path.empty()) {
-    HdrSide hdr;
-    std::string err;
-    if (!probe_stream_hdr(opt.test_path, hdr, err)) {
-      if (err != "compressed stream has no transfer characteristic tag") {
-        std::fprintf(stderr, "pixvqa: chipqa could not read transfer metadata for test input: %s\n",
-                     err.c_str());
-        return 2;
-      }
-    } else if (hdr.transfer == HdrTransfer::Pq || hdr.transfer == HdrTransfer::Hlg) {
-      std::fprintf(stderr,
-                   "pixvqa: chipqa is SDR-only; test stream transfer is %s (PQ/HLG)\n",
-                   hdr_transfer_name(hdr.transfer));
-      return 2;
-    }
-  }
-#endif
-  return 0;
-}
-
 bool assign_hdr_chipqa_value(std::string& field, const char* flag, const std::string& value) {
   if (!field.empty() && field != value) {
     std::fprintf(stderr, "pixvqa: conflicting %s values (%s vs %s)\n", flag, field.c_str(),
@@ -1423,61 +1324,69 @@ bool validate_hdr_chipqa_options(HdrChipqaOptions& hdr_chipqa) {
   return true;
 }
 
-bool hdr_chipqa_explicit_hlg_cli(const Options& opt) {
-  const auto tf_is_hlg = [](const std::string& t) {
-    return t == "hlg" || t == "stdb67";
-  };
-  if (opt.transfer_set && tf_is_hlg(opt.transfer)) return true;
-  if (opt.ref_transfer_set && tf_is_hlg(opt.ref_transfer)) return true;
-  if (opt.dist_transfer_set && tf_is_hlg(opt.dist_transfer)) return true;
-  auto hdr_tf_hlg = [](const HdrCli& h) {
-    return h.transfer_set && h.transfer == "hlg";
-  };
-  if (hdr_tf_hlg(opt.hdr) || hdr_tf_hlg(opt.ref_hdr) || hdr_tf_hlg(opt.dist_hdr)) return true;
+bool hdr_chipqa_transfer_is_hlg(const std::string& tf) {
+  return tf == "hlg" || tf == "stdb67" || tf == "arib-std-b67";
+}
+
+std::string hdr_chipqa_resolved_transfer(const Options& opt) {
+  if (opt.hdr.transfer_set || opt.hdr.transfer_inferred) return opt.hdr.transfer;
+  if (opt.transfer_set) return opt.transfer;
+  if (opt.metric_group == "pq" || opt.metric_group == "hlg" || opt.metric_group == "sdr")
+    return opt.metric_group;
+  return {};
+}
+
+bool hdr_chipqa_raw_is_hlg(const Options& opt) {
+  return hdr_chipqa_transfer_is_hlg(hdr_chipqa_resolved_transfer(opt));
+}
+
+bool hdr_chipqa_raw_is_pq(const Options& opt) {
+  const std::string& tf = hdr_chipqa_resolved_transfer(opt);
+  if (tf == "pq" || tf == "smpte2084" || tf == "bt2020") return true;
   return false;
 }
 
-int validate_hdr_chipqa_transfer(const Options& opt) {
-  if (hdr_chipqa_explicit_hlg_cli(opt)) {
-    std::fprintf(stderr,
-                 "pixvqa: hdr-chipqa is PQ-only; explicit HLG transfer is not supported\n");
-    return 2;
-  }
-  const std::string& tf = opt.hdr.transfer_set ? opt.hdr.transfer
-                         : opt.transfer_set    ? opt.transfer
-                                                 : std::string();
-  if (!tf.empty() && (tf == "hlg" || tf == "stdb67")) {
-    std::fprintf(stderr, "pixvqa: hdr-chipqa is PQ-only; transfer %s rejected\n", tf.c_str());
-    return 2;
-  }
-  return 0;
-}
-
 bool validate_hdr_chipqa_geometry(const Options& opt, const SideSpec& test) {
+  if (test.compressed) return true;
   if (!test.has_size) {
     std::fprintf(stderr, "pixvqa: hdr-chipqa raw test requires -s widthxheight\n");
     return false;
   }
-  if (!test.has_fmt || test.format.chroma != ChromaFormat::YUV420 || test.format.bit_depth != 10) {
+  if (!test.has_fmt || test.format.chroma != ChromaFormat::YUV420) {
     std::fprintf(stderr,
-                 "pixvqa: hdr-chipqa raw test requires -f 420p:10 (planar YUV420p10le)\n");
+                 "pixvqa: hdr-chipqa raw test requires -f 420p:8 or -f 420p:10\n");
     return false;
   }
-  if (!opt.fps_set) {
-    std::fprintf(stderr, "pixvqa: hdr-chipqa raw test requires --fps\n");
+  const bool pq = hdr_chipqa_raw_is_pq(opt);
+  const bool hlg = hdr_chipqa_raw_is_hlg(opt);
+  if (pq && hlg) {
+    std::fprintf(stderr,
+                 "pixvqa: hdr-chipqa raw test cannot combine PQ and HLG transfer flags\n");
     return false;
   }
-  if (test.compressed) {
+  if (pq || hlg) {
+    if (test.format.bit_depth != 10) {
+      std::fprintf(stderr,
+                   "pixvqa: hdr-chipqa %s HDR raw test requires -f 420p:10\n",
+                   hlg ? "HLG" : "PQ");
+      return false;
+    }
+    if (!opt.fps_set) {
+      std::fprintf(stderr, "pixvqa: hdr-chipqa %s raw test requires --fps\n",
+                   hlg ? "HLG" : "PQ");
+      return false;
+    }
+  } else if (test.format.bit_depth != 8 && test.format.bit_depth != 10) {
     std::fprintf(stderr,
-                 "pixvqa: hdr-chipqa supports raw PQ-coded YUV only; compressed input is unsupported\n");
+                 "pixvqa: hdr-chipqa SDR raw test requires -f 420p:8 or -f 420p:10\n");
     return false;
   }
   return true;
 }
 
-// Metric groups select metrics and fill existing HDR, VMAF, and CVVDP options.
+// Metric groups select native metrics, HDR-ChipQA, and fill HDR/VMAF defaults; CVVDP when selected.
 bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr,
-                               SimplevqaOptions& simplevqa, ChipqaOptions& chipqa,
+                               SimplevqaOptions& simplevqa,
                                HdrChipqaOptions& hdr_chipqa) {
   const std::string& kind = opt.metric_group;
   if (kind.empty()) return true;
@@ -1521,23 +1430,6 @@ bool apply_processing_defaults(Options& opt, CvvdpOptions& cvvdp, CvqaHdrNrOptio
   if ((kind == "pq" || kind == "hlg") && simplevqa.selected) {
     std::fprintf(stderr,
                  "pixvqa: %s is incompatible with simplevqa (SimpleVQA is SDR-only)\n",
-                 who.c_str());
-    return false;
-  }
-  if (kind != "sdr" && chipqa.selected) {
-    std::fprintf(stderr,
-                 "pixvqa: %s is incompatible with chipqa (ChipQA is SDR-only)\n", who.c_str());
-    return false;
-  }
-  if (kind == "hlg" && hdr_chipqa.selected) {
-    std::fprintf(stderr,
-                 "pixvqa: %s is incompatible with hdr-chipqa (PQ HDR only; HLG unsupported)\n",
-                 who.c_str());
-    return false;
-  }
-  if (kind == "sdr" && hdr_chipqa.selected) {
-    std::fprintf(stderr,
-                 "pixvqa: %s is incompatible with hdr-chipqa (PQ-coded HDR YUV only)\n",
                  who.c_str());
     return false;
   }
@@ -1611,9 +1503,6 @@ struct LearnedConfig {
   std::string simplevqa_python;
   std::string simplevqa_repository;
   std::string simplevqa_checkpoint;
-  std::string chipqa_feature_python;
-  std::string chipqa_inference_python;
-  std::string chipqa_repository;
   std::string hdr_chipqa_feature_python;
   std::string hdr_chipqa_inference_python;
   std::string hdr_chipqa_repository;
@@ -1688,10 +1577,10 @@ bool load_learned_config(const std::string& path, LearnedConfig& config) {
       trim_ascii_space(rest);
       if (!rest.empty() && rest[0] != '#') return bad("unexpected text after [section]");
       if (section != "learned" && section != "cvvdp" && section != "cvqa-hdr-nr" &&
-          section != "simplevqa" && section != "chipqa" && section != "hdr-chipqa")
+          section != "simplevqa" && section != "hdr-chipqa")
         return bad(
             "unknown section [" + section +
-            "] (expected [learned], [cvvdp], [cvqa-hdr-nr], [simplevqa], [chipqa], or [hdr-chipqa])");
+            "] (expected [learned], [cvvdp], [cvqa-hdr-nr], [simplevqa], or [hdr-chipqa])");
       continue;
     }
     const size_t eq = line.find('=', i);
@@ -1723,9 +1612,6 @@ bool load_learned_config(const std::string& path, LearnedConfig& config) {
     else if (full == "simplevqa.python") slot = &config.simplevqa_python;
     else if (full == "simplevqa.repository") slot = &config.simplevqa_repository;
     else if (full == "simplevqa.checkpoint") slot = &config.simplevqa_checkpoint;
-    else if (full == "chipqa.feature_python") slot = &config.chipqa_feature_python;
-    else if (full == "chipqa.inference_python") slot = &config.chipqa_inference_python;
-    else if (full == "chipqa.repository") slot = &config.chipqa_repository;
     else if (full == "hdr-chipqa.feature_python") slot = &config.hdr_chipqa_feature_python;
     else if (full == "hdr-chipqa.inference_python") slot = &config.hdr_chipqa_inference_python;
     else if (full == "hdr-chipqa.repository") slot = &config.hdr_chipqa_repository;
@@ -1783,7 +1669,7 @@ std::string backend_python(const std::string& configured_by_option, const char* 
 }
 
 void apply_learned_config(CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr, SimplevqaOptions& simplevqa,
-                          ChipqaOptions& chipqa, HdrChipqaOptions& hdr_chipqa) {
+                          HdrChipqaOptions& hdr_chipqa) {
   const LearnedConfig& c = g_learned_config;
   if (cvvdp.cvvdp_bin.empty()) cvvdp.cvvdp_bin = c.cvvdp_executable;
   if (cvqahdr.repository.empty()) cvqahdr.repository = c.nr_repository;
@@ -1791,9 +1677,6 @@ void apply_learned_config(CvvdpOptions& cvvdp, CvqaHdrNrOptions& cvqahdr, Simple
   if (cvqahdr.profile.empty()) cvqahdr.profile = c.nr_profile;
   if (simplevqa.repository.empty()) simplevqa.repository = c.simplevqa_repository;
   if (simplevqa.checkpoint.empty()) simplevqa.checkpoint = c.simplevqa_checkpoint;
-  if (chipqa.feature_python.empty()) chipqa.feature_python = c.chipqa_feature_python;
-  if (chipqa.inference_python.empty()) chipqa.inference_python = c.chipqa_inference_python;
-  if (chipqa.repository.empty()) chipqa.repository = c.chipqa_repository;
   if (hdr_chipqa.feature_python.empty()) hdr_chipqa.feature_python = c.hdr_chipqa_feature_python;
   if (hdr_chipqa.inference_python.empty()) hdr_chipqa.inference_python = c.hdr_chipqa_inference_python;
   if (hdr_chipqa.repository.empty()) hdr_chipqa.repository = c.hdr_chipqa_repository;
@@ -2022,7 +1905,7 @@ struct BackendOutcome {
   BackendReport report;
 };
 
-enum class LearnedBackendKind { Cvvdp, CvqaHdr, Simplevqa, Chipqa, HdrChipqa };
+enum class LearnedBackendKind { Cvvdp, CvqaHdr, Simplevqa, HdrChipqa };
 
 const char* learned_backend_label(LearnedBackendKind which) {
   switch (which) {
@@ -2032,8 +1915,6 @@ const char* learned_backend_label(LearnedBackendKind which) {
       return "CVQA-HDR-NR";
     case LearnedBackendKind::Simplevqa:
       return "SimpleVQA";
-    case LearnedBackendKind::Chipqa:
-      return "ChipQA";
     case LearnedBackendKind::HdrChipqa:
       return "HDR-ChipQA";
   }
@@ -2045,7 +1926,6 @@ struct LearnedPlan {
   CvvdpOptions cvvdp;
   CvqaHdrNrOptions cvqahdr;
   SimplevqaOptions simplevqa;
-  ChipqaOptions chipqa;
   HdrChipqaOptions hdr_chipqa;
   bool cvvdp_raw_ref = false;
   bool cvvdp_raw_test = false;
@@ -2054,12 +1934,10 @@ struct LearnedPlan {
   TemporaryCvvdpDirectory cvvdp_temporary;
   TemporaryCvqaHdrDirectory cvqahdr_temporary;
   TemporarySimplevqaDirectory simplevqa_temporary;
-  TemporaryChipqaDirectory chipqa_temporary;
   TemporaryHdrChipqaDirectory hdr_chipqa_temporary;
   BackendOutcome cvvdp_result;
   BackendOutcome cvqahdr_result;
   BackendOutcome simplevqa_result;
-  BackendOutcome chipqa_result;
   BackendOutcome hdr_chipqa_result;
   bool preflight_passed = false;
   bool executed = false;
@@ -2206,25 +2084,6 @@ bool simplevqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
   return true;
 }
 
-bool chipqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
-  const ChipqaOptions& cq = plan.chipqa;
-  if (!cq.output_json_set &&
-      !make_backend_directory(plan.chipqa_temporary.path, "/tmp/pixvqa-chipqa-XXXXXX", "ChipQA"))
-    return false;
-  const std::string output_json =
-      cq.output_json_set ? cq.output_json : plan.chipqa_temporary.path + "/result.json";
-  args = {backend_python(cq.feature_python, "PIXVQA_CHIPQA_FEATURE_PYTHON",
-                         g_learned_config.chipqa_feature_python),
-          "-m", "pixvqa_chipqa", "--repo", cq.repository, "--test", plan.opt.test_path,
-          "--output-json", output_json};
-  if (!cq.inference_python.empty()) {
-    args.emplace_back("--inference-python");
-    args.push_back(cq.inference_python);
-  }
-  if (!cq.output_json_set) args.emplace_back("--transient-output");
-  return true;
-}
-
 bool hdr_chipqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
   const HdrChipqaOptions& hc = plan.hdr_chipqa;
   if (!hc.output_json_set &&
@@ -2233,15 +2092,24 @@ bool hdr_chipqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
     return false;
   const std::string output_json =
       hc.output_json_set ? hc.output_json : plan.hdr_chipqa_temporary.path + "/result.json";
-  std::string transfer;
-  if (plan.opt.hdr.transfer_set) transfer = plan.opt.hdr.transfer;
-  else if (plan.opt.transfer_set) transfer = plan.opt.transfer;
+  const std::string transfer = hdr_chipqa_resolved_transfer(plan.opt);
   args = {backend_python(hc.feature_python, "PIXVQA_HDR_CHIPQA_FEATURE_PYTHON",
                          g_learned_config.hdr_chipqa_feature_python),
           "-m", "pixvqa_hdr_chipqa", "--repo", hc.repository, "--test", plan.opt.test_path,
-          "--width", std::to_string(plan.opt.format.width), "--height",
-          std::to_string(plan.opt.format.height), "--fps-num", std::to_string(plan.opt.fps_num),
-          "--fps-den", std::to_string(plan.opt.fps_den), "--output-json", output_json};
+          "--output-json", output_json};
+  const bool raw_test = path_ends_with_yuv(plan.opt.test_path);
+  if (raw_test) {
+    args.push_back("--width");
+    args.push_back(std::to_string(plan.opt.format.width));
+    args.push_back("--height");
+    args.push_back(std::to_string(plan.opt.format.height));
+    args.push_back("--fps-num");
+    args.push_back(std::to_string(plan.opt.fps_num));
+    args.push_back("--fps-den");
+    args.push_back(std::to_string(plan.opt.fps_den));
+    args.push_back("--bit-depth");
+    args.push_back(std::to_string(plan.opt.format.bit_depth));
+  }
   if (!transfer.empty()) {
     args.emplace_back("--transfer");
     args.push_back(transfer);
@@ -2262,8 +2130,6 @@ bool learned_build_command(LearnedPlan& plan, LearnedBackendKind which, std::vec
       return cvqahdr_command(plan, args);
     case LearnedBackendKind::Simplevqa:
       return simplevqa_command(plan, args);
-    case LearnedBackendKind::Chipqa:
-      return chipqa_command(plan, args);
     case LearnedBackendKind::HdrChipqa:
       return hdr_chipqa_command(plan, args);
   }
@@ -2278,8 +2144,6 @@ BackendOutcome* learned_outcome(LearnedPlan& plan, LearnedBackendKind which) {
       return &plan.cvqahdr_result;
     case LearnedBackendKind::Simplevqa:
       return &plan.simplevqa_result;
-    case LearnedBackendKind::Chipqa:
-      return &plan.chipqa_result;
     case LearnedBackendKind::HdrChipqa:
       return &plan.hdr_chipqa_result;
   }
@@ -2292,7 +2156,6 @@ int run_learned_standalone(LearnedPlan& plan) {
       plan.cvvdp.selected         ? LearnedBackendKind::Cvvdp
       : plan.cvqahdr.selected     ? LearnedBackendKind::CvqaHdr
       : plan.simplevqa.selected   ? LearnedBackendKind::Simplevqa
-      : plan.chipqa.selected      ? LearnedBackendKind::Chipqa
       : plan.hdr_chipqa.selected  ? LearnedBackendKind::HdrChipqa
                                   : LearnedBackendKind::Cvvdp;
   const char* label = learned_backend_label(which);
@@ -2327,7 +2190,6 @@ int preflight_learned(LearnedPlan& plan) {
   if (plan.cvvdp.selected && preflight_one(plan, LearnedBackendKind::Cvvdp) != 0) return 2;
   if (plan.cvqahdr.selected && preflight_one(plan, LearnedBackendKind::CvqaHdr) != 0) return 2;
   if (plan.simplevqa.selected && preflight_one(plan, LearnedBackendKind::Simplevqa) != 0) return 2;
-  if (plan.chipqa.selected && preflight_one(plan, LearnedBackendKind::Chipqa) != 0) return 2;
   if (plan.hdr_chipqa.selected && preflight_one(plan, LearnedBackendKind::HdrChipqa) != 0) return 2;
   plan.preflight_passed = true;
   return 0;
@@ -2359,7 +2221,7 @@ void execute_one(LearnedPlan& plan, LearnedBackendKind which) {
           : which == LearnedBackendKind::CvqaHdr
                 ? report_has_number(outcome->report, "quality_score") &&
                       report_has_number(outcome->report, "raw_model_score")
-                : which == LearnedBackendKind::Chipqa || which == LearnedBackendKind::HdrChipqa ||
+                : which == LearnedBackendKind::HdrChipqa ||
                       which == LearnedBackendKind::Simplevqa
                       ? report_has_number(outcome->report, "quality_score")
                       : report_has_number(outcome->report, "quality_score");
@@ -2376,7 +2238,6 @@ void execute_learned(LearnedPlan& plan) {
   if (plan.cvvdp.selected) execute_one(plan, LearnedBackendKind::Cvvdp);
   if (plan.cvqahdr.selected) execute_one(plan, LearnedBackendKind::CvqaHdr);
   if (plan.simplevqa.selected) execute_one(plan, LearnedBackendKind::Simplevqa);
-  if (plan.chipqa.selected) execute_one(plan, LearnedBackendKind::Chipqa);
   if (plan.hdr_chipqa.selected) execute_one(plan, LearnedBackendKind::HdrChipqa);
 }
 
@@ -2428,14 +2289,6 @@ void print_learned_summary(const LearnedPlan& plan) {
                   report_value(r.report, "device").c_str());
     } else {
       std::printf("[ SimpleVQA status:failed ]\n");
-    }
-  }
-  if (plan.chipqa.selected) {
-    const BackendOutcome& r = plan.chipqa_result;
-    if (r.state == BackendState::Completed) {
-      std::printf("[ ChipQA quality_score:%s ]\n", report_value(r.report, "quality_score").c_str());
-    } else {
-      std::printf("[ ChipQA status:failed ]\n");
     }
   }
   if (plan.hdr_chipqa.selected) {
@@ -2556,7 +2409,6 @@ int learned_exit_status(const LearnedPlan& plan) {
   if (plan.cvvdp.selected && plan.cvvdp_result.state != BackendState::Completed) return 1;
   if (plan.cvqahdr.selected && plan.cvqahdr_result.state != BackendState::Completed) return 1;
   if (plan.simplevqa.selected && plan.simplevqa_result.state != BackendState::Completed) return 1;
-  if (plan.chipqa.selected && plan.chipqa_result.state != BackendState::Completed) return 1;
   if (plan.hdr_chipqa.selected && plan.hdr_chipqa_result.state != BackendState::Completed) return 1;
   return 0;
 }
@@ -2589,16 +2441,6 @@ bool prepare_learned_with_native(LearnedPlan& plan, SideSpec& ref, SideSpec& tes
   if (plan.simplevqa.selected && !test.compressed) {
     std::fprintf(stderr,
                  "pixvqa: simplevqa supports compressed video only; the test input is raw YUV\n");
-    return false;
-  }
-  if (plan.chipqa.selected && !test.compressed) {
-    std::fprintf(stderr,
-                 "pixvqa: chipqa supports compressed SDR video only; the test input is raw YUV\n");
-    return false;
-  }
-  if (plan.hdr_chipqa.selected && test.compressed) {
-    std::fprintf(stderr,
-                 "pixvqa: hdr-chipqa supports raw PQ-coded YUV only; compressed input is unsupported\n");
     return false;
   }
   if (plan.hdr_chipqa.selected && !validate_hdr_chipqa_geometry(plan.opt, test)) return false;
@@ -3857,7 +3699,6 @@ int run_cli(int argc, char** argv) {
   CvvdpOptions cvvdp;
   CvqaHdrNrOptions cvqahdr;
   SimplevqaOptions simplevqa;
-  ChipqaOptions chipqa;
   HdrChipqaOptions hdr_chipqa;
   SideSpec ref_side, test_side;
   SideSpec* bind = nullptr;
@@ -3896,7 +3737,7 @@ int run_cli(int argc, char** argv) {
     }
 
     if (a == "--metrics") {
-      if (!parse_metrics_list(opt, cvvdp, cvqahdr, simplevqa, chipqa, hdr_chipqa, need("--metrics")))
+      if (!parse_metrics_list(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa, need("--metrics")))
         return 2;
     } else if (a == "--learned-config") {
       learned_config_path = need("--learned-config");
@@ -4012,25 +3853,6 @@ int run_cli(int argc, char** argv) {
                                   need("--simplevqa-output-json")))
         return 2;
       simplevqa.output_json_set = true;
-    } else if (a == "--chipqa-python") {
-      chipqa.options_seen = true;
-      if (!assign_chipqa_value(chipqa.feature_python, "--chipqa-python", need("--chipqa-python")))
-        return 2;
-    } else if (a == "--chipqa-inference-python") {
-      chipqa.options_seen = true;
-      if (!assign_chipqa_value(chipqa.inference_python, "--chipqa-inference-python",
-                               need("--chipqa-inference-python")))
-        return 2;
-    } else if (a == "--chipqa-repo") {
-      chipqa.options_seen = true;
-      if (!assign_chipqa_value(chipqa.repository, "--chipqa-repo", need("--chipqa-repo")))
-        return 2;
-    } else if (a == "--chipqa-output-json") {
-      chipqa.options_seen = true;
-      if (!assign_chipqa_value(chipqa.output_json, "--chipqa-output-json",
-                               need("--chipqa-output-json")))
-        return 2;
-      chipqa.output_json_set = true;
     } else if (a == "--hdr-chipqa-python") {
       hdr_chipqa.options_seen = true;
       if (!assign_hdr_chipqa_value(hdr_chipqa.feature_python, "--hdr-chipqa-python",
@@ -4235,15 +4057,12 @@ int run_cli(int argc, char** argv) {
   opt.test_path = test_side.path;
   opt.ref_input = ref_side.input;
   opt.test_input = test_side.input;
-  if (!apply_processing_defaults(opt, cvvdp, cvqahdr, simplevqa, chipqa, hdr_chipqa)) return 2;
-  if (chipqa_metrics_conflict(chipqa.selected, hdr_chipqa.selected)) return 2;
-  if (chipqa_pu21_conflict(opt, chipqa.selected, hdr_chipqa.selected)) return 2;
+  if (!apply_processing_defaults(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa)) return 2;
   const bool native = native_selected(opt);
-  const bool learned = cvvdp.selected || cvqahdr.selected || simplevqa.selected || chipqa.selected ||
+  const bool learned = cvvdp.selected || cvqahdr.selected || simplevqa.selected ||
                        hdr_chipqa.selected;
   const int learned_count = (cvvdp.selected ? 1 : 0) + (cvqahdr.selected ? 1 : 0) +
-                            (simplevqa.selected ? 1 : 0) + (chipqa.selected ? 1 : 0) +
-                            (hdr_chipqa.selected ? 1 : 0);
+                            (simplevqa.selected ? 1 : 0) + (hdr_chipqa.selected ? 1 : 0);
   if (cvvdp.options_seen && !cvvdp.selected) {
     std::fprintf(stderr, "pixvqa: --cvvdp-* options require --metrics cvvdp\n");
     return 2;
@@ -4254,10 +4073,6 @@ int run_cli(int argc, char** argv) {
   }
   if (simplevqa.options_seen && !simplevqa.selected) {
     std::fprintf(stderr, "pixvqa: --simplevqa-* options require --metrics simplevqa\n");
-    return 2;
-  }
-  if (chipqa.options_seen && !chipqa.selected) {
-    std::fprintf(stderr, "pixvqa: --chipqa-* options require --metrics chipqa\n");
     return 2;
   }
   if (hdr_chipqa.options_seen && !hdr_chipqa.selected) {
@@ -4279,16 +4094,15 @@ int run_cli(int argc, char** argv) {
   }
   if (learned) {
     const std::vector<const MetricCaps*> caps =
-        selected_metric_caps(opt, cvvdp, cvqahdr, simplevqa, chipqa, hdr_chipqa);
+        selected_metric_caps(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa);
     if (!native && !native_only_option.empty()) {
       const int learned_only_count =
           (cvvdp.selected ? 1 : 0) + (cvqahdr.selected ? 1 : 0) + (simplevqa.selected ? 1 : 0) +
-          (chipqa.selected ? 1 : 0) + (hdr_chipqa.selected ? 1 : 0);
+          (hdr_chipqa.selected ? 1 : 0);
       if (learned_only_count == 1) {
         const char* which = cvvdp.selected         ? "cvvdp"
                             : cvqahdr.selected     ? "cvqa-hdr-nr"
                             : simplevqa.selected   ? "simplevqa"
-                            : chipqa.selected      ? "chipqa"
                             : hdr_chipqa.selected  ? "hdr-chipqa"
                                                    : "learned";
         std::fprintf(stderr,
@@ -4311,10 +4125,10 @@ int run_cli(int argc, char** argv) {
       std::fprintf(stderr, "pixvqa: --qcs-range requires --qcs\n");
       return 2;
     }
-    if (opt.enable_qcs && (chipqa.selected || hdr_chipqa.selected)) {
+    if (opt.enable_qcs && !qcs_eligible_selected(opt, cvvdp, cvqahdr, simplevqa)) {
       std::fprintf(stderr,
-                   "pixvqa: --qcs is unsupported with chipqa and hdr-chipqa "
-                   "(pooled-video scores only; see docs/QCS.md)\n");
+                   "pixvqa: --qcs has no QCS-eligible metrics selected "
+                   "(hdr-chipqa reports one pooled score per clip only; see docs/QCS.md)\n");
       return 2;
     }
     if (opt.test_path.empty()) {
@@ -4344,23 +4158,10 @@ int run_cli(int argc, char** argv) {
                    "pixvqa: simplevqa supports compressed video only; raw YUV is unsupported\n");
       return 2;
     }
-    if (chipqa.selected && !native && path_ends_with_yuv(opt.test_path)) {
-      std::fprintf(stderr,
-                   "pixvqa: chipqa supports compressed SDR video only; raw YUV is unsupported\n");
-      return 2;
-    }
-    if (hdr_chipqa.selected && !native && !path_ends_with_yuv(opt.test_path)) {
-      std::fprintf(stderr,
-                   "pixvqa: hdr-chipqa supports raw PQ-coded YUV only\n");
-      return 2;
-    }
-    if (chipqa_pu21_conflict(opt, chipqa.selected, hdr_chipqa.selected)) return 2;
-    if (chipqa_metrics_conflict(chipqa.selected, hdr_chipqa.selected)) return 2;
     if (!resolve_learned_config(learned_config_path)) return 2;
-    apply_learned_config(cvvdp, cvqahdr, simplevqa, chipqa, hdr_chipqa);
+    apply_learned_config(cvvdp, cvqahdr, simplevqa, hdr_chipqa);
     if (cvqahdr.selected && !validate_cvqahdr_options(cvqahdr)) return 2;
     if (simplevqa.selected && !validate_simplevqa_options(simplevqa)) return 2;
-    if (chipqa.selected && !validate_chipqa_options(chipqa)) return 2;
     if (hdr_chipqa.selected && !validate_hdr_chipqa_options(hdr_chipqa)) return 2;
     if (!native) {
       if (cvvdp.selected && !finalize_cvvdp_config(opt, ref_side, test_side, cvvdp)) return 2;
@@ -4368,7 +4169,6 @@ int run_cli(int argc, char** argv) {
       plan->cvvdp = cvvdp;
       plan->cvqahdr = cvqahdr;
       plan->simplevqa = simplevqa;
-      plan->chipqa = chipqa;
       plan->hdr_chipqa = hdr_chipqa;
       plan->opt = opt;
       if (cvvdp.selected) {
@@ -4378,13 +4178,8 @@ int run_cli(int argc, char** argv) {
         if (classify_side(opt, test_side, "test") != 0) return 2;
         if (validate_simplevqa_transfer(opt, test_side) != 0) return 2;
       }
-      if (chipqa.selected) {
-        if (classify_side(opt, test_side, "test") != 0) return 2;
-        if (validate_chipqa_transfer(opt, test_side) != 0) return 2;
-      }
       if (hdr_chipqa.selected) {
         if (classify_side(opt, test_side, "test") != 0) return 2;
-        if (validate_hdr_chipqa_transfer(opt) != 0) return 2;
         if (!validate_hdr_chipqa_geometry(opt, test_side)) return 2;
         if (test_side.has_fmt) plan->opt.format = test_side.format;
       }
@@ -4397,7 +4192,6 @@ int run_cli(int argc, char** argv) {
     g_learned->cvvdp = cvvdp;
     g_learned->cvqahdr = cvqahdr;
     g_learned->simplevqa = simplevqa;
-    g_learned->chipqa = chipqa;
     g_learned->hdr_chipqa = hdr_chipqa;
   }
   if (opt.transfer_set && opt.hdr.transfer_set) {
@@ -4462,7 +4256,7 @@ int run_cli(int argc, char** argv) {
   if (!opt.enable_psnr && !opt.enable_ssim && !opt.enable_msssim && !opt.enable_xpsnr &&
       !opt.enable_vmaf && !pu21_selected(opt) &&
       !(g_learned && (g_learned->cvvdp.selected || g_learned->cvqahdr.selected ||
-                      g_learned->simplevqa.selected || g_learned->chipqa.selected ||
+                      g_learned->simplevqa.selected ||
                       g_learned->hdr_chipqa.selected))) {
     std::fprintf(stderr,
                  "pixvqa: --metrics is required (psnr, xpsnr, ssim, msssim, vmaf, "
@@ -4552,9 +4346,6 @@ int run_cli(int argc, char** argv) {
     if (g_learned->cvvdp.selected && !finalize_cvvdp_config(opt, ref_side, test_side, g_learned->cvvdp))
       return 2;
     if (g_learned->simplevqa.selected && validate_simplevqa_transfer(opt, test_side) != 0) return 2;
-    if (g_learned->chipqa.selected && validate_chipqa_transfer(opt, test_side) != 0) return 2;
-    if (g_learned->hdr_chipqa.selected && validate_hdr_chipqa_transfer(opt) != 0) return 2;
-    if (chipqa_pu21_conflict(opt, g_learned->chipqa.selected, g_learned->hdr_chipqa.selected)) return 2;
     if (!prepare_learned_with_native(*g_learned, ref_side, test_side)) return 2;
     if (preflight_learned(*g_learned) != 0) return 2;
   }
