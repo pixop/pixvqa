@@ -12,6 +12,8 @@
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
 | [`cvvdp`](LEARNED_METRICS.md) | ColorVideoVDP JOD, optional external Python backend. Full-reference |
 | [`cvqa-hdr-nr`](LEARNED_METRICS.md) | CompressedVQA-HDR NR, optional external Python backend. No-reference |
+| [`simplevqa`](LEARNED_METRICS.md) | SimpleVQA NR UGC score; compressed SDR only. Pooled-video scalar |
+| [`hdr-chipqa`](LEARNED_METRICS.md) | HDR-ChipQA NR dark-scene MOS-like score; SDR and PQ validated, HLG experimental. Pooled-video scalar |
 | [`--qcs`](QCS.md) | Quality Consistency Score (QCS): temporal quality reliability descriptor derived from per-frame VQA scores |
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
@@ -35,19 +37,24 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 | PU21-MS-SSIM | ❌ | ✅ | ✅ |
 | CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
 | CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
+| SimpleVQA (`simplevqa`) | ✅ | ❌ | ❌ |
+| HDR-ChipQA (`hdr-chipqa`) | ✅ | ✅ | 🔬 |
 
 **Legend:**
 
-- ✅ Recommended
-- ⚠️ Supported, but not generally recommended for HDR perceptual assessment
-- ❌ Unsupported metric/model and format combination
+- ✅ **Recommended** — validated choice for that transfer and use case
+- ⚠️ **Supported, not recommended** — conventional pixel metrics on HDR samples; perceptually misleading
+- 🔬 **Experimental** — implemented and callable; scores not paper-validated (HDR-ChipQA on HLG)
+- ❌ **Unsupported** — rejected at setup or adapter preflight
 
 **Notes:**
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
 - SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- QCS is available per eligible metric; `hdr-chipqa` is pooled-only and has no QCS line. See [QCS](QCS.md).
-- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics, **HDR-ChipQA** (HLG experimental), and transfer defaults. **CVVDP** is opt-in—append by name (e.g. `--metrics pq,cvvdp`) because of GPU cost; `all` still includes CVVDP. See [CLI Usage](CLI_USAGE.md#metric-groups).
+- **SimpleVQA** (`simplevqa`): compressed **SDR** only; PQ/HLG streams and explicit PQ/HLG `--hdr-transfer` are rejected (`src/main.cpp`, Python adapter). Raw YUV is rejected. One pooled score per video; **QCS unsupported**.
+- **HDR-ChipQA** (`hdr-chipqa`): YUV **4:2:0** 8- or 10-bit, raw or compressed. SDR uses BT.709 gamma-coded YUV (`color_space=BT709`); PQ HDR uses PQ-coded 10-bit YUV with stream PQ tags or `--hdr-transfer pq` (`color_space=BT2020`). Raw PQ/HLG requires `-f 420p:10` and `--fps`. **HLG** uses the same BT2020 feature path without EOTF and is **experimental** (monotonicity sanity checks only). One pooled score; **QCS unsupported**. See [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
+- QCS applies to per-frame or sampled metrics only; `simplevqa` and `hdr-chipqa` are pooled-only. See [QCS](QCS.md).
+- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics, **HDR-ChipQA** (HLG experimental), and transfer defaults. **SimpleVQA** is incompatible with `pq`/`hlg` groups (SDR-only). **CVVDP** is opt-in—append by name (e.g. `--metrics pq,cvvdp`) because of GPU cost; `all` still includes CVVDP. See [CLI Usage](CLI_USAGE.md#metric-groups).
 
 ## Metric Capabilities
 

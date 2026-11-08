@@ -84,6 +84,8 @@ Metric groups assign interpretation; they do not convert pixel values. See [Metr
 | Native metrics | Planar 8/10-bit 4:2:0, 4:2:2, 4:4:4 | With FFmpeg build | Yes |
 | `cvvdp` | 10-bit 4:2:0 with declared format/rate | Yes, including mixed pairs | Yes |
 | `cvqa-hdr-nr` | No | SDR or HDR10 only | Yes |
+| `simplevqa` | No | Compressed SDR only (PQ/HLG rejected) | Yes |
+| `hdr-chipqa` | YUV420 8/10-bit (`-s`, `-f`, `--fps` for raw PQ/HLG) | Yes (SDR, PQ; HLG experimental) | Yes |
 
 Full-reference metrics compare matching frames in presentation order, stopping at the **shorter** input with a warning. Decode/I/O errors, truncated raw frames, and incompatible geometry remain errors. An NR-only invocation ignores `-r`.
 

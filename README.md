@@ -6,9 +6,52 @@
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP**, no-reference **CompressedVQA-HDR NR**, and no-reference **SimpleVQA** (`pixvqa --metrics simplevqa`, SDR compressed video only). The same optional **repository-local** `.venv` can also satisfy the standalone **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`) — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
+PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP**; no-reference **CompressedVQA-HDR NR**, **SimpleVQA**, and **HDR-ChipQA** (`pixvqa --metrics simplevqa` or `hdr-chipqa`). The same optional **repository-local** `.venv` can also satisfy the standalone **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`) — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
 
 PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build. CPU, optional CUDA metric acceleration, and NVDEC are available depending on the build.
+
+## Metrics at a glance
+
+**Full-reference (FR)** metrics need a reference and a distorted video; **no-reference (NR)** metrics score the distorted video alone. The tables below list **recommended** choices by transfer characteristic. Input requirements (raw YUV, compressed, tags) are stricter than model availability — see [Metrics & Formats](docs/METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video) and [Learned Metrics](docs/LEARNED_METRICS.md).
+
+### Recommended metrics by video format
+
+| Metric | SDR (BT.709) | PQ / BT.2020 (HDR10) | HLG (BT.2020) |
+|---|:---:|:---:|:---:|
+| PSNR | ✅ | ⚠️ | ⚠️ |
+| XPSNR | ✅ | ⚠️ | ⚠️ |
+| SSIM | ✅ | ⚠️ | ⚠️ |
+| MS-SSIM | ✅ | ⚠️ | ⚠️ |
+| VMAF (SDR v1.0.16 models) | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | ❌ | ✅ | ❌ |
+| PU21-PSNR | ❌ | ✅ | ✅ |
+| PU21-SSIM | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | ❌ | ✅ | ✅ |
+| CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
+| SimpleVQA (`simplevqa`) | ✅ | ❌ | ❌ |
+| HDR-ChipQA (`hdr-chipqa`) | ✅ | ✅ | 🔬 |
+
+**Legend:** ✅ Recommended · ⚠️ Supported, but not generally recommended for HDR perceptual assessment · 🔬 Experimental (runs in PixVQA; scores not paper-validated) · ❌ Unsupported. NR metrics **SimpleVQA** and **HDR-ChipQA** report one pooled score per video and do not support QCS. See [Metrics & Formats](docs/METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video) for YUV format and transfer-tag caveats.
+
+### Metric execution backends
+
+| Metric | CPU C/C++ | CUDA C++ | CPU Python (NumPy/SciPy) | CPU PyTorch | CUDA PyTorch |
+|---|:---:|:---:|:---:|:---:|:---:|
+| PSNR | ✅ | ✅ | — | — | — |
+| XPSNR | ✅ | ✅ | — | — | — |
+| SSIM | ✅ | ✅ | — | — | — |
+| MS-SSIM | ✅ | ✅ | — | — | — |
+| VMAF | ✅ | — | — | — | — |
+| PU21-PSNR | ✅ | ✅ | — | — | — |
+| PU21-SSIM | ✅ | ✅ | — | — | — |
+| PU21-MS-SSIM | ✅ | ✅ | — | — | — |
+| ColorVideoVDP (`cvvdp`) | — | — | — | ✅ | ✅ |
+| CompressedVQA-HDR NR (`cvqa-hdr-nr`) | — | — | — | ✅ | ✅ |
+| SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
+| HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
+
+✅ Available primary computation backend · — Not implemented for that backend. Python-based metrics may use other libraries for decoding or preprocessing; CUDA C++ refers to native CUDA metric kernels. QCS is a temporal descriptor derived from eligible frame scores, not a separate execution backend. See [Metrics & Formats](docs/METRICS_AND_FORMATS.md#metric-execution-backends) for details.
 
 ## Install
 
