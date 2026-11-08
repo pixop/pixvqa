@@ -60,6 +60,8 @@ Older documentation referred to `$HOME/pixvqa-learned-env`; that remains valid i
 
 > ⚠️ **CVVDP GPU resource usage:** High-resolution video and concurrent CVVDP jobs can require substantial GPU memory and compute. Monitor GPU utilization and available VRAM (for example, with `nvidia-smi`) and verify that the workload fits your GPU before running large batches. CVVDP has been verified on NVIDIA GeForce RTX 4070 and RTX 5080; this does not guarantee sufficient resources for every resolution, configuration or degree of parallelism. The optional `--cvvdp-gpu-mem GB` setting provides a memory budget, but is not a substitute for monitoring actual usage.
 
+> **HDR-ChipQA host-RAM / concurrency limitation (observed on WSL2):** During a 1920x1080, 60 fps, 1,199-frame (~20 s) benchmark with five concurrent PixVQA jobs, Linux OOM-killed several Python feature-extraction processes (roughly 2.9-3.5 GiB anonymous RSS at termination) under a WSL2 limit of **10 GB RAM + 4 GB swap**. The same multi-job benchmarking workflow ran after excluding `hdr-chipqa`. This supports treating HDR-ChipQA as **unsuitable for this constrained parallel workload**, not a universal per-job RAM estimate or proof that all implementations/4K jobs fail. For parallel campaigns on comparable hosts, omit `hdr-chipqa` (e.g. `--metrics psnr,ssim,msssim,xpsnr,vmaf,cvqa-hdr-nr,simplevqa`), or run HDR-ChipQA in a separately controlled/serial pass after checking available host RAM and peak RSS. `--threads` does not impose a RAM cap across independent PixVQA processes. Do not confuse this **system RAM** limitation with CVVDP's **GPU VRAM** warning above.
+
 ## Examples
 
 ```bash

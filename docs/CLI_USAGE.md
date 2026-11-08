@@ -61,7 +61,7 @@ Install one Python environment for **ColorVideoVDP**, **CompressedVQA-HDR NR**, 
 
 CVVDP accepts compressed, raw 10-bit YUV420, and mixed raw/compressed inputs; raw input needs geometry, frame rate and appropriate color interpretation. CVQA-HDR NR does not accept raw YUV or HLG; default sampling is approximately 1 Hz. Both accept `--frames`. When native metrics are selected, learned metrics use the successfully compared frame prefix.
 
-For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; see the [GPU usage warning](LEARNED_METRICS.md#setup).
+For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; see the [GPU usage warning](LEARNED_METRICS.md#setup). For concurrent HDR-ChipQA runs, host RAM is a separate concern: a five-job 1080p workload triggered WSL2 OOM kills with a 10 GB RAM limit. See the [HDR-ChipQA host-memory warning](LEARNED_METRICS.md#setup); omit `hdr-chipqa` from constrained parallel benchmarks or measure it separately.
 
 ## Metric groups
 
