@@ -49,6 +49,8 @@ feature_requirements=(
   'skimage:scikit-image>=0.21,<0.26'
   'cv2:opencv-python-headless==4.11.0.86'
   'joblib:joblib>=1.1,<2'
+  'skvideo:scikit-video==1.1.11'
+  'numba:numba>=0.60,<1'
 )
 pip_feature=("$feature_py" -m pip --disable-pip-version-check)
 missing_feature=()
@@ -64,7 +66,7 @@ if (( ${#missing_feature[@]} )); then
     "$0" "${missing_feature[*]}" >&2
   "${pip_feature[@]}" install --no-cache-dir "${missing_feature[@]}" >&2
 fi
-"$feature_py" -c 'import numpy, scipy, skimage, cv2, joblib' || {
+"$feature_py" -c 'import numpy, scipy, skimage, cv2, joblib, skvideo.io, numba' || {
   echo "$0: HDR-ChipQA feature dependencies are still unavailable after installation" >&2
   exit 1
 }
