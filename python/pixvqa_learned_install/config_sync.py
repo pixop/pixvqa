@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
@@ -61,6 +62,24 @@ def merge_config(example: Path, destination: Path, defaults: dict[str, str]) -> 
                 "hdr-chipqa.feature_python", "hdr-chipqa.inference_python"
             )
             legacy_host_path = str(Path(value).resolve()) if interpreter_key else ""
+            # 78e835b fixed the installer stdout leak. Older versions wrote
+            # a pip transcript followed by /bin/python into a JSON-escaped
+            # config string. PixVQA's C++ TOML subset cannot parse unicode
+            # escapes from that transcript, and even a full TOML parser would
+            # yield an invalid executable path. Repair that exact legacy form.
+            leaked_install_log = (
+                interpreter_key and
+                ("\n" in current[1] or "\r" in current[1]) and
+                any(token in current[1] for token in (
+                    "Collecting ", "Successfully installed ",
+                    "Requirement already satisfied:", "Downloading ",
+                ))
+            )
+            legacy_checkout_python = (
+                name == "learned.python" and
+                current[1] == str(destination.parent.parent / "deps/python-3.12/bin/python3.12") and
+                current[1] != value
+            )
             legacy_base = False
             if name == "learned.python" and current[1] != value and Path(value).is_file():
                 # A previous installer persisted the base Python 3.12 executable
@@ -76,16 +95,23 @@ def merge_config(example: Path, destination: Path, defaults: dict[str, str]) -> 
                         legacy_base = result.returncode == 0 and result.stdout.strip() == "True"
                     except (OSError, subprocess.TimeoutExpired):
                         pass
-            if not ((interpreter_key and current[1] == legacy_host_path and current[1] != value) or legacy_base):
+            if not ((interpreter_key and current[1] == legacy_host_path and current[1] != value) or legacy_base or legacy_checkout_python or leaked_install_log):
                 messages.append(f"preserved [{section}].{key}")
                 continue
             messages.append(f"repaired legacy interpreter path [{section}].{key}")
         lines = _put(lines, section, key, value)
         changed = True
         messages.append(f"configured [{section}].{key}")
+    # Reject corrupted files before replacing an existing configuration.
+    # Validate the entire candidate, not just entries touched by this run.
+    candidate = "\n".join(lines) + "\n"
+    try:
+        tomllib.loads(candidate)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"invalid learned-metric configuration {destination}: {exc}") from exc
     if changed:
         destination.parent.mkdir(parents=True, exist_ok=True)
         temp = destination.with_suffix(destination.suffix + ".tmp")
-        temp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        temp.write_text(candidate, encoding="utf-8")
         temp.replace(destination)
     return created, messages
