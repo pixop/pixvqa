@@ -198,12 +198,12 @@ def parse_native(stdout: str, stderr: str) -> dict[str, object]:
         if not match:
             raise RuntimeError(f"missing conventional {name}: {stdout[-1000:]}")
         conventional[name] = dict(zip(("y", "u", "v", "avg"), map(float, match.groups())))
-    psnr = re.search(r"\[ PU21-PSNR {5}r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]", stdout)
+    psnr = re.search(r"\[ PU21-PSNR r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]", stdout)
     if not psnr:
         raise RuntimeError(f"missing PU21-PSNR: {stdout[-1000:]}")
     structural: dict[str, float] = {}
-    for name, spaces in (("PU21-SSIM", 5), ("PU21-MS-SSIM", 2)):
-        match = re.search(rf"\[ {name} {{{spaces}}}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]", stdout)
+    for name in ("PU21-SSIM", "PU21-MS-SSIM"):
+        match = re.search(rf"\[ {re.escape(name)} y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]", stdout)
         if not match or match.group(1) != match.group(2):
             raise RuntimeError(f"{name} did not report equal luminance y/avg and n/a chroma")
         structural[name] = float(match.group(1))

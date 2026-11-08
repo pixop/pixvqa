@@ -9,5 +9,5 @@ description = "Optional subprocess adapters for external video-quality metrics"
 requires-python = ">=3.10"
 
 [tool.setuptools]
-packages = ["pixvqa_cvvdp", "pixvqa_cvqahdr"]
+packages = ["pixvqa_cvvdp", "pixvqa_cvqahdr", "pixvqa_simplevqa", "pixvqa_hdr_chipqa"]
 py-modules = ["pixvqa_device"]

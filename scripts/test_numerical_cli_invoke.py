@@ -144,7 +144,9 @@ def test_cvqa_only_no_cvvdp_cli_flags() -> None:
     assert "--cvvdp-python" not in inv.argv
     assert "--cvvdp-display" not in inv.argv
     assert "PIXVQA_CVVDP_PYTHON" not in inv.env
-    assert "--cvqahdr-python" in inv.argv
+    # CVQA-HDR-NR resolves its interpreter from learned_metrics config, not --cvqahdr-python.
+    assert "--cvqahdr-python" not in inv.argv
+    assert "PIXVQA_CVQAHDR_PYTHON" not in inv.env
 
 
 def test_cvvdp_only_no_cvqahdr_cli_flags() -> None:
@@ -164,9 +166,8 @@ def test_cvvdp_only_no_cvqahdr_cli_flags() -> None:
 
 
 def test_sdr_cvvdp_raw_not_applicable() -> None:
-    assert cvvdp_skip_reason("cvvdp", "sdr", "raw_raw")
-    na = not_applicable_reason("cvvdp", "sdr", "raw_raw")
-    assert na is not None and na.startswith("N/A:")
+    assert cvvdp_skip_reason("cvvdp", "sdr", "raw_raw") is None
+    assert not_applicable_reason("cvvdp", "sdr", "raw_raw") is None
     assert not_applicable_reason("cvvdp", "pq", "raw_raw") is None
 
 

@@ -12,6 +12,8 @@
 | `pu21-msssim` | MS-SSIM on PU21-encoded luminance |
 | [`cvvdp`](LEARNED_METRICS.md) | ColorVideoVDP JOD, optional external Python backend. Full-reference |
 | [`cvqa-hdr-nr`](LEARNED_METRICS.md) | CompressedVQA-HDR NR, optional external Python backend. No-reference |
+| [`simplevqa`](LEARNED_METRICS.md) | SimpleVQA NR UGC score; compressed SDR only. Pooled-video scalar |
+| [`hdr-chipqa`](LEARNED_METRICS.md) | HDR-ChipQA NR dark-scene MOS-like score; SDR and PQ validated, HLG experimental. Pooled-video scalar |
 | [`--qcs`](QCS.md) | Quality Consistency Score (QCS): temporal quality reliability descriptor derived from per-frame VQA scores |
 
 PU21 is a perceptually uniform encoding of display light for HDR quality assessment. `pu21-xpsnr` and `pu21-vmaf` are not implemented.
@@ -35,19 +37,24 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 | PU21-MS-SSIM | ❌ | ✅ | ✅ |
 | CVVDP (`sdr` / `pq` / `hlg` interpretation) | ✅ | ✅ | ✅ |
 | CompressedVQA-HDR NR | ✅ | ✅ | ❌ |
+| SimpleVQA (`simplevqa`) | ✅ | ❌ | ❌ |
+| HDR-ChipQA (`hdr-chipqa`) | ✅ | ✅ | 🔬 |
 
 **Legend:**
 
-- ✅ Recommended
-- ⚠️ Supported, but not generally recommended for HDR perceptual assessment
-- ❌ Unsupported metric/model and format combination
+- ✅ **Recommended** — validated choice for that transfer and use case
+- ⚠️ **Supported, not recommended** — conventional pixel metrics on HDR samples; perceptually misleading
+- 🔬 **Experimental** — implemented and callable; scores not paper-validated (HDR-ChipQA on HLG)
+- ❌ **Unsupported** — rejected at setup or adapter preflight
 
 **Notes:**
 - Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
 - SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
 - PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- QCS is available for supported native and learned metrics; see [QCS](QCS.md).
-- Metric groups configure transfer/display defaults and include additional conventional metrics even for HDR; see [CLI Usage](CLI_USAGE.md#metric-groups).
+- **SimpleVQA** (`simplevqa`): compressed **SDR** only; PQ/HLG streams and explicit PQ/HLG `--hdr-transfer` are rejected (`src/main.cpp`, Python adapter). Raw YUV is rejected. One pooled score per video; **QCS unsupported**.
+- **HDR-ChipQA** (`hdr-chipqa`): YUV **4:2:0** 8- or 10-bit, raw or compressed. SDR uses BT.709 gamma-coded YUV (`color_space=BT709`); PQ HDR uses PQ-coded 10-bit YUV with stream PQ tags or `--hdr-transfer pq` (`color_space=BT2020`). Raw PQ/HLG requires `-f 420p:10` and `--fps`. **HLG** uses the same BT2020 feature path without EOTF and is **experimental** (monotonicity sanity checks only). One pooled score; **QCS unsupported**. See [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
+- QCS applies to per-frame or sampled metrics only; `simplevqa` and `hdr-chipqa` are pooled-only. See [QCS](QCS.md).
+- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics, **HDR-ChipQA** (HLG experimental), and transfer defaults. **SimpleVQA** is incompatible with `pq`/`hlg` groups (SDR-only). **CVVDP** is opt-in—append by name (e.g. `--metrics pq,cvvdp`) because of GPU cost; `all` still includes CVVDP. See [CLI Usage](CLI_USAGE.md#metric-groups).
 
 ## Metric Capabilities
 
@@ -58,6 +65,8 @@ PixVQA supports native and Python-based quality metrics. Metrics can be combined
 | Native metrics | Raw YUV or compressed video | Raw YUV or compressed video | Per-frame scores; metric-specific default ranges | PixVQA |
 | `cvvdp` | Raw YUV420p10le (SDR/PQ/HLG) or compressed | Raw YUV420p10le (SDR/PQ/HLG) or compressed | Per-frame JOD-equivalent scores; default range [0, 10] | Python adapter |
 | `cvqa-hdr-nr` | Not required | Compressed video only | Sampled-frame scores; default range [0, 10] | Python adapter |
+| `simplevqa` | Not required | Compressed SDR video only | Pooled-video scalar; QCS unsupported | Python adapter (`python -m pixvqa_simplevqa`; optional `--use-worker` for CUDA batch) |
+| `hdr-chipqa` | Not required | Raw YUV420 8/10-bit or compressed | Pooled-video scalar; QCS unsupported | Python adapter |
 
 **Decoding:** Native metrics require `make swdec` or `make full` for compressed video. Python-based metrics decode compressed video independently of the build.
 
@@ -76,6 +85,25 @@ Compressed video support depends on the available FFmpeg decoders. PixVQA accept
 AV1 software decoding requires an FFmpeg build with an AV1 decoder (for example, dav1d). NVDEC supports selected HEVC/AV1 formats; `--decode gpu` has no software fallback. `--decode auto` selects a supported decoder when available.
 
 Inputs are paired in presentation order. If lengths differ, full-reference metrics evaluate the common frame prefix and emit a warning; incompatible geometry remains an error. PixVQA does not resynchronize timestamps.
+
+## Metric Execution Backends
+
+| Metric | CPU C/C++ | CUDA C++ | CPU Python (NumPy/SciPy) | CPU PyTorch | CUDA PyTorch |
+|---|:---:|:---:|:---:|:---:|:---:|
+| PSNR | ✅ | ✅ | — | — | — |
+| XPSNR | ✅ | ✅ | — | — | — |
+| SSIM | ✅ | ✅ | — | — | — |
+| MS-SSIM | ✅ | ✅ | — | — | — |
+| VMAF | ✅ | — | — | — | — |
+| PU21-PSNR | ✅ | ✅ | — | — | — |
+| PU21-SSIM | ✅ | ✅ | — | — | — |
+| PU21-MS-SSIM | ✅ | ✅ | — | — | — |
+| ColorVideoVDP (`cvvdp`) | — | — | — | ✅ | ✅ |
+| CompressedVQA-HDR NR (`cvqa-hdr-nr`) | — | — | — | ✅ | ✅ |
+| SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
+| HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
+
+A checkmark identifies the metric's **primary computation backend**, not every library used for decoding, preprocessing, or orchestration. The native CUDA column refers to C++/CUDA metric implementations, not GPU video decoding. VMAF uses CPU `libvmaf`; HDR-ChipQA uses CPU Python with NumPy, SciPy, and scikit-learn. ColorVideoVDP uses PyTorch tensor operations but is not a neural-network metric. SimpleVQA's optional persistent CUDA worker is available through its Python module, not through the native PixVQA CLI. QCS is omitted because it aggregates eligible per-frame scores rather than implementing an independent VQA backend.
 
 ## CPU and GPU Support
 

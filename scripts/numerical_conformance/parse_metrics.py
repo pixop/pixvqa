@@ -183,3 +183,43 @@ def parse_run(stdout: str, stderr: str, rc: int) -> ParsedRun:
 def _last(pat: re.Pattern[str], text: str):
     matches = list(pat.finditer(text))
     return matches[-1] if matches else None
+
+
+# Summary block: one metric bracket per line, one ASCII space before first field.
+_SUMMARY_BLOCK_TAIL = re.compile(r"\n\nTotal frames:", re.I)
+_SUMMARY_ONE_BRACKET = re.compile(r"^\[ [^\[\]]+ \]$")
+_SUMMARY_NAME_FIELD = re.compile(r"^\[ ([A-Z][A-Z0-9-]+) ([a-z]+):")
+
+
+def summary_metric_lines(stdout: str) -> list[str]:
+    marker = "\n\nSummary:\n\n"
+    start = stdout.find(marker)
+    if start < 0:
+        return []
+    rest = stdout[start + len(marker) :]
+    end = _SUMMARY_BLOCK_TAIL.search(rest)
+    block = rest if end is None else rest[: end.start()]
+    return [line for line in block.splitlines() if line.startswith("[")]
+
+
+def summary_metric_format_error(line: str) -> str | None:
+    """Return a reason when a summary average line breaks compact one-metric layout."""
+    if not _SUMMARY_ONE_BRACKET.match(line):
+        if line.count("[") > 1:
+            return "multiple metric bracket groups on one line"
+        return "summary metric line must be a single [ ... ] group"
+    if _SUMMARY_NAME_FIELD.match(line) is None:
+        return "metric name must be followed by one space and the first field label"
+    name_match = re.match(r"^\[ ([A-Z][A-Z0-9-]+)( +)([a-z]+):", line)
+    if name_match and len(name_match.group(2)) != 1:
+        return "exactly one ASCII space required between metric name and first field"
+    return None
+
+
+def validate_summary_metrics(stdout: str) -> list[str]:
+    errors: list[str] = []
+    for line in summary_metric_lines(stdout):
+        reason = summary_metric_format_error(line)
+        if reason:
+            errors.append(f"{reason}: {line!r}")
+    return errors

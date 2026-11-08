@@ -44,7 +44,7 @@ pixvqa --metrics psnr,vmaf \
 ```
 Repeating the option is equivalent: `--qcs-range psnr=40:55 --qcs-range vmaf=30:100`.
 
-QCS is computed independently for each selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS.
+QCS is computed independently for each **QCS-eligible** selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS. `simplevqa` and `hdr-chipqa` are pooled-video NR metrics and emit no QCS line; they may run together with eligible metrics (including metric groups) while `--qcs` applies to the rest. `--qcs` alone with only `simplevqa` or only `hdr-chipqa` selected is rejected at setup.
 
 ## Reference implementation
 

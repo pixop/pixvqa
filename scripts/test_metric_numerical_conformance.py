@@ -14,7 +14,14 @@ from numerical_conformance.runner import run_suite  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="PixVQA numerical SDR/PQ/HLG conformance")
+    parser = argparse.ArgumentParser(
+        description="PixVQA numerical SDR/PQ/HLG conformance",
+        epilog=(
+            "Compressed scenarios require a decoder-enabled binary "
+            "(build/swdec or build/full). Set PIXVQA_BIN; when it points at "
+            "build/cpu the suite auto-falls back to build/swdec if present."
+        ),
+    )
     parser.add_argument("--profile", choices=("smoke", "comprehensive"), default="smoke")
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--case-id", action="append", default=[],

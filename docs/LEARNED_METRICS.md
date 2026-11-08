@@ -1,22 +1,48 @@
 # Optional Learned Metrics
 
-Two separately installed Python-backed metrics can run alongside native PixVQA metrics:
+Up to **four** Python-backed stacks can share configuration via [`config/learned_metrics.local.toml`](../config/learned_metrics.example.toml) and [`python/requirements/learned-env.txt`](../python/requirements/learned-env.txt):
 
-| Metric | Type | Supported inputs |
+| Backend | Role in PixVQA | Supported inputs |
 |---|---|---|
-| `cvvdp` ([ColorVideoVDP](https://github.com/gfxdisp/ColorVideoVDP)) | Full-reference JOD | Compressed or raw YUV420p10le, including mixed raw/compressed |
-| `cvqa-hdr-nr` ([CompressedVQA-HDR](https://github.com/sunwei925/CompressedVQA-HDR)) | No-reference | Compressed SDR and HDR10; not raw YUV or HLG |
+| `cvvdp` ([ColorVideoVDP](https://github.com/gfxdisp/ColorVideoVDP)) | Full-reference JOD (`pixvqa --metrics cvvdp`) | Compressed or raw YUV420p10le, including mixed raw/compressed |
+| `cvqa-hdr-nr` ([CompressedVQA-HDR](https://github.com/sunwei925/CompressedVQA-HDR)) | No-reference (`pixvqa --metrics cvqa-hdr-nr`) | Compressed SDR and HDR10; not raw YUV or HLG |
+| SimpleVQA ([upstream](https://github.com/sunwei925/SimpleVQA)) | No-reference (`pixvqa --metrics simplevqa`); same module also runs standalone ([SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md)); **CPU supported** via staged overlay; **CUDA batch opt-in** `--use-worker` on `python -m pixvqa_simplevqa` only (not forwarded by `pixvqa` yet) | Compressed **SDR** only (explicit PQ/HLG rejected; unknown/missing stream transfer is allowed at the C++ gate—Python still ffprobes); raw YUV rejected |
+| `hdr-chipqa` ([HDR-ChipQA](https://github.com/Netflix/hdr_chipqa)) | No-reference pooled MOS-like score | SDR BT.709, PQ HDR, and **experimental** HLG; raw YUV420 8/10-bit or compressed |
 
-## Setup
+For SDR/PQ/HLG recommendations and input caveats (YUV layout, transfer tags, QCS), see [Recommended Metrics for SDR and HDR Video](METRICS_AND_FORMATS.md#recommended-metrics-for-sdr-and-hdr-video).
 
-The guided installer does **not** install these models. Install the Python environment and provide required model files:
+What you must provide falls into **two** buckets:
+
+1. **Python environment and packages** — a CPython 3.12 virtual environment with the locked dependencies in [`python/requirements/learned-env.txt`](../python/requirements/learned-env.txt), plus ColorVideoVDP at the pinned commit (installed from a local Git checkout; [`scripts/setup_learned_env.sh`](../scripts/setup_learned_env.sh) never downloads model weights). That same environment includes PyTorchVideo and related pins so you can run the SimpleVQA adapter against a Git checkout under `deps/SimpleVQA` (or elsewhere).
+2. **Upstream repositories and model assets** — checkouts of CompressedVQA-HDR and SimpleVQA where each backend expects them; `.pth`/`.npy` and other checkpoints for those models. PixVQA does **not** download third-party model checkpoints automatically. Review each upstream license before redistributing or mirroring weights.
+
+The **guided installer** (`install_pixvqa.sh`) does **not** install learned metrics unless you opt in: the prompt defaults to **no**, or set `PIXVQA_ENABLE_LEARNED=1` for non-interactive installs. It never downloads NR or SimpleVQA checkpoints. When opted in, it runs [`scripts/install_learned_metrics.sh`](../scripts/install_learned_metrics.sh), which can create a **repository-local** `.venv` and clone ColorVideoVDP under `deps/ColorVideoVDP` by default (both paths are Git-ignored). System-installed Python, CUDA, the NVIDIA driver, and package-manager or pip **caches** outside the repo are still normal prerequisites and are not removed when you move or delete the checkout.
+
+For **manual setup** (full control, CI, or an existing environment), create the venv and config yourself:
 
 ```bash
-scripts/setup_learned_env.sh ~/pixvqa-learned-env ~/src/ColorVideoVDP
+scripts/setup_learned_env.sh /absolute/path/to/.venv /absolute/path/to/ColorVideoVDP
 cp config/learned_metrics.example.toml config/learned_metrics.local.toml
+# Edit learned_metrics.local.toml — paths to checkpoints, NR repo, and [learned].python
 ```
 
-Edit `config/learned_metrics.local.toml` with your paths; it is Git-ignored. CompressedVQA-HDR NR needs its upstream checkout, `.pth` checkpoint and `.npy` calibration profile. The [example configuration](../config/learned_metrics.example.toml) lists the available fields. CVVDP needs its installed executable; for compressed files, `ffmpeg` and `ffprobe` must be on `PATH`.
+Copy [`config/learned_metrics.example.toml`](../config/learned_metrics.example.toml) to `config/learned_metrics.local.toml` (Git-ignored). The [example](../config/learned_metrics.example.toml) uses a **relative** `python` path resolved next to the config file (`../.venv/bin/python`). After running the installer with an empty `learned_metrics.local.toml`, the generated file uses an **absolute** path to the selected interpreter so the template line does not have to match your filesystem layout.
+
+### Defaults and overrides
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `PIXVQA_LEARNED_ENV_DIR` | `<repo>/.venv` | Virtual environment directory; must be an absolute path when set |
+| `PIXVQA_CVVDP_SOURCE` | `<repo>/deps/ColorVideoVDP` | ColorVideoVDP Git checkout used by `setup_learned_env.sh` |
+| `PIXVQA_LEARNED_VENV_USE_SYMLINKS` | unset | If set (non-empty), `setup_learned_env.sh` creates the venv **without** `--copies` even on WSL 9p/drvfs mounts (Linux ext4 or intentional symlink venv) |
+
+Older documentation referred to `$HOME/pixvqa-learned-env`; that remains valid if you set `PIXVQA_LEARNED_ENV_DIR` accordingly. The installer does **not** silently migrate or re-point an existing `learned_metrics.local.toml`. If the file already lists a different `[learned].python` than the environment selected for this run, the script prints a **warning**; to opt into a repo-local venv, create a new venv, set `PIXVQA_LEARNED_ENV_DIR` to its path (or use the default `.venv`), update `[learned].python` and any checkpoint paths, and retire the old venv yourself.
+
+**WSL2 and Windows-backed mounts:** Repositories on drives exposed under `/mnt/...` (e.g. `D:` → `/mnt/d/...`) are often served to Linux as **9p** (WSL) or similar. Default `venv` layout uses symlinks to the host Python; those links can fail on some cross-filesystem layouts. For those mounts, [`scripts/setup_learned_env.sh`](../scripts/setup_learned_env.sh) uses `python -m venv --copies`, which duplicates the interpreter into `.venv` so shebangs and imports resolve (validated in practice on 9p). Expect **higher latency** and possible tooling edge cases compared to ext4; prefer a clone under the Linux filesystem (e.g. `$HOME`) when you need maximum I/O performance or want a symlink-based venv (`PIXVQA_LEARNED_VENV_USE_SYMLINKS=1` on ext4). This is **not** a guarantee for every mount or future WSL change — after creation, confirm with `"$PIXVQA_LEARNED_ENV_DIR/bin/python" -c 'import sys; print(sys.executable)'`.
+
+`.venv` is **deployment-specific**: do not commit it; after relocating the repository, recreate the environment or point `PIXVQA_LEARNED_ENV_DIR` at your existing venv.
+
+## Setup
 
 > ⚠️ **CVVDP GPU resource usage:** High-resolution video and concurrent CVVDP jobs can require substantial GPU memory and compute. Monitor GPU utilization and available VRAM (for example, with `nvidia-smi`) and verify that the workload fits your GPU before running large batches. CVVDP has been verified on NVIDIA GeForce RTX 4070 and RTX 5080; this does not guarantee sufficient resources for every resolution, configuration or degree of parallelism. The optional `--cvvdp-gpu-mem GB` setting provides a memory budget, but is not a substitute for monitoring actual usage.
 
@@ -33,10 +59,21 @@ Edit `config/learned_metrics.local.toml` with your paths; it is Git-ignored. Com
 # Combine with native metrics:
 ./bin/pixvqa --metrics psnr,cvvdp,cvqa-hdr-nr --hdr-transfer pq \
   -r reference.mp4 -t distorted.mp4
+
+# HDR-ChipQA (NR; also selected automatically by --metrics sdr|pq|hlg):
+./bin/pixvqa --metrics pq -r reference.mp4 -t distorted.mp4
 ```
+
+### Metric groups, CVVDP, and HDR-ChipQA
+
+- **`sdr`**, **`pq`**, and **`hlg`** groups include **HDR-ChipQA** automatically (HLG scores are experimental). Configure `[hdr-chipqa]` in `learned_metrics.local.toml` or pass `--hdr-chipqa-*` overrides.
+- **CVVDP** is **not** in group baselines (GPU cost). Append it explicitly, e.g. `--metrics pq,cvvdp`, `--metrics sdr,cvvdp`, or `--metrics hlg,cvvdp`; the group then fills `--cvvdp-interpretation` and `--cvvdp-display` when possible.
+- **`all`** still selects CVVDP (and native metrics) but does **not** imply a transfer group; it does not auto-select HDR-ChipQA.
 
 Compressed video metadata may supply transfer; when it cannot, set `--hdr-transfer` or `--cvvdp-interpretation`. Specify a suitable SDR display explicitly (e.g. `--cvvdp-display standard_fhd`). Raw CVVDP input requires geometry, format, rate and correct transfer/color interpretation.
 
 `--frames N` caps both learned metrics. In a mixed native/learned run, all metrics use the common successfully compared frame prefix. The NR model samples at approximately 1 Hz by default; adjust using `--cvqa-nr-sample-interval-sec` and `--cvqa-nr-chunk-size-sec`.
+
+HDR-ChipQA implementation details and validation evidence: [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
 
 See [CLI Usage](CLI_USAGE.md) for options and [Metrics & Formats](METRICS_AND_FORMATS.md) for compatibility.

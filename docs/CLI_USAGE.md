@@ -48,7 +48,7 @@ Auto-selection does not support HLG, other resolutions, ambiguous transfer, or u
 
 ### Optional learned metrics
 
-Install their environments/assets first: [Learned Metrics](LEARNED_METRICS.md).
+Install one Python environment for **ColorVideoVDP**, **CompressedVQA-HDR NR**, and **SimpleVQA** — supply upstream repos and checkpoints separately (PixVQA does not download weights). Use `pixvqa --metrics simplevqa` for SDR compressed video, or `python -m pixvqa_simplevqa` for the reference module. See [Learned Metrics](LEARNED_METRICS.md) and [SIMPLEVQA_REFERENCE.md](dev/SIMPLEVQA_REFERENCE.md).
 
 ```bash
 # ColorVideoVDP (full-reference):
@@ -65,13 +65,15 @@ For high-resolution or concurrent CVVDP runs, check GPU memory and utilization; 
 
 ## Metric groups
 
-Groups select several metrics and transfer/display defaults. A group can be combined with individual metric names, but not with a different group. All selected backends must be installed.
+Groups select baseline native (and applicable NR) metrics, **HDR-ChipQA**, and transfer/display defaults. Append individual metrics to a group (e.g. `--metrics pq,cvvdp`). A group cannot combine with a different group. All selected backends must be installed.
 
 | Group | Includes | Interpretation |
 |---|---|---|
-| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVVDP, CVQA-HDR NR | SDR; specify an SDR CVVDP display (e.g. `standard_fhd`) |
-| `pq` | SDR group metrics plus PU21-PSNR/SSIM/MS-SSIM | PQ/BT.2020 non-constant luminance, limited range; HDR CVVDP display |
-| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, CVVDP | HLG/BT.2020 non-constant luminance, limited range; no VMAF or NR |
+| `sdr` | PSNR, XPSNR, SSIM, MS-SSIM, VMAF, CVQA-HDR NR, HDR-ChipQA | SDR |
+| `pq` | SDR group metrics plus PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA | PQ/BT.2020 non-constant luminance, limited range |
+| `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR/SSIM/MS-SSIM, HDR-ChipQA (experimental) | HLG/BT.2020 non-constant luminance, limited range; no VMAF or NR |
+
+**CVVDP** (`cvvdp`) is **not** in group baselines (GPU-intensive). Add it explicitly when needed, e.g. `--metrics pq,cvvdp` or `--metrics sdr,cvvdp`. Groups that include CVVDP fill `--cvvdp-interpretation` and `--cvvdp-display` from the group (unless overridden). **HDR-ChipQA** runs automatically in every group; HLG scores are experimental. You can also select it alone with `--metrics hdr-chipqa`. `all` still selects every metric including CVVDP (but not HDR-ChipQA unless added by name or via a group). With `--qcs`, each eligible metric in the selection gets a QCS line; **HDR-ChipQA** stays pooled-only and emits no QCS (see [QCS](QCS.md)).
 
 Metric groups assign interpretation; they do not convert pixel values. See [Metrics & Formats](METRICS_AND_FORMATS.md).
 
@@ -82,6 +84,8 @@ Metric groups assign interpretation; they do not convert pixel values. See [Metr
 | Native metrics | Planar 8/10-bit 4:2:0, 4:2:2, 4:4:4 | With FFmpeg build | Yes |
 | `cvvdp` | 10-bit 4:2:0 with declared format/rate | Yes, including mixed pairs | Yes |
 | `cvqa-hdr-nr` | No | SDR or HDR10 only | Yes |
+| `simplevqa` | No | Compressed SDR only (PQ/HLG rejected) | Yes |
+| `hdr-chipqa` | YUV420 8/10-bit (`-s`, `-f`, `--fps` for raw PQ/HLG) | Yes (SDR, PQ; HLG experimental) | Yes |
 
 Full-reference metrics compare matching frames in presentation order, stopping at the **shorter** input with a warning. Decode/I/O errors, truncated raw frames, and incompatible geometry remain errors. An NR-only invocation ignores `-r`.
 
@@ -91,7 +95,7 @@ This is the everyday option reference. `--help-advanced` and `--help-hdr` list a
 
 | Option | Purpose / default |
 |---|---|
-| `--metrics LIST` | Required; comma-separated metrics (`psnr,xpsnr,ssim,msssim,vmaf,pu21-psnr,pu21-ssim,pu21-msssim,cvvdp,cvqa-hdr-nr`) or `all,sdr,pq,hlg`. Repeatable. |
+| `--metrics LIST` | Required; comma-separated metrics (`psnr,xpsnr,ssim,msssim,vmaf,pu21-psnr,pu21-ssim,pu21-msssim,cvvdp,cvqa-hdr-nr,simplevqa,hdr-chipqa`) or `all,sdr,pq,hlg`. Repeatable. |
 | `-r PATH`, `-t PATH` | Reference (full-reference metrics) and required distorted video. |
 | `--input auto\|raw\|compressed` | Input-type override for subsequent inputs; default `auto`. |
 | `-s WxH`, `-f 420p\|422p\|444p[:8\|:10]` | Raw-video size and planar format; omitted bit depth means 10. |

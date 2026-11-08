@@ -61,6 +61,9 @@ def make_hlg_mp4(ffmpeg: str, path: Path, *, size: int = 64, frames: int = 2) ->
             f"testsrc2=size={size}x{size}:rate=24",
             "-frames:v",
             str(frames),
+            # setparams stamps VUI into the bitstream so ffprobe and pixvqa agree on HLG.
+            "-vf",
+            "setparams=color_trc=arib-std-b67:color_primaries=bt2020:colorspace=bt2020nc:range=tv",
             "-c:v",
             "libx264",
             "-qp",

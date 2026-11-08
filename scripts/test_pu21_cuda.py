@@ -13,15 +13,15 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from numerical_conformance.parse_metrics import PU21_MSSSIM, PU21_PSNR, PU21_SSIM  # noqa: E402
+
 CPU = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
 GPU = Path(os.environ.get("PIXVQA_CUDA_BIN", ROOT / "build" / "full" / "pixvqa"))
 RGB_FIELDS = tuple(f"PU21-PSNR {part}" for part in ("r", "g", "b", "avg"))
 NAMES = (*RGB_FIELDS, "PU21-SSIM", "PU21-MS-SSIM")
-RGB_RE = re.compile(r"\[ PU21-PSNR {5}r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]")
-LUMA_RE = {
-    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
-    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
-}
+RGB_RE = PU21_PSNR
+LUMA_RE = {"PU21-SSIM": PU21_SSIM, "PU21-MS-SSIM": PU21_MSSSIM}
 FAILS = 0
 WORST = {name: 0.0 for name in NAMES}
 
@@ -170,8 +170,8 @@ def main() -> int:
                   "-t", str(dist), "-s", "64x64", "-f", "420p:10"]
         alone = run(GPU, ["--metrics", "psnr", "--device", "gpu", *common])
         both = run(GPU, ["--metrics", "psnr,pu21-psnr", "--device", "gpu", *common])
-        pa = re.findall(r"\[ PSNR  y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", alone.stdout)
-        pb = re.findall(r"\[ PSNR  y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", both.stdout)
+        pa = re.findall(r"\[ PSNR y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", alone.stdout)
+        pb = re.findall(r"\[ PSNR y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]", both.stdout)
         if alone.returncode != 0 or both.returncode != 0 or pa != pb:
             fail(f"PSNR changed beside PU21 {pa} vs {pb} rc {alone.returncode}/{both.returncode}")
         else:

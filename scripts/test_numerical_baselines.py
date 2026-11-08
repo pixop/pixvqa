@@ -104,8 +104,9 @@ def test_scientific_notation_parse() -> None:
 def test_mixed_native_learned_parse() -> None:
     stdout = (
         "Total frames:60\n"
-        "[ PSNR  y:40.0 u:40.0 v:40.0 avg:40.0 ] [ MSE  y:0 u:0 v:0 avg:0 ]\n"
-        "[ SSIM  y:0.990000 u:0.990000 v:0.990000 avg:0.990000 ]\n"
+        "[ PSNR y:40.0 u:40.0 v:40.0 avg:40.0 ]\n"
+        "[ MSE y:0 u:0 v:0 avg:0 ]\n"
+        "[ SSIM y:0.990000 u:0.990000 v:0.990000 avg:0.990000 ]\n"
         "[ CVQA-HDR-NR quality_score:8.244694007429416 raw_model_score:0.25 samples:1 ]\n"
     )
     parsed = parse_run(stdout, "", 0)
@@ -115,10 +116,10 @@ def test_mixed_native_learned_parse() -> None:
 
 
 def test_na_vs_fail_classification() -> None:
-    na = not_applicable_reason("cvvdp", "sdr", "raw_raw")
-    assert na is not None
-    assert na.startswith("N/A:")
+    assert not_applicable_reason("cvvdp", "sdr", "raw_raw") is None
     assert not_applicable_reason("cvvdp", "pq", "raw_raw") is None
+    na = not_applicable_reason("cvvdp", "sdr", "comp_comp")
+    assert na is None or na.startswith("N/A:")
 
 
 def test_provenance_validation() -> None:

@@ -13,8 +13,8 @@ CUDA = Path(__file__).resolve().parents[1] / "build/full/pixvqa"
 CACHE = Path("/tmp/pixvqa_p4")
 WSSE = re.compile(r"xpsnr_wsse (\d+) (\d+) (\d+) (\d+)")
 XLINE = re.compile(r"\[ XPSNR y:(\S+) u:(\S+) v:(\S+) avg:(\S+) min:(\S+) \]")
-PLINE = re.compile(r"\[ PSNR  y:\S+ u:\S+ v:\S+ avg:\S+ \] \[ MSE  y:\S+ u:\S+ v:\S+ avg:\S+ \]")
-MLINE = re.compile(r"\[ SSIM  y:\S+ u:\S+ v:\S+ avg:\S+ \]")
+PLINE = re.compile(r"\[ PSNR y:\S+ u:\S+ v:\S+ avg:\S+ \] \[ MSE y:\S+ u:\S+ v:\S+ avg:\S+ \]")
+MLINE = re.compile(r"\[ SSIM y:\S+ u:\S+ v:\S+ avg:\S+ \]")
 
 
 def run(bin_path: Path, args: list[str]) -> subprocess.CompletedProcess:

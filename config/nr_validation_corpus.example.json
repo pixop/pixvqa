@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "description": "External real-video NR evaluation sources. Paths are local and not redistributed.",
+  "sources": [
+    {
+      "id": "nfl_sdr_hd",
+      "path": "/path/to/NFL_1920x1080_bt709l_420p_10b_60.yuv",
+      "kind": "raw",
+      "width": 1920,
+      "height": 1080,
+      "chroma": "420",
+      "bit_depth": 10,
+      "fps_num": 60,
+      "fps_den": 1,
+      "transfer": "sdr",
+      "category": "sports"
+    },
+    {
+      "id": "marketplace_sdr_hd",
+      "path": "/path/to/MarketPlace_1920x1080_60fps_10bit_420.yuv",
+      "kind": "raw",
+      "width": 1920,
+      "height": 1080,
+      "chroma": "420",
+      "bit_depth": 10,
+      "fps_num": 60,
+      "fps_den": 1,
+      "transfer": "sdr",
+      "category": "people"
+    },
+    {
+      "id": "african_adventure_sdr_8bit",
+      "path": "/path/to/african_adventure2_1920x1080_420_8b.yuv",
+      "kind": "raw",
+      "width": 1920,
+      "height": 1080,
+      "chroma": "420",
+      "bit_depth": 8,
+      "fps_num": 25,
+      "fps_den": 1,
+      "transfer": "sdr",
+      "category": "nature"
+    },
+    {
+      "id": "neptune_sdr_uhd",
+      "path": "/path/to/NeptuneFountain2_3840x2160_60fps_10bit_420.yuv",
+      "kind": "raw",
+      "width": 3840,
+      "height": 2160,
+      "chroma": "420",
+      "bit_depth": 10,
+      "fps_num": 60,
+      "fps_den": 1,
+      "transfer": "sdr",
+      "category": "nature"
+    },
+    {
+      "id": "berlin_pq_uhd",
+      "path": "/path/to/BerlinSeqs_3840x2160_pq_bt2020l_420p_10b_60.yuv",
+      "kind": "raw",
+      "width": 3840,
+      "height": 2160,
+      "chroma": "420",
+      "bit_depth": 10,
+      "fps_num": 60,
+      "fps_den": 1,
+      "transfer": "pq",
+      "category": "urban"
+    },
+    {
+      "id": "uhdspain_hlg_uhd",
+      "path": "/path/to/UHDSpain_HLG_VMF_3840x2160_50P_original.yuv",
+      "kind": "raw",
+      "width": 3840,
+      "height": 2160,
+      "chroma": "420",
+      "bit_depth": 10,
+      "fps_num": 50,
+      "fps_den": 1,
+      "transfer": "hlg",
+      "category": "compatibility-negative"
+    }
+  ]
+}

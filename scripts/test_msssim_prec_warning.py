@@ -9,6 +9,19 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def _maybe_reexec_with_repo_venv() -> None:
+    """Use the repository-local .venv when system Python lacks NumPy."""
+    try:
+        import numpy  # noqa: F401
+    except ModuleNotFoundError:
+        venv_py = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python"
+        if venv_py.is_file() and Path(sys.executable).resolve() != venv_py.resolve():
+            os.execv(str(venv_py), [str(venv_py), *sys.argv])
+
+
+_maybe_reexec_with_repo_venv()
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +63,7 @@ def run(binary: Path, args: list[str], prec: str | None = None) -> subprocess.Co
 
 
 def score_ok(stdout: str) -> bool:
-    return "[ MS-SSIM  y:" in stdout and "warning:" not in stdout
+    return "[ MS-SSIM y:" in stdout and "warning:" not in stdout
 
 
 def main() -> int:
@@ -107,7 +120,7 @@ def main() -> int:
             fail("score-format rc")
         else:
             score_re = re.compile(
-                r"\[ MS-SSIM  y:\d\.\d{6} u:\d\.\d{6} v:\d\.\d{6} avg:\d\.\d{6} \]"
+                r"\[ MS-SSIM y:\d\.\d{6} u:\d\.\d{6} v:\d\.\d{6} avg:\d\.\d{6} \]"
             )
             psnr_w = [re.sub(r"\[ MS-SSIM[^\]]*\] ?", "", ln)
                       for ln in warned.stdout.splitlines() if "[ PSNR " in ln]

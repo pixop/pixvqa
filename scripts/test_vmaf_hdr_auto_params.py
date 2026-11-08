@@ -207,7 +207,7 @@ def main() -> int:
                 "--metrics", "vmaf,pu21-psnr", "--model", str(HDR_MODEL),
                 "--hdr-transfer", "hlg", *base,
             ],
-            ("[ PU21-PSNR     r:", "display reference: hlg",
+            ("[ PU21-PSNR r:", "display reference: hlg",
              "color_ref=limited:bt2020:pq:bt2020nc", "explicit transfer is hlg"),
         )
         if "display reference: pq" in combined:

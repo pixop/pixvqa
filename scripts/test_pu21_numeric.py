@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa"))
+BIN = Path(os.environ.get("PIXVQA_BIN", ROOT / "build" / "cpu" / "pixvqa")).resolve()
 W = H = 32
 P = [0.353487901, 0.3734658629, 8.277049286e-05, 0.9062562627, 0.09150303166, 0.9099517204, 596.3148142]
 FAILS = 0
@@ -140,10 +140,10 @@ def check_documented_commands() -> None:
 
 
 PU21_PSNR_RE = re.compile(
-    r"\[ PU21-PSNR {5}r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]")
+    r"\[ PU21-PSNR r:([0-9.]+) g:([0-9.]+) b:([0-9.]+) avg:([0-9.]+) \]")
 PU21_LUMA_RE = {
-    "PU21-SSIM": re.compile(r"\[ PU21-SSIM {5}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
-    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM {2}y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+    "PU21-SSIM": re.compile(r"\[ PU21-SSIM y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
+    "PU21-MS-SSIM": re.compile(r"\[ PU21-MS-SSIM y:([0-9.]+) u:n/a v:n/a avg:([0-9.]+) \]"),
 }
 
 
@@ -222,7 +222,7 @@ def main() -> int:
                 expect_close("pu21-msssim", score(text, "PU21-MS-SSIM"), expect_msssim, 1e-5)
             ordinary = run(base + ["--metrics", "psnr"])
             both = run(base + ["--metrics", "psnr,pu21-psnr"])
-            psnr_re = re.compile(r"\[ PSNR  y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]")
+            psnr_re = re.compile(r"\[ PSNR y:([0-9.]+) u:([0-9.]+) v:([0-9.]+) avg:([0-9.]+) \]")
             if ordinary.returncode != 0 or both.returncode != 0:
                 fail("psnr regression command failed")
             elif not psnr_re.search(ordinary.stdout) or psnr_re.search(ordinary.stdout).group(0) != psnr_re.search(both.stdout).group(0):

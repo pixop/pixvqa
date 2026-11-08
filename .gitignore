@@ -91,9 +91,18 @@ baselines/numerical_conformance/comprehensive.json
 # PixVQA: temporary source backups
 *.bak
 
+# Optional third-party model weights (see docs/LEARNED_METRICS.md); not source.
+/models/
+
 # PixVQA: local development artifacts
 /artifacts/
 /pixvqa_cli_consistency_sources.zip
 /review.txt
 # Private engineering documentation, preserved locally and never published.
 /internal/
+
+# Local external NR video corpus paths (example manifest is tracked)
+/config/nr_validation_corpus.local.json
+
+# Third-party research papers
+/docs/papers/
