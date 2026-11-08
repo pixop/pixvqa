@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import CPU_BIN, FULL_BIN
+from .config import CPU_BIN, FULL_BIN, SWDEC_BIN
 
 
 @dataclass
@@ -20,8 +20,34 @@ class Environment:
     pixvqa_version: str
 
 
+def decode_capable(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        proc = subprocess.run([str(path), "--version"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        return False
+    return "decode: none" not in (proc.stdout + proc.stderr)
+
+
+def resolve_decode_bin(requested: Path) -> Path:
+    """Prefer a decoder-enabled pixvqa when the caller points at build/cpu."""
+    if decode_capable(requested):
+        return requested
+    for fallback in (SWDEC_BIN, FULL_BIN):
+        if fallback != requested and decode_capable(fallback):
+            print(
+                f"numerical suite: {requested} lacks compressed decode; using {fallback}",
+                flush=True,
+            )
+            return fallback
+    return requested
+
+
 def discover(full_bin: Path | None = None) -> Environment:
-    fb = full_bin or FULL_BIN
+    fb = resolve_decode_bin(full_bin or FULL_BIN)
     ffmpeg = shutil.which("ffmpeg") or None
     ffprobe = shutil.which("ffprobe") or None
     try:

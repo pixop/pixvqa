@@ -80,8 +80,8 @@ CVVDP_JOD = "9.311432838439941"
 NR_SCORE = "7.40969689895428"
 NR_RAW = "-0.1277415007352829"
 SVQA_SCORE = "3.141592653589793"
-CHIPQA_SCORE = "46.09665087984906"
 HDR_CHIPQA_SCORE = "-77.42408692076641"
+HDR_CHIPQA_SDR_SCORE = "100.80971697063475"
 # frame_index, time_seconds, raw quality1, calibrated score (120 frames at 60000/1001)
 NR_SAMPLES = [
     [30, 30 / (60000 / 1001), -0.10000000149011612, 7.3],
@@ -142,10 +142,14 @@ if value("--protocol") == "lines":
                       "pixvqa-value temporal_basis per-frame-jod-equivalent"]
             for i, (q, jod) in enumerate(frames):
                 lines.append("pixvqa-sample %d %d %r %r %r" % (i, i, i / 60.0, q, jod))
-    elif NAME in ("simplevqa", "chipqa", "hdr-chipqa"):
-        key = {"simplevqa": "MOCK_SVQA_SCORE", "chipqa": "MOCK_CHIPQA_SCORE", "hdr-chipqa": "MOCK_HDR_CHIPQA_SCORE"}[NAME]
-        default = {"simplevqa": "@SVQA_SCORE@", "chipqa": "@CHIPQA_SCORE@", "hdr-chipqa": "@HDR_CHIPQA_SCORE@"}[NAME]
-        lines += ["pixvqa-value quality_score " + os.environ.get(key, default),
+    elif NAME in ("simplevqa", "hdr-chipqa"):
+        if NAME == "hdr-chipqa":
+            hdr_default = "@HDR_CHIPQA_SDR_SCORE@" if "--width" not in args else "@HDR_CHIPQA_SCORE@"
+            hdr_key = "MOCK_HDR_CHIPQA_SDR_SCORE" if "--width" not in args else "MOCK_HDR_CHIPQA_SCORE"
+            q = os.environ.get(hdr_key, hdr_default)
+        else:
+            q = os.environ.get("MOCK_SVQA_SCORE", "@SVQA_SCORE@")
+        lines += ["pixvqa-value quality_score " + q,
                   "pixvqa-value temporal_semantics pooled-video"]
     else:
         samples = json.loads(os.environ.get("MOCK_NR_SAMPLES", "@SAMPLES@"))
@@ -173,12 +177,9 @@ elif NAME == "simplevqa":
     text = json.dumps({"metric": "simplevqa", "quality_score": @SVQA_SCORE@,
                        "device": value("--device"), "test": value("--test"),
                        "output_json": None if transient else record}, separators=(",", ":")) + "\n"
-elif NAME == "chipqa":
-    text = json.dumps({"metric": "chipqa", "quality_score": @CHIPQA_SCORE@,
-                       "test": value("--test"),
-                       "output_json": None if transient else record}, separators=(",", ":")) + "\n"
 elif NAME == "hdr-chipqa":
-    text = json.dumps({"metric": "hdr-chipqa", "quality_score": @HDR_CHIPQA_SCORE@,
+    _hcq = @HDR_CHIPQA_SDR_SCORE@ if "--width" not in args else @HDR_CHIPQA_SCORE@
+    text = json.dumps({"metric": "hdr-chipqa", "quality_score": _hcq,
                        "test": value("--test"),
                        "output_json": None if transient else record}, separators=(",", ":")) + "\n"
 else:
@@ -218,7 +219,6 @@ def write_mocks(root: Path) -> None:
             ("pixvqa_cvvdp", "cvvdp", "CVVDP"),
             ("pixvqa_cvqahdr", "cvqa-hdr-nr", "NR"),
             ("pixvqa_simplevqa", "simplevqa", "SVQA"),
-            ("pixvqa_chipqa", "chipqa", "CHIPQA"),
             ("pixvqa_hdr_chipqa", "hdr-chipqa", "HDR_CHIPQA"),
     ):
         directory = root / package
@@ -227,8 +227,8 @@ def write_mocks(root: Path) -> None:
         source = (MOCK.replace("@NAME@", name).replace("@ENV@", env).replace("@JOD@", CVVDP_JOD)
                   .replace("@SCORE@", NR_SCORE).replace("@RAW@", NR_RAW)
                   .replace("@SVQA_SCORE@", SVQA_SCORE)
-                  .replace("@CHIPQA_SCORE@", CHIPQA_SCORE)
                   .replace("@HDR_CHIPQA_SCORE@", HDR_CHIPQA_SCORE)
+                  .replace("@HDR_CHIPQA_SDR_SCORE@", HDR_CHIPQA_SDR_SCORE)
                   .replace("@SAMPLES@", json.dumps(NR_SAMPLES))
                   .replace("@CVVDP_FRAMES@", json.dumps(CVVDP_FRAMES)))
         (directory / "__main__.py").write_text(source, encoding="utf-8")
@@ -279,11 +279,16 @@ class Suite:
         (nr_repo / "NR" / "NR_model.py").write_text("# stub\n", encoding="utf-8")
         (nr_repo / "NR_HDR_VQA.pth").write_bytes(b"x")
         (nr_repo / "NR_HDR_VQA.npy").write_bytes(b"x")
+        hc_repo = tmp / "stub-hdr-chipqa"
+        hc_repo.mkdir()
+        (hc_repo / "hdr_chipqa.py").write_text("# stub\n", encoding="utf-8")
         cfg = tmp / "learned_metrics.local.toml"
         cfg.write_text(
             f'[learned]\npython = "{sys.executable}"\nadapter_path = "{self.mocks}"\n\n'
             f'[cvqa-hdr-nr]\nrepository = "{nr_repo}"\n'
-            f'checkpoint = "{nr_repo / "NR_HDR_VQA.pth"}"\nprofile = "{nr_repo / "NR_HDR_VQA.npy"}"\n',
+            f'checkpoint = "{nr_repo / "NR_HDR_VQA.pth"}"\nprofile = "{nr_repo / "NR_HDR_VQA.npy"}"\n\n'
+            f'[hdr-chipqa]\nrepository = "{hc_repo}"\n'
+            f'feature_python = "{sys.executable}"\n',
             encoding="utf-8",
         )
         self.learned_stub_config = cfg
@@ -357,6 +362,10 @@ class Suite:
         return ["--cvvdp-interpretation", "pq", "--cvvdp-display", "standard_hdr_pq",
                 "--cvvdp-python", sys.executable]
 
+    def cvvdp_group_defaults(self) -> list[str]:
+        """CVVDP flags for group+p,cvvdp runs; interpretation/display come from the group."""
+        return ["--cvvdp-python", sys.executable]
+
     def nr(self) -> list[str]:
         return ["--cvqahdr-python", sys.executable, "--cvqahdr-repo", "/upstream",
                 "--cvqahdr-checkpoint", "/checkpoint.pth", "--cvqahdr-profile", "/profile.npy"]
@@ -364,9 +373,6 @@ class Suite:
     def sv(self) -> list[str]:
         return ["--simplevqa-python", sys.executable, "--simplevqa-repo", "/upstream_simplevqa",
                 "--simplevqa-checkpoint", "/simplevqa.pth"]
-
-    def cq(self) -> list[str]:
-        return ["--chipqa-python", sys.executable, "--chipqa-repo", "/upstream_chipqa"]
 
     def hc(self) -> list[str]:
         return ["--hdr-chipqa-python", sys.executable, "--hdr-chipqa-repo", "/upstream_hdr_chipqa"]
@@ -544,43 +550,91 @@ def cli_cases(s: Suite) -> None:
     if expect("group-pq-svqa", proc, 2, needles=["incompatible with simplevqa"]):
         ok("group-pq-rejects-simplevqa")
 
-    proc = s.run(["--metrics", "chipqa", "-t", str(s.dist_mp4), *s.cq()])
-    if expect("chipqa-only", proc, 0, needles=["mock chipqa warning"]):
+    proc = s.run(["--metrics", "hdr-chipqa", "-t", str(s.dist_mp4), *s.hc()])
+    if expect("hdr-chipqa-sdr-compressed", proc, 0, needles=["mock hdr-chipqa warning"]):
         payload = json.loads(proc.stdout)
-        if repr(payload["quality_score"]) != CHIPQA_SCORE:
-            fail("chipqa-only", proc.stdout)
+        if repr(payload["quality_score"]) != HDR_CHIPQA_SDR_SCORE:
+            fail("hdr-chipqa-sdr-compressed", proc.stdout)
         else:
-            ok("chipqa-only-standalone-json")
-
-    proc = s.run(["--metrics", "chipqa", "--qcs", "-t", str(s.dist_mp4), *s.cq()])
-    if expect("chipqa-qcs", proc, 2, needles=["--qcs is unsupported with chipqa"]):
-        ok("chipqa-qcs-rejected")
-
-    proc = s.run(["--metrics", "chipqa,pu21-psnr", *s.raw_pair(), *s.cq()])
-    if expect("chipqa-pu21", proc, 2, needles=["chipqa is incompatible with pu21-psnr"]):
-        ok("chipqa-pu21-rejected")
-
-    proc = s.run(["--metrics", "pu21-psnr,chipqa", "-t", str(s.dist_mp4), *s.cq()])
-    if expect("pu21-chipqa-order", proc, 2, needles=["chipqa is incompatible with pu21-psnr"]):
-        ok("pu21-before-chipqa-rejected")
+            ok("hdr-chipqa-sdr-compressed-json")
 
     proc = s.run(["--metrics", "hdr-chipqa", "-t", str(s.test), "-s", "16x16", "-f", "420p:10",
                   "--fps", "60", *s.hc()])
-    if expect("hdr-chipqa-only", proc, 0, needles=["mock hdr-chipqa warning"]):
-        ok("hdr-chipqa-only-standalone")
+    if expect("hdr-chipqa-pq-raw", proc, 0, needles=["mock hdr-chipqa warning"]):
+        ok("hdr-chipqa-pq-raw-standalone")
 
-    proc = s.run(["--metrics", "hdr-chipqa,pu21-psnr", "-t", str(s.test), "-s", "16x16", "-f", "420p:10",
-                  "--fps", "60", *s.hc()])
-    if expect("hdr-pu21", proc, 2, needles=["hdr-chipqa is incompatible with pu21-psnr"]):
-        ok("hdr-chipqa-pu21-rejected")
+    proc = s.run(["--metrics", "hdr-chipqa", "-t", str(s.test), "-s", "16x16", "-f", "420p:10",
+                  "--fps", "60", "--hdr-transfer", "hlg", *s.hc()])
+    if expect("hdr-chipqa-hlg-raw", proc, 0, needles=["mock hdr-chipqa warning"]):
+        args = s.backend_args("hdr-chipqa")
+        if args[args.index("--transfer") + 1] != "hlg":
+            fail("hdr-chipqa-hlg-raw", str(args))
+        else:
+            ok("hdr-chipqa-hlg-raw-dispatch")
 
-    proc = s.run(["--metrics", "chipqa,hdr-chipqa", "-t", str(s.dist_mp4), *s.cq(), *s.hc()])
-    if expect("chipqa-hdr-combined", proc, 2, needles=["cannot be selected in the same command"]):
-        ok("chipqa-hdr-chipqa-mutex")
+    proc = s.run(["--metrics", "hdr-chipqa", "-t", str(s.test), "-s", "16x16", "-f", "420p:10",
+                  "--hdr-transfer", "hlg", *s.hc()])
+    if expect("hdr-chipqa-hlg-no-fps", proc, 2, needles=["HLG raw test requires --fps"]):
+        ok("hdr-chipqa-hlg-requires-fps")
 
-    proc = s.run(["--metrics", "simplevqa,chipqa", "-t", str(s.dist_mp4), *s.sv(), *s.cq()])
-    if expect("simplevqa-chipqa", proc, 0, stdout_needles=["SimpleVQA quality_score", "ChipQA quality_score"]):
-        ok("simplevqa-unchanged-with-chipqa")
+    hlg_ref, hlg_test = s.tmp / "hlg-chipqa-ref.yuv", s.tmp / "hlg-chipqa-test.yuv"
+    write_yuv(hlg_ref, 2, 64, size=32)
+    write_yuv(hlg_test, 2, 96, size=32)
+    proc = s.run(["--metrics", "hlg,hdr-chipqa", "-r", str(hlg_ref), "-t", str(hlg_test),
+                  "-s", "32x32", "-f", "420p:10", "--fps", "60", *s.hc()])
+    if expect("group-hlg-hdr-chipqa", proc, 0,
+              stdout_needles=["[ PU21-PSNR", "HDR-ChipQA quality_score"],
+              absent_stdout=["incompatible with pu21"]):
+        ok("group-hlg-hdr-chipqa-with-pu21")
+
+    proc = s.run(["--metrics", "hdr-chipqa", "--qcs", "-t", str(s.dist_mp4), *s.hc()])
+    if expect("hdr-chipqa-qcs", proc, 2, needles=["--qcs has no QCS-eligible metrics"]):
+        ok("hdr-chipqa-alone-qcs-rejected")
+
+    def group_qcs_not_blocked(name: str, args: list[str]) -> None:
+        proc = s.run(args)
+        if any(n in proc.stderr for n in (
+                "--qcs is unsupported with hdr-chipqa",
+                "--qcs has no QCS-eligible metrics",
+        )):
+            fail(name, f"hdr-chipqa blocked --qcs at setup\nstderr:\n{proc.stderr[-1200:]}")
+        elif proc.returncode == 0 and expect(
+                name, proc, 0,
+                stdout_needles=["[ PSNR-QCS", "HDR-ChipQA quality_score"],
+                absent_stdout=["HDR-ChipQA-QCS"]):
+            ok(name)
+        elif proc.returncode == 2 and any(n in proc.stderr for n in (
+                "no libvmaf",
+                "cvqa-hdr-nr supports compressed video only",
+                "VMAF auto model supports only",
+                "VMAF auto model needs an explicit transfer",
+        )):
+            ok(f"{name}-passes-setup")
+        else:
+            fail(name, f"unexpected exit {proc.returncode}\nstdout:\n{proc.stdout[-1200:]}\n"
+                 f"stderr:\n{proc.stderr[-1200:]}")
+
+    group_qcs_not_blocked(
+        "group-hlg-qcs-hdr-chipqa",
+        ["--metrics", "hlg", "--qcs", "-r", str(hlg_ref), "-t", str(hlg_test),
+         "-s", "32x32", "-f", "420p:10", "--fps", "60", *s.hc()],
+    )
+    group_qcs_not_blocked(
+        "group-pq-qcs-hdr-chipqa",
+        ["--metrics", "pq", "--qcs", *s.raw_pair_hd("pq"), *s.hc()],
+    )
+    group_qcs_not_blocked(
+        "group-sdr-qcs-hdr-chipqa",
+        ["--metrics", "sdr", "--qcs", "--hdr-transfer", "sdr", *s.raw_pair(), *s.hc()],
+    )
+
+    proc = s.run(["--metrics", "hdr-chipqa,pu21-psnr", *s.raw_pair(), "--hdr-transfer", "pq", *s.hc()])
+    if expect("hdr-pu21", proc, 0, stdout_needles=["[ PU21-PSNR", "HDR-ChipQA quality_score"]):
+        ok("hdr-chipqa-with-pu21-accepted")
+
+    proc = s.run(["--metrics", "simplevqa,hdr-chipqa", "-t", str(s.dist_mp4), *s.sv(), *s.hc()])
+    if expect("simplevqa-hdr-chipqa", proc, 0, stdout_needles=["SimpleVQA quality_score", "HDR-ChipQA quality_score"]):
+        ok("simplevqa-unchanged-with-hdr-chipqa")
 
     # Native + CVVDP on raw YUV420p10le PQ.
     out = s.tmp / "native-cvvdp.out"
@@ -854,7 +908,7 @@ def device_cases(s: Suite) -> None:
 
 
 def group_cases(s: Suite) -> None:
-    """--metrics pq|hlg|sdr: recommended metrics, transfer, and CVVDP defaults."""
+    """Groups include HDR-ChipQA; CVVDP opt-in via pq,cvvdp etc.; PU21 independent of HDR-ChipQA."""
     if not s.hd_pair_ok:
         print("SKIP group-pq-selects (need ffmpeg for 1920x1080 raw YUV fixtures)")
     else:
@@ -862,10 +916,10 @@ def group_cases(s: Suite) -> None:
         if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
             ok("group-pq-selects-no-libvmaf")
         elif expect("group-pq-selects", proc, 2, needles=["cvqa-hdr-nr supports compressed video only"]) and not s.backend_log():
-            if "requires --model" in proc.stderr:
-                fail("group-pq-selects", proc.stderr)
+            if "requires --model" in proc.stderr or "cvvdp" in s.backend_log():
+                fail("group-pq-selects", f"{proc.stderr} log={s.backend_log()}")
             else:
-                ok("group-pq-selects-nr-and-fills-cvvdp")
+                ok("group-pq-selects-nr-without-cvvdp")
         else:
             fail("group-pq-selects", proc.stderr[-800:])
     proc = s.run(["--metrics", "pq", "--metrics", "pq", "--hdr-transfer", "hlg", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
@@ -877,21 +931,37 @@ def group_cases(s: Suite) -> None:
     proc = s.run(["--metrics", "hlg", "-r", str(hlg_ref), "-t", str(hlg_test), "-s", "32x32",
                   "-f", "420p:10", "--fps", "60"])
     if expect("group-hlg", proc, 0,
-              stdout_needles=["[ PSNR", "[ PU21-PSNR", "display:standard_hdr_hlg interpretation:hlg"],
-              absent_stdout=["[ VMAF", "CVQA-HDR-NR"]):
+              stdout_needles=["[ PSNR", "[ PU21-PSNR", "HDR-ChipQA quality_score"],
+              absent_stdout=["[ VMAF", "CVQA-HDR-NR", "[ CVVDP"]):
+        log = s.backend_log()
+        if "hdr-chipqa check" not in log or "hdr-chipqa run" not in log or "cvvdp" in log:
+            fail("group-hlg", f"unexpected backends: {log}")
+        else:
+            args = s.backend_args("hdr-chipqa")
+            if args[args.index("--transfer") + 1] != "hlg":
+                fail("group-hlg", f"transfer {args}")
+            else:
+                ok("group-hlg-selects-pu21-hdr-chipqa-without-cvvdp")
+    proc = s.run(["--metrics", "hlg,cvvdp", "-r", str(hlg_ref), "-t", str(hlg_test), "-s", "32x32",
+                  "-f", "420p:10", "--fps", "60", *s.cvvdp_group_defaults()])
+    if expect("group-hlg-cvvdp", proc, 0,
+              stdout_needles=["[ PU21-PSNR", f"[ CVVDP jod:{CVVDP_JOD}",
+                              "display:standard_hdr_hlg interpretation:hlg"]):
         args = s.backend_args("cvvdp")
         if args[args.index("--interpretation") + 1] != "hlg" or \
                 args[args.index("--display") + 1] != "standard_hdr_hlg":
-            fail("group-hlg", str(args))
+            fail("group-hlg-cvvdp", str(args))
         else:
-            ok("group-hlg-selects-pu21-and-cvvdp-hlg")
+            ok("group-hlg-cvvdp-explicit-fills-defaults")
     proc = s.run(["--metrics", "hlg,vmaf", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-hlg-vmaf", proc, 2, needles=["excludes vmaf"]) and not s.backend_log():
         ok("group-hlg-rejects-vmaf")
     proc = s.run(["--metrics", "hlg,cvqa-hdr-nr", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
     if expect("group-hlg-nr", proc, 2, needles=["excludes cvqa-hdr-nr"]) and not s.backend_log():
         ok("group-hlg-rejects-nr")
-    proc = s.run(["--metrics", "hlg", "--cvvdp-display", "standard_hdr_pq", "-r", str(s.a_mp4), "-t", str(s.b_mp4)])
+    proc = s.run(["--metrics", "hlg,cvvdp", "--cvvdp-display", "standard_hdr_pq",
+                  "-r", str(hlg_ref), "-t", str(hlg_test), "-s", "32x32", "-f", "420p:10",
+                  "--fps", "60", *s.cvvdp_group_defaults()])
     if expect("group-hlg-display", proc, 2, needles=["uses --cvvdp-display standard_hdr_hlg"]) \
             and not s.backend_log():
         ok("group-hlg-rejects-pq-display")
@@ -902,9 +972,19 @@ def group_cases(s: Suite) -> None:
         if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
             ok("group-sdr-display-no-libvmaf")
         elif expect("group-sdr-display", proc, 2, needles=["cvqa-hdr-nr supports compressed video only"]) and not s.backend_log():
-            ok("group-sdr-needs-cvvdp-interpretation")
+            if "cvvdp" in " ".join(s.backend_log()) or "requires --cvvdp" in proc.stderr:
+                fail("group-sdr-display", f"log={s.backend_log()} stderr={proc.stderr[-400:]}")
+            else:
+                ok("group-sdr-without-cvvdp")
         else:
             fail("group-sdr-display", proc.stderr[-800:])
+    if not s.hd_pair_ok:
+        print("SKIP group-sdr-cvvdp (need ffmpeg for 1920x1080 raw YUV fixtures)")
+    else:
+        proc = s.run(["--metrics", "sdr,cvvdp", *s.raw_pair_hd("sdr"), *s.cvvdp_group_defaults()])
+        if expect("group-sdr-cvvdp", proc, 2, needles=["cvqa-hdr-nr supports compressed video only",
+                                                       "interpretation=sdr"]) and not s.backend_log():
+            ok("group-sdr-cvvdp-explicit-fills-defaults")
     proc = s.run(["--metrics", "sdr,pu21-psnr", *s.raw_pair()])
     if expect("group-sdr-pu21", proc, 2, needles=["excludes pu21-psnr"]) and not s.backend_log():
         ok("group-sdr-rejects-pu21")
@@ -913,12 +993,47 @@ def group_cases(s: Suite) -> None:
             "no libvmaf" in proc.stderr
             or "cvqa-hdr-nr supports compressed video only" in proc.stderr
             or "VMAF auto model supports only" in proc.stderr):
-        if "requires --cvvdp" in proc.stderr or "requires --model" in proc.stderr:
+        if "requires --cvvdp" in proc.stderr or "requires --model" in proc.stderr or s.backend_log():
             fail("group-pq-fills", proc.stderr)
         else:
-            ok("group-pq-fills-cvvdp-and-hdr-vmaf-model")
+            ok("group-pq-without-cvvdp")
     else:
         fail("group-pq-fills", f"exit {proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+    if not s.hd_pair_ok:
+        print("SKIP group-pq-cvvdp (need ffmpeg for 1920x1080 raw YUV fixtures)")
+    else:
+        proc = s.run(["--metrics", "pq,cvvdp", *s.raw_pair_hd(), *s.cvvdp_group_defaults()])
+        if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
+            ok("group-pq-cvvdp-no-libvmaf")
+        elif expect("group-pq-cvvdp", proc, 2,
+                    needles=["cvqa-hdr-nr supports compressed video only",
+                             "interpretation=pq", "display=standard_hdr_pq"]) and not s.backend_log():
+            ok("group-pq-cvvdp-explicit-fills-defaults")
+        proc = s.run(["--metrics", "pq", *s.raw_pair_hd("pq")])
+        if proc.returncode == 2 and "no libvmaf" in proc.stderr and not s.backend_log():
+            ok("group-pq-hdr-chipqa-no-libvmaf")
+        elif expect("group-pq-hdr-chipqa", proc, 2,
+                    needles=["cvqa-hdr-nr supports compressed video only", "hdr_vmaf"],
+                    absent_stdout=["incompatible with pu21", "hdr-chipqa requires"]):
+            # NR raw rejection occurs before HDR-ChipQA preflight; group still selected hdr-chipqa.
+            ok("group-pq-includes-hdr-chipqa-with-pu21")
+    if (ROOT / "deps" / "hdr_chipqa").is_dir():
+        print("SKIP group-hdr-chipqa-missing-repo (deps/hdr_chipqa beside checkout supplies default)")
+    else:
+        bare_cfg = s.tmp / "learned-metrics-bare.toml"
+        bare_cfg.write_text(f'[learned]\npython = "{sys.executable}"\nadapter_path = "{s.mocks}"\n',
+                            encoding="utf-8")
+        proc = s.run(["--metrics", "hlg", "-r", str(hlg_ref), "-t", str(hlg_test), "-s", "32x32",
+                      "-f", "420p:10", "--fps", "60", "--learned-config", str(bare_cfg)])
+        if expect("group-hdr-chipqa-missing-repo", proc, 2,
+                  needles=["hdr-chipqa requires --hdr-chipqa-repo"]) and not s.backend_log():
+            ok("group-hdr-chipqa-missing-repo-rejected")
+    proc = s.run(["--metrics", "hlg", "-r", str(hlg_ref), "-t", str(hlg_test), "-s", "32x32",
+                  "-f", "420p:10", "--fps", "60",
+                  "--hdr-chipqa-inference-python", sys.executable])
+    if expect("group-hlg-hdr-chipqa-flags", proc, 0,
+              stdout_needles=["HDR-ChipQA quality_score"]) and "hdr-chipqa run" in s.backend_log():
+        ok("group-hlg-accepts-hdr-chipqa-flags")
     proc = s.run(["--metrics", "pq", "--hdr-primaries", "bt709", *s.raw_pair()])
     if expect("group-pq-primaries", proc, 2, needles=["uses BT.2020 primaries"]):
         ok("group-pq-rejects-bt709-primaries")

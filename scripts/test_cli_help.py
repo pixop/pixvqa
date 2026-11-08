@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -88,7 +89,7 @@ def check_help(bin_path: Path, kind: str) -> None:
                    "--cvvdp-output-json", "--cvqahdr-output-json",
                    "--cvqahdr-repo", "--cvqahdr-checkpoint", "--cvqahdr-profile",
                    "--learned-config", "--qcs-range", "--threads",
-                   "--seek 0"):
+                   "--seek 0", "standard_hdr_pq", "standard_hdr_hlg"):
         if needle not in adv.stdout:
             fail(f"{kind} advanced help missing {needle}")
             return
@@ -115,7 +116,8 @@ def check_help(bin_path: Path, kind: str) -> None:
         "1000 cd/m2", "HLG black", "gamma 1.2", "--ref-hdr-transfer",
         "st2084", "stdb67", "--hlg-peak", "bt601",
         "per-input option, shared option, stream metadata",
-        "Group defaults", "standard_hdr_pq", "standard_hdr_hlg",
+        "Group defaults", "group then fills CVVDP interpretation/display",
+        "HDR-ChipQA",
     ):
         if needle not in hdr.stdout and needle not in hdr_flat:
             fail(f"{kind} --help-hdr missing {needle}")
@@ -246,7 +248,7 @@ def main() -> int:
     if len(blocks) < 6:
         fail(f"expected the published examples, found {len(blocks)}")
     env = os.environ.copy()
-    ffmpeg_bin = os.environ.get("FFMPEG")
+    ffmpeg_bin = os.environ.get("FFMPEG") or shutil.which("ffmpeg")
     with tempfile.TemporaryDirectory(prefix="cli_help_") as tmp:
         td = Path(tmp)
         write_yuv(td / "reference.yuv", 1920, 1080, 8, 2, 0)

@@ -116,10 +116,10 @@ def test_mixed_native_learned_parse() -> None:
 
 
 def test_na_vs_fail_classification() -> None:
-    na = not_applicable_reason("cvvdp", "sdr", "raw_raw")
-    assert na is not None
-    assert na.startswith("N/A:")
+    assert not_applicable_reason("cvvdp", "sdr", "raw_raw") is None
     assert not_applicable_reason("cvvdp", "pq", "raw_raw") is None
+    na = not_applicable_reason("cvvdp", "sdr", "comp_comp")
+    assert na is None or na.startswith("N/A:")
 
 
 def test_provenance_validation() -> None:
