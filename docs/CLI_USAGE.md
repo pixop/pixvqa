@@ -1,6 +1,6 @@
 # CLI Usage
 
-Run `./bin/pixvqa` from the checkout (or `pixvqa` if installed on `PATH`). Set `--metrics`, a distorted input (`-t`), and a reference (`-r`) for full-reference metrics.
+Use `./bin/pixvqa` from the repository (or `pixvqa` if it is on your `PATH`). Choose one or more metrics with `--metrics` and supply the video to evaluate with `-t`. Full-reference (FR) metrics also need an undistorted reference with `-r`; no-reference (NR) metrics do not.
 
 ## Examples
 
@@ -48,9 +48,9 @@ Auto-selection does not support HLG, other resolutions, ambiguous transfer, or u
 
 ### Optional learned metrics
 
-Install learned metrics once with `bash scripts/install_learned_metrics.sh`. It prepares Python dependencies and downloads/verifies the required model checkpoints; see [Learned Metrics](LEARNED_METRICS.md). Native metrics require no learned-model installation.
+To use the optional Python-based metrics, run `bash scripts/install_learned_metrics.sh` once. It sets up the Python environments and obtains the model assets automatically when downloads are available. Native metrics do **not** require this step. See [Learned Metrics](LEARNED_METRICS.md).
 
-All metrics can be selected individually. **SimpleVQA supports SDR compressed video only**, but other metrics support SDR too (see [Compatible inputs](#compatible-inputs)).
+**SDR video is not limited to SimpleVQA.** You can evaluate SDR using native metrics or other compatible learned metrics. SimpleVQA itself accepts only compressed SDR video. All supported metrics use the same `pixvqa` command.
 
 ```bash
 # No-reference SDR quality:
@@ -70,7 +70,7 @@ All metrics can be selected individually. **SimpleVQA supports SDR compressed vi
 
 ## Metric groups
 
-Use a group for a common set of metrics and matching SDR/HDR interpretation. Append any optional metric by name (for example, `--metrics pq,cvvdp`).
+A metric *group* selects several metrics in one command and sets the corresponding SDR/HDR interpretation. You can also select metrics individually or add one to a group (for example, `--metrics pq,cvvdp`).
 
 | Group | Included metrics | Color interpretation |
 |---|---|---|
@@ -78,9 +78,11 @@ Use a group for a common set of metrics and matching SDR/HDR interpretation. App
 | `pq` | SDR group's metrics + PU21-PSNR, PU21-SSIM, PU21-MS-SSIM | PQ / BT.2020, limited range |
 | `hlg` | PSNR, XPSNR, SSIM, MS-SSIM, PU21-PSNR, PU21-SSIM, PU21-MS-SSIM | HLG / BT.2020, limited range |
 
-**CVVDP and HDR-ChipQA are excluded from these presets** because of their resource requirements. Both can be added explicitly. `simplevqa` can be added to `sdr` but not to PQ/HLG groups. `all` retains its existing broad selection, including CVVDP but excluding HDR-ChipQA.
+**CVVDP and HDR-ChipQA are not part of the `sdr`, `pq`, or `hlg` groups** because they can require significant GPU VRAM or system RAM. Select them explicitly if needed. SimpleVQA can be added to `sdr`, but not to PQ/HLG groups.
 
-When you add CVVDP to a group, PixVQA selects the matching interpretation and display preset (`standard_fhd` for SDR, `standard_hdr_pq` for PQ, `standard_hdr_hlg` for HLG). An incompatible manual value is rejected rather than silently overriding the group; SDR also permits `standard_4k`.
+**Note:** The legacy `all` selection is broader than these groups: it includes CVVDP but excludes HDR-ChipQA. To control resource use, prefer a specific group or an explicit metric list.
+
+When CVVDP is added to an SDR, PQ, or HLG group, the group supplies its corresponding interpretation and default display preset (`standard_fhd`, `standard_hdr_pq`, or `standard_hdr_hlg`, respectively). Explicit CVVDP settings are checked for compatibility; they do not silently replace incompatible group settings. See `--help-hdr` for related controls.
 
 Groups interpret samples; they do not convert video pixel values. With `--qcs`, eligible frame-based metrics produce QCS results; pooled-video metrics such as HDR-ChipQA and SimpleVQA do not. See [QCS](QCS.md) and [Metrics & Formats](METRICS_AND_FORMATS.md).
 
@@ -98,7 +100,7 @@ Full-reference metrics compare matching frames in presentation order, stopping a
 
 ## Command-line options
 
-This is the everyday option reference. `--help-advanced` and `--help-hdr` list additional per-input HDR controls and compatibility aliases.
+Common options are listed below. For less frequently used backend, HDR, and compatibility settings, use `./bin/pixvqa --help-advanced` or `./bin/pixvqa --help-hdr`.
 
 | Option | Purpose / default |
 |---|---|
@@ -118,13 +120,10 @@ This is the everyday option reference. `--help-advanced` and `--help-hdr` list a
 | `--hdr-chroma-loc`, `--hdr-chroma-up`, `--hdr-peak-nits`, `--hdr-black-nits`, `--hdr-hlg-gamma` | Optional HDR/display settings; values in `--help-hdr`. |
 | `--cvvdp-interpretation sdr\|pq\|hlg`, `--cvvdp-display NAME` | CVVDP interpretation/display; otherwise resolved where possible from group, options and metadata. |
 | `--cvvdp-gpu-mem GB` | Optional positive CUDA memory budget (decimal GB). |
-| `--cvvdp-python PATH`, `--cvvdp-bin PATH`, `--cvvdp-output-json PATH` | CVVDP interpreter, executable, result output overrides. |
-| `--cvqahdr-python PATH`, `--cvqahdr-repo PATH`, `--cvqahdr-checkpoint PATH`, `--cvqahdr-profile PATH`, `--cvqahdr-output-json PATH` | NR interpreter, model assets and result output. |
-| `--cvqa-nr-sample-interval-sec N`, `--cvqa-nr-chunk-size-sec N` | NR sampling interval (default 1 second) and inference chunk (default 8 seconds). |
-| `--learned-config PATH` | Optional learned-metric TOML file; auto-loads `config/learned_metrics.local.toml` when present. |
+| `--learned-config PATH` | Advanced: custom learned-metric configuration; normally detected automatically. |
 | `--qcs`, `--qcs-range metric=lower:upper` | Enable QCS; override metric interval (repeatable/comma-separated). See [QCS](QCS.md). |
 | `--help`, `--help-advanced`, `--help-hdr`, `--version` | Help and version. |
 
-Legacy aliases (`--cs`, `--tf`, `--ref-cs`, `--dist-cs`, `--ref-tf`, `--dist-tf`, `--hlg-peak`) remain accepted; avoid mixing conflicting aliases and modern options.
+For backend-specific settings and legacy option aliases, see `--help-advanced` and `--help-hdr`.
 
 **Exit codes:** `0` success; `2` configuration/preflight error; `1` runtime/backend failure.
