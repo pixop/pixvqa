@@ -52,8 +52,18 @@ def merge_config(example: Path, destination: Path, defaults: dict[str, str]) -> 
         # Preserve deliberate custom choices; replace only absent, empty or
         # untouched stock example values (which may point to missing assets).
         if current is not None and current[1] and (templ is None or current[1] != templ[1]):
-            messages.append(f"preserved [{section}].{key}")
-            continue
+            # Earlier installers dereferenced venv/bin/python to the host Python
+            # before writing local config. Repair that generated value when it
+            # matches the physical target of the selected managed venv Python.
+            # Leave unrelated custom interpreter paths untouched.
+            interpreter_key = name == "learned.python" or name in (
+                "hdr-chipqa.feature_python", "hdr-chipqa.inference_python"
+            )
+            legacy_host_path = str(Path(value).resolve()) if interpreter_key else ""
+            if not (interpreter_key and current[1] == legacy_host_path and current[1] != value):
+                messages.append(f"preserved [{section}].{key}")
+                continue
+            messages.append(f"repaired legacy interpreter path [{section}].{key}")
         lines = _put(lines, section, key, value)
         changed = True
         messages.append(f"configured [{section}].{key}")

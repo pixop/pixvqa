@@ -98,7 +98,9 @@ else
   printf 'Learned setup: created HDR-ChipQA inference env at %s (sklearn %s)\n' "$infer_dir" "$sklearn_pin" >&2
 fi
 
-infer_py="$(readlink -f -- "$infer_dir/bin/python")"
+# Never resolve the venv interpreter symlink: readlink -f can point to the
+# host Python and lose the virtualenv site-packages and sklearn pin.
+infer_py="$infer_dir/bin/python"
 "$infer_py" -c "import sklearn; assert sklearn.__version__ == '${sklearn_pin}'" || {
   echo "$0: inference env sklearn version mismatch" >&2
   exit 1

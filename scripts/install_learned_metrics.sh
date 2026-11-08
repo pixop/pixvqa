@@ -66,13 +66,13 @@ warn_config_python_mismatch() {
       "$config" "$env_dir" >&2
     return 0
   fi
-  resolved="$(readlink -f -- "$cfg_py" 2>/dev/null || true)"
+  resolved="$(realpath -m -- "$cfg_py" 2>/dev/null || true)"
   if [[ -z "$resolved" ]]; then
     printf 'Learned setup: warning: configured interpreter %s is missing; selected env is %s.\n' \
       "$cfg_py" "$env_dir" >&2
     return 0
   fi
-  if [[ "$resolved" != "$(readlink -f -- "$env_dir/bin/python")" ]]; then
+  if [[ "$resolved" != "$(realpath -m -- "$env_dir/bin/python")" ]]; then
     printf 'Learned setup: warning: %s lists python=%s but this step selected %s/bin/python.\n' \
       "$config" "$cfg_py" "$env_dir" >&2
     printf 'Learned setup: align the config or set PIXVQA_LEARNED_ENV_DIR. See docs/LEARNED_METRICS.md.\n' >&2
@@ -130,12 +130,13 @@ else
   fi
 fi
 
-selected_python="$(readlink -f -- "$env_dir/bin/python")"
+# Resolve the directory only, never the Python symlink inside the venv.
+selected_python="$(cd -- "$env_dir" && pwd -P)/bin/python"
 
 # --- HDR-ChipQA dual interpreters ---
 feature_python="$selected_python"
 if [[ -n "${PIXVQA_HDR_CHIPQA_FEATURE_PYTHON:-}" ]]; then
-  feature_python="$(readlink -f -- "$PIXVQA_HDR_CHIPQA_FEATURE_PYTHON")"
+  feature_python="$(realpath -m -- "$PIXVQA_HDR_CHIPQA_FEATURE_PYTHON")"
 fi
 inference_python="$(bash "$root/scripts/setup_hdr_chipqa_envs.sh" "$feature_python" "$chipqa_infer_dir")"
 
