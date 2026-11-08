@@ -150,9 +150,16 @@ if [[ -z "$offline" ]]; then
   fi
 fi
 export PIXVQA_LEARNED_DOWNLOADER_PYTHON="$selected_python"
-pyw="${PIXVQA_LEARNED_CONFIG_PYTHON:-python3}"
-if ! command -v "$pyw" >/dev/null 2>&1; then
-  pyw=python3
+# The asset/config module uses stdlib tomllib (Python >=3.11). Ubuntu 22.04
+# provides Python 3.10 as `python3`; use the managed learned Python 3.12.
+pyw="${PIXVQA_LEARNED_CONFIG_PYTHON:-$selected_python}"
+if [[ ! -x "$pyw" ]] && ! command -v "$pyw" >/dev/null 2>&1; then
+  echo "Learned setup: config interpreter unavailable: $pyw" >&2
+  exit 2
+fi
+if ! "$pyw" -c 'import sys, tomllib; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+  echo "Learned setup: config interpreter must provide Python >=3.11 and tomllib: $pyw" >&2
+  exit 2
 fi
 
 install_args=(--root "$root" --learned-python "$selected_python"

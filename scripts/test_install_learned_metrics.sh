@@ -18,6 +18,8 @@ grep -q 'deps/ColorVideoVDP' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh missing default deps/ColorVideoVDP path'
 grep -q 'pixvqa_learned_install' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh must invoke pixvqa_learned_install'
+grep -Fq 'PIXVQA_LEARNED_CONFIG_PYTHON:-$selected_python' scripts/install_learned_metrics.sh ||
+  fail 'config installer must use managed learned Python, not Ubuntu system Python 3.10'
 grep -q 'setup_hdr_chipqa_envs' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh must provision HDR-ChipQA envs'
 grep -q 'learned_venv_helpers.sh' scripts/setup_learned_env.sh ||
@@ -93,6 +95,7 @@ stub_chipqa_stack
 (
   cd "$fake_root"
   export PIXVQA_LEARNED_INSTALL_OFFLINE=1
+  export PIXVQA_LEARNED_CONFIG_PYTHON="$(command -v python3)"
   unset PIXVQA_LEARNED_ENV_DIR PIXVQA_CVVDP_SOURCE || true
   bash scripts/install_learned_metrics.sh
 ) >/dev/null 2>&1 || true  # offline without deps may exit 1; config merge must still run
@@ -107,6 +110,7 @@ echo 'user_checkpoint="/keep/me.pth"' >> "$fake_root/config/learned_metrics.loca
 (
   cd "$fake_root"
   export PIXVQA_LEARNED_INSTALL_OFFLINE=1
+  export PIXVQA_LEARNED_CONFIG_PYTHON="$(command -v python3)"
   bash scripts/install_learned_metrics.sh
 ) >/dev/null 2>&1 || true
 grep -q 'user_checkpoint="/keep/me.pth"' "$fake_root/config/learned_metrics.local.toml" ||
