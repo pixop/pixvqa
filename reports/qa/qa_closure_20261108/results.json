@@ -1,0 +1,224 @@
+{
+  "session": {
+    "date": "2026-11-08",
+    "branch": "feature/nr-metric-infrastructure",
+    "git_head": "abb12a7441f386ffc2d4a9cec59e237855110398",
+    "verdict": "GO",
+    "no_git_mutations": true,
+    "supersedes": "reports/qa/full_local_20261108"
+  },
+  "harness_fixes": [
+    {
+      "id": "cvvdp-sdr-raw-yuv",
+      "classification": "stale_harness",
+      "action": "accept_case_sdr_raw_yuv",
+      "files": ["scripts/metric_cli_cases.py", "scripts/numerical_conformance/registry.py"]
+    },
+    {
+      "id": "cvvdp-pq-hlg-stream-disagree",
+      "classification": "stale_fixture",
+      "action": "make_hlg_mp4_setparams_vui",
+      "files": ["scripts/metric_test_fixtures.py"]
+    },
+    {
+      "id": "test_numerical_cli_invoke",
+      "classification": "stale_expectation",
+      "action": "assert_no_cvqahdr_python_argv",
+      "files": ["scripts/test_numerical_cli_invoke.py", "scripts/test_numerical_baselines.py"]
+    },
+    {
+      "id": "test_cli_help",
+      "classification": "stale_expectation",
+      "action": "help_hdr_needles_ffmpeg_which",
+      "files": ["scripts/test_cli_help.py"]
+    },
+    {
+      "id": "test_metric_numerical_conformance",
+      "classification": "wrong_default_binary",
+      "action": "decode_capable_auto_fallback",
+      "files": [
+        "scripts/numerical_conformance/environment.py",
+        "scripts/test_metric_numerical_conformance.py"
+      ]
+    }
+  ],
+  "binaries": {
+    "cpu": {
+      "path": "build/cpu/pixvqa",
+      "mtime": "2026-11-08T12:47:42+01:00",
+      "version": "0.3.0-dev build:cpu decode:none",
+      "has_vmaf": true
+    },
+    "swdec": {
+      "path": "build/swdec/pixvqa",
+      "mtime": "2026-11-08T12:48:57+01:00",
+      "version": "0.3.0-dev build:cpu decode:software",
+      "has_vmaf": true,
+      "rebuilt": true
+    },
+    "full": {
+      "path": "build/full/pixvqa",
+      "mtime": "2026-11-08T12:48:24+01:00",
+      "version": "0.3.0-dev build:cuda decode:software nvdec",
+      "has_vmaf": true,
+      "rebuilt": true
+    },
+    "cuda": {
+      "path": "build/cuda/pixvqa",
+      "mtime": "2026-11-08T12:46:46+01:00",
+      "version": "0.3.0-dev build:cuda decode:none",
+      "rebuilt": true,
+      "note": "rebuilt for --help-hdr parity with cpu in test_cli_help"
+    }
+  },
+  "build_env": {
+    "LIBVMAF_PREFIX": "/home/sergio/pixvqa-deps/libvmaf-74f930d",
+    "PKG_CONFIG_PATH": "libvmaf pc + deps/zimg-3.0.6/lib/pkgconfig",
+    "FFMPEG_PREFIX": "/home/sergio/ffmpeg-n8.1.3-lgpl-p5",
+    "CUDA_HOME": "/home/sergio/cuda-toolkit",
+    "GCC13": "/home/sergio/cuda-toolkit"
+  },
+  "gpu": {
+    "nvidia_smi_path": "/usr/lib/wsl/lib/nvidia-smi",
+    "hardware_profile_workaround": "PATH=/usr/lib/wsl/lib:$PATH",
+    "device": "NVIDIA GeForce RTX 5080"
+  },
+  "artifact_paths": {
+    "prior_qa_backup": "reports/qa/qa_closure_20261108/prior/",
+    "full_qa_json": "reports/qa/full.json",
+    "hardware_qa_json": "reports/qa/hardware.json",
+    "regression_logs": "reports/qa/qa_closure_20261108/regression/"
+  },
+  "suites": [
+    {
+      "id": "make-test-cpu",
+      "command": "LIBVMAF_PREFIX=... PKG_CONFIG_PATH=... make test-cpu",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/make_test_cpu.log"
+    },
+    {
+      "id": "run-qa-full",
+      "command": "env -u LD_LIBRARY_PATH python3 scripts/run_qa.py --profile full --cpu build/cpu/pixvqa",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "PASS": 236, "FAIL": 0, "SKIP": 1 },
+      "log": "reports/qa/qa_closure_20261108/run_qa_full_final2.log",
+      "json": "reports/qa/full.json"
+    },
+    {
+      "id": "run-qa-hardware",
+      "command": "env -u LD_LIBRARY_PATH PATH=/usr/lib/wsl/lib:$PATH python3 scripts/run_qa.py --profile hardware --cpu build/cpu/pixvqa",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "PASS": 3, "FAIL": 0, "SKIP": 0 },
+      "log": "reports/qa/qa_closure_20261108/run_qa_hardware_final.log",
+      "json": "reports/qa/hardware.json"
+    },
+    {
+      "id": "test_metric_cli_conformance",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "PASS": 41, "FAIL": 0 },
+      "was_fail_in_full_local": 2,
+      "log": "reports/qa/qa_closure_20261108/regression/test_metric_cli_conformance.log"
+    },
+    {
+      "id": "test_numerical_cli_invoke",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_numerical_cli_invoke.log"
+    },
+    {
+      "id": "test_cli_help",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_cli_help.log"
+    },
+    {
+      "id": "test_metric_numerical_conformance_swdec",
+      "command": "PIXVQA_BIN=build/swdec/pixvqa",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "PASS": 15, "FAIL": 0 },
+      "log": "reports/qa/qa_closure_20261108/regression/test_metric_numerical_conformance_swdec.log"
+    },
+    {
+      "id": "test_metric_numerical_conformance_cpu_fallback",
+      "command": "PIXVQA_BIN=build/cpu/pixvqa (auto-fallback to swdec)",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "PASS": 15, "FAIL": 0 },
+      "log": "reports/qa/qa_closure_20261108/regression/test_metric_numerical_conformance_cpu.log"
+    },
+    {
+      "id": "test_learned_metrics_cli",
+      "status": "PASS",
+      "exit_code": 0,
+      "counts": { "OK": 129, "SKIP": 1, "FAIL": 0 },
+      "log": "reports/qa/qa_closure_20261108/regression/test_learned_metrics_cli.log"
+    },
+    {
+      "id": "test_simplevqa_worker",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_simplevqa_worker.log"
+    },
+    {
+      "id": "test_simplevqa_reference",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_simplevqa_reference.log"
+    },
+    {
+      "id": "test_chipqa_reference",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_chipqa_reference.log"
+    },
+    {
+      "id": "simplevqa_gpu_regression",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/simplevqa_regression.log"
+    },
+    {
+      "id": "test_numerical_baselines",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_numerical_baselines.log"
+    },
+    {
+      "id": "test_cuda_numeric",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_cuda_numeric.log"
+    },
+    {
+      "id": "test_cuda_psnr_ssim_8bit",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_cuda_psnr_ssim_8bit.log"
+    },
+    {
+      "id": "test_pu21_cuda",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_pu21_cuda.log"
+    },
+    {
+      "id": "test_pu21_numeric",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_pu21_numeric.log"
+    },
+    {
+      "id": "test_vmaf_numeric",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/qa/qa_closure_20261108/regression/test_vmaf_numeric.log"
+    }
+  ],
+  "git_diff_check": "clean (CRLF warnings only)",
+  "merge_decision": "GO"
+}
