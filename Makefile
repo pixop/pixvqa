@@ -6,6 +6,16 @@ ROOT := $(abspath .)
 PREFIX ?= $(ROOT)
 SHELL := /bin/bash
 
+# The guided installer records reusable dependency paths here. Explicit Make
+# assignments and exported environment variables override these defaults.
+-include build/local-config.mk
+export FFMPEG_PREFIX GCC13 CUDA_HOME GCC_ENV
+ifneq ($(origin PIXVQA_DEPS_ROOT),undefined)
+export PIXVQA_DEPS_ROOT
+endif
+export DAV1D_PREFIX LIBVMAF_PREFIX ZIMG_PREFIX ZIMG_SRC
+export PIXVQA_LIBCUDA_DIR PIXVQA_FULL_LINK_CXX
+
 DEPFLAGS := -MMD -MP
 
 .PHONY: all cpu swdec cuda full clean help install test-cpu test config-force

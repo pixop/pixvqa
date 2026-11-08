@@ -59,6 +59,24 @@ Replace `swdec` with `cpu` or `full` as appropriate. Building alone does not upd
 
 For Python-backed metrics, follow [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
 
+## Rebuilding an existing installation
+
+If the guided installer has completed successfully, the ignored
+`build/local-config.mk` records its resolved dependency paths. The incremental
+Make targets reuse that configuration across terminal sessions, while explicit
+environment variables or `make FFMPEG_PREFIX=... full` override it.
+
+```bash
+make -j"$(nproc)" full
+make install VARIANT=full PREFIX="$PWD"
+```
+
+Choose `cpu` or `swdec` (and the corresponding `VARIANT`) if that was the
+installed build. `make install` updates `bin/pixvqa`; `make full` alone does not.
+If you installed a version before configuration persistence was introduced,
+provide the dependency paths as shown above, or use a matching dependency
+layout. A normal rebuild does not require running the guided installer again.
+
 ## Common problems
 
 - `FFMPEG_PREFIX must point at FFmpeg n8.1.3`: provide the installed development-library prefix, not just an `ffmpeg` executable.

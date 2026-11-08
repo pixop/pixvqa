@@ -33,6 +33,29 @@ make install VARIANT=swdec PREFIX="$PWD"
 
 `make install` is required to update `bin/pixvqa`; building a variant alone does not. See [Manual Installation](INSTALL.md) for prerequisites and environment variables.
 
+## Rebuilding after source changes
+
+The guided installer **already compiles and installs** PixVQA; there is no need
+to run Make after the first installation. When modifying the source code later,
+rebuild the desired variant and reinstall its binary into this checkout:
+
+```bash
+# Full CUDA/NVDEC build (use `cpu` or `swdec` instead if installed):
+make -j"$(nproc)" full
+make install VARIANT=full PREFIX="$PWD"
+./bin/pixvqa --version
+```
+
+Make recompiles changed source files; `make install` updates `bin/pixvqa`.
+A successful **guided installation** saves its dependency paths to the ignored
+`build/local-config.mk`, so the commands above work in a new shell without
+re-exporting FFmpeg, GCC or CUDA paths. Command-line Make assignments and
+exported environment variables take precedence over saved values.
+
+For older installations without this file, see [Manual Installation](INSTALL.md)
+for environment variables. You do **not** need to rerun the guided installer
+or rebuild third-party dependencies solely to recompile PixVQA.
+
 ## First evaluation
 
 ```bash
