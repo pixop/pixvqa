@@ -91,3 +91,17 @@ Compressed video metadata may supply transfer; when it cannot, set `--hdr-transf
 HDR-ChipQA implementation details and validation evidence: [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
 
 See [CLI Usage](CLI_USAGE.md) for options and [Metrics & Formats](METRICS_AND_FORMATS.md) for compatibility.
+
+### ColorVideoVDP's conflicting FFmpeg package metadata
+
+The pinned upstream ColorVideoVDP v0.5.7 declares both `ffmpeg-python>=0.2.0`
+and `ffmpeg>=1.4`, although its video reader uses `ffmpeg-python`'s
+`ffmpeg.input` / `ffmpeg.probe` / `ffmpeg.run_async` API. The separate PyPI
+`ffmpeg` distribution exposes the same `ffmpeg` module and can break this API.
+PixVQA therefore builds the **same pinned upstream source** with only the
+conflicting `ffmpeg>=1.4` packaging requirement removed. It does not edit the
+upstream Git checkout or change scoring code. The learned installer repairs
+existing venv installations, installs missing actual requirements
+(`matplotlib`, `PyEXR`), validates the `ffmpeg-python` API and requires
+`python -m pip check` to pass. This metadata correction does not install or
+replace the FFmpeg command-line executable.

@@ -133,6 +133,10 @@ fi
 # Resolve the directory only, never the Python symlink inside the venv.
 selected_python="$(cd -- "$env_dir" && pwd -P)/bin/python"
 
+# Reconcile CVVDP dependencies in both fresh and reused learned environments.
+bash "$root/scripts/ensure_cvvdp_dependencies.sh" \
+  "$selected_python" "$cvvdp_src" "$commit"
+
 # The old venv stamp proves only the CVVDP bootstrap version, not that every
 # learned backend was provisioned. Repair SimpleVQA imports on every rerun.
 bash "$root/scripts/ensure_simplevqa_dependencies.sh" \

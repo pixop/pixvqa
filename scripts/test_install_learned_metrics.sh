@@ -20,6 +20,8 @@ grep -q 'pixvqa_learned_install' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh must invoke pixvqa_learned_install'
 grep -Fq 'PIXVQA_LEARNED_CONFIG_PYTHON:-$selected_python' scripts/install_learned_metrics.sh ||
   fail 'config installer must use managed learned Python, not Ubuntu system Python 3.10'
+grep -q 'ensure_cvvdp_dependencies' scripts/install_learned_metrics.sh ||
+  fail 'installer must repair CVVDP metadata and dependency closure'
 grep -q 'ensure_simplevqa_dependencies' scripts/install_learned_metrics.sh ||
   fail 'installer must verify and repair SimpleVQA modules in reused venv'
 grep -q 'setup_hdr_chipqa_envs' scripts/install_learned_metrics.sh ||
@@ -77,6 +79,11 @@ EOF
 }
 
 stub_chipqa_stack() {
+  cat > "$fake_root/scripts/ensure_cvvdp_dependencies.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$fake_root/scripts/ensure_cvvdp_dependencies.sh"
   cat > "$fake_root/scripts/ensure_simplevqa_dependencies.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
