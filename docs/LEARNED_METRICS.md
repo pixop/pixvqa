@@ -21,11 +21,18 @@ bash scripts/install_learned_metrics.sh
 
 Alternatively, `install_pixvqa.sh` offers optional learned-metric installation during guided setup (answer **yes** when prompted).
 
-The installer creates a local **`.venv`** Python environment, installs dependencies, downloads or reuses the upstream repositories and pretrained checkpoints, verifies their integrity, and configures PixVQA. It also creates **`.venv-chipqa-inference`** for HDR-ChipQA's separate inference requirements. A second run reuses verified assets.
+The installer automatically:
 
-Key Python packages include **PyTorch, torchvision, PyTorchVideo, NumPy, SciPy, OpenCV, scikit-image, pandas, matplotlib, and scikit-learn** (the latter in HDR-ChipQA's separate inference environment). Exact pinned versions and additional dependencies are in [the requirements file](../python/requirements/learned-env.txt) and installer scripts.
+1. Creates a repository-local Python environment (`.venv`).
+2. Installs the Python dependencies.
+3. Downloads or reuses the upstream metric implementations and pretrained model checkpoints, verifying the downloaded assets.
+4. Configures the metrics for use with `pixvqa`.
 
-The installer needs network access for missing assets. It reports an error if a required checkpoint cannot be downloaded or verified. No manual checkpoint download is normally necessary.
+HDR-ChipQA also uses a separate `.venv-chipqa-inference` environment, created automatically. Re-running the installer reuses verified assets.
+
+**Main packages:** PyTorch, torchvision, PyTorchVideo, NumPy, SciPy, OpenCV, scikit-image, pandas, matplotlib, and scikit-learn (in HDR-ChipQA's separate inference environment), plus metric-specific dependencies. See the [complete pinned dependency list](../python/requirements/learned-env.txt).
+
+An internet connection is needed to obtain missing models. Normally you do **not** need to download repositories or checkpoints manually; if a download fails, the installer reports an error.
 
 ## Run
 
@@ -43,12 +50,12 @@ The installer needs network access for missing assets. It reports an error if a 
 ./bin/pixvqa --metrics hdr-chipqa -t distorted.mp4
 ```
 
-The `sdr`, `pq`, and `hlg` groups include the baseline metrics but **not CVVDP or HDR-ChipQA**. Add either one explicitly when needed (`--metrics sdr,cvvdp` or `--metrics pq,hdr-chipqa`). See [CLI Usage](CLI_USAGE.md#metric-groups).
+The `sdr`, `pq`, and `hlg` groups intentionally exclude **CVVDP** (potentially high GPU memory use) and **HDR-ChipQA** (potentially high system memory use). Add either explicitly (`--metrics sdr,cvvdp` or `--metrics pq,hdr-chipqa`). The legacy `all` selection includes CVVDP; see [Metric groups](CLI_USAGE.md#metric-groups).
 
 ## Performance considerations
 
 **CVVDP uses GPU memory (VRAM).** High resolutions and concurrent jobs may need substantial VRAM. Monitor usage with `nvidia-smi`; `--cvvdp-gpu-mem GB` supplies an optional budget but cannot guarantee that a workload fits.
 
-**HDR-ChipQA uses substantial system RAM.** Five concurrent 1080p/60, ~20-second jobs triggered Linux out-of-memory kills on WSL2 configured with 10 GB RAM and 4 GB swap. The benchmark campaign worked after removing HDR-ChipQA. For memory-constrained multi-job campaigns, select it separately and measure peak RAM before increasing concurrency. This observation does not establish 4K memory requirements.
+**HDR-ChipQA can use substantial system RAM**, particularly with parallel jobs. Start with one job on memory-constrained systems and monitor RAM before increasing concurrency. Detailed benchmark observations belong in [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md).
 
 For environment customization, offline installation, WSL-specific details, and upstream packaging notes, see [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md). For algorithm-specific behavior, see [HDR-ChipQA Reference](dev/CHIPQA_REFERENCE.md) and [SimpleVQA Reference](dev/SIMPLEVQA_REFERENCE.md).
