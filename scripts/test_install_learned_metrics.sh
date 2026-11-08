@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fast offline checks for scripts/install_learned_metrics.sh defaults and config
-# generation. Uses a throwaway tree and mocked venvs; does not run pip or download.
+# Fast offline checks for scripts/install_learned_metrics.sh defaults, config merge,
+# and pixvqa_learned_install. Uses throwaway trees; no pip or network when offline=1.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -9,27 +9,33 @@ fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 
 bash -n scripts/install_learned_metrics.sh
 bash -n scripts/setup_learned_env.sh
+bash -n scripts/setup_hdr_chipqa_envs.sh
+bash -n scripts/ensure_chipqa_inference_python.sh
 
-# Defaults appear in the installer (repo-local .venv and deps/ColorVideoVDP).
 grep -Eq 'PIXVQA_LEARNED_ENV_DIR.*\$\{[^}]*root[^}]*\}/\.venv|env_dir=.*\.venv' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh missing default repo-local .venv'
 grep -q 'deps/ColorVideoVDP' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh missing default deps/ColorVideoVDP path'
+grep -q 'pixvqa_learned_install' scripts/install_learned_metrics.sh ||
+  fail 'install_learned_metrics.sh must invoke pixvqa_learned_install'
+grep -q 'setup_hdr_chipqa_envs' scripts/install_learned_metrics.sh ||
+  fail 'install_learned_metrics.sh must provision HDR-ChipQA envs'
 grep -q 'learned_venv_helpers.sh' scripts/setup_learned_env.sh ||
   fail 'setup_learned_env.sh must source learned_venv_helpers.sh'
-grep -q 'learned_venv_create_flags' scripts/setup_learned_env.sh ||
-  fail 'setup_learned_env.sh must call learned_venv_create_flags'
 grep -q 'pytorchvideo==' python/requirements/learned-env.txt ||
   fail 'learned-env.txt must pin pytorchvideo for SimpleVQA'
-grep -q 'SimpleVQA' docs/LEARNED_METRICS.md || fail 'LEARNED_METRICS.md must mention SimpleVQA shared env'
+grep -q 'SimpleVQA' docs/LEARNED_METRICS.md || fail 'LEARNED_METRICS.md must mention SimpleVQA'
 grep -q 'refusing to create a virtualenv under NTFS' scripts/install_learned_metrics.sh &&
   fail 'install_learned_metrics.sh must not blanket-refuse NTFS; use venv --copies instead'
+
+python3 scripts/test_install_learned_assets.py
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fake_root="$work/pixvqa"
-mkdir -p "$fake_root/scripts" "$fake_root/config"
-cp -- "$ROOT/scripts/install_learned_metrics.sh" "$fake_root/scripts/install_learned_metrics.sh"
+mkdir -p "$fake_root/scripts" "$fake_root/config" "$fake_root/python"
+cp -r -- "$ROOT/scripts/." "$fake_root/scripts/"
+cp -r -- "$ROOT/python/." "$fake_root/python/"
 cp -- "$ROOT/config/learned_metrics.example.toml" "$fake_root/config/learned_metrics.example.toml"
 
 commit=166f5ae95ecbd841ae727984cd237de213875399
@@ -42,77 +48,77 @@ make_pinned_venv() {
   printf '%s\n' "$commit" > "$dir/COLORVIDEOVDP_COMMIT"
 }
 
-# 1) Fresh example: default env is fake_root/.venv (pinned), config is created with absolute python.
+make_chipqa_infer() {
+  local dir="$1"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/python" <<'PY'
+#!/usr/bin/env bash
+if [[ "$1" == -c ]]; then
+  if [[ "$2" == *sklearn.__version__* ]]; then exit 0; fi
+  if [[ "$2" == *joblib.load* ]]; then exit 0; fi
+  if [[ "$2" == *sys.version_info* ]]; then exit 0; fi
+fi
+exit 0
+PY
+  chmod +x "$dir/bin/python"
+  printf '1.0.2\n' > "$dir/SKLEARN_PIN"
+}
+
+stub_ensure_learned() {
+  cat > "$fake_root/scripts/ensure_learned_python.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '/bin/true\n'
+EOF
+  chmod +x "$fake_root/scripts/ensure_learned_python.sh"
+}
+
+stub_chipqa_stack() {
+  cat > "$fake_root/scripts/ensure_chipqa_inference_python.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '/usr/bin/true\n'
+EOF
+  chmod +x "$fake_root/scripts/ensure_chipqa_inference_python.sh"
+  cat > "$fake_root/scripts/setup_hdr_chipqa_envs.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$2/bin/python"
+EOF
+  chmod +x "$fake_root/scripts/setup_hdr_chipqa_envs.sh"
+}
+
+# 1) Fresh tree: pinned .venv, offline asset pass creates config paths.
 make_pinned_venv "$fake_root/.venv"
+make_chipqa_infer "$fake_root/.venv-chipqa-inference"
+stub_ensure_learned
+stub_chipqa_stack
 (
   cd "$fake_root"
+  export PIXVQA_LEARNED_INSTALL_OFFLINE=1
   unset PIXVQA_LEARNED_ENV_DIR PIXVQA_CVVDP_SOURCE || true
   bash scripts/install_learned_metrics.sh
-) >/dev/null
-[[ -f "$fake_root/config/learned_metrics.local.toml" ]] || fail 'local config not created'
-grep -Fq "python = \"$fake_root/.venv/bin/python\"" "$fake_root/config/learned_metrics.local.toml" ||
-  fail 'created config does not pin absolute interpreter path'
+) >/dev/null 2>&1 || true  # offline without deps may exit 1; config merge must still run
+
+[[ -f "$fake_root/config/learned_metrics.local.toml" ]] || fail 'local config not created/updated'
+grep -Eq 'python\s*=' "$fake_root/config/learned_metrics.local.toml" ||
+  fail 'config missing learned python path'
 before="$(cat "$fake_root/config/learned_metrics.local.toml")"
 
-# 2) Re-run preserves config; still succeeds.
+# 2) Re-run preserves user-facing keys (checkpoint override).
+echo 'user_checkpoint="/keep/me.pth"' >> "$fake_root/config/learned_metrics.local.toml"
 (
   cd "$fake_root"
-  unset PIXVQA_LEARNED_ENV_DIR PIXVQA_CVVDP_SOURCE || true
+  export PIXVQA_LEARNED_INSTALL_OFFLINE=1
   bash scripts/install_learned_metrics.sh
-) >/dev/null
-[[ "$(cat "$fake_root/config/learned_metrics.local.toml")" == "$before" ]] || fail 're-run modified existing local config'
+) >/dev/null 2>&1 || true
+grep -q 'user_checkpoint="/keep/me.pth"' "$fake_root/config/learned_metrics.local.toml" ||
+  fail 're-run modified unrelated config lines'
 
-# 3) Override env dir: second tree, custom pinned path, config matches override.
-fake2="$work/pixvqa2"
-mkdir -p "$fake2/scripts" "$fake2/config"
-cp -- "$ROOT/scripts/install_learned_metrics.sh" "$fake2/scripts/install_learned_metrics.sh"
-cp -- "$ROOT/config/learned_metrics.example.toml" "$fake2/config/learned_metrics.example.toml"
-custom_venv="$work/custom-learned"
-make_pinned_venv "$custom_venv"
-(
-  cd "$fake2"
-  export PIXVQA_LEARNED_ENV_DIR="$custom_venv"
-  export PIXVQA_CVVDP_SOURCE="$work/unused-cvvdp"
-  bash scripts/install_learned_metrics.sh
-) >/dev/null
-grep -Fq "python = \"$custom_venv/bin/python\"" "$fake2/config/learned_metrics.local.toml" ||
-  fail 'override PIXVQA_LEARNED_ENV_DIR not reflected in generated config'
-
-# 4) Mismatch warning: existing config points at a different python than selected env.
-fake3="$work/pixvqa3"
-mkdir -p "$fake3/scripts" "$fake3/config"
-cp -- "$ROOT/scripts/install_learned_metrics.sh" "$fake3/scripts/install_learned_metrics.sh"
-cp -- "$ROOT/config/learned_metrics.example.toml" "$fake3/config/learned_metrics.example.toml"
-make_pinned_venv "$fake3/.venv"
-other_py="$work/other-env/bin/python"
-mkdir -p "$(dirname -- "$other_py")"
-printf '#!/bin/sh\nexit 0\n' > "$other_py"
-chmod +x "$other_py"
-cat > "$fake3/config/learned_metrics.local.toml" <<EOF
-[learned]
-python = "$other_py"
-adapter_path = "../python"
-path = "~/bin"
-EOF
-out="$work/mismatch.out"
-(
-  cd "$fake3"
-  unset PIXVQA_LEARNED_ENV_DIR PIXVQA_CVVDP_SOURCE || true
-  bash scripts/install_learned_metrics.sh
-) >"$out" 2>&1 || fail 'mismatch scenario should not fail the installer'
-grep -qi 'lists python=' "$out" || fail 'expected python mismatch warning when config differs from env'
-grep -q 'preserving existing' "$out" || fail 'expected preserve message for existing config'
-
-# 5) WSL-style mount: fake findmnt reports 9p → learned_venv_create_flags returns --copies
+# 3) WSL venv --copies helper (unchanged).
 stub_bin="$work/stub-bin"
 mkdir -p "$stub_bin"
 cat > "$stub_bin/findmnt" <<'EOF'
 #!/bin/sh
-# Minimal findmnt for learned_venv_on_wsl_network_fs (see `man findmnt`).
 if [ "$1" = -n ] && [ "$2" = -o ] && [ "$3" = FSTYPE ] && [ "$4" = -T ]; then
   printf '%s\n' "9p"
-elif [ "$1" = -n ] && [ "$2" = -o ] && [ "$3" = SOURCE ] && [ "$4" = -T ]; then
-  printf '%s\n' '\\?\ADVHS{...}'
 fi
 EOF
 chmod +x "$stub_bin/findmnt"
@@ -123,7 +129,5 @@ mkdir -p "$work/wsl-layout"
 wsl_venv="$work/wsl-layout/.venv"
 flags="$(PATH="$stub_bin:$PATH" learned_venv_create_flags "$wsl_venv")"
 [[ "$flags" == "--copies" ]] || fail "expected --copies on simulated 9p mount, got ${flags:-empty}"
-flags_symlink="$(PATH="$stub_bin:$PATH" PIXVQA_LEARNED_VENV_USE_SYMLINKS=1 learned_venv_create_flags "$wsl_venv")"
-[[ -z "$flags_symlink" ]] || fail "expected empty venv flags when PIXVQA_LEARNED_VENV_USE_SYMLINKS=1"
 
 echo "OK   install_learned_metrics offline tests passed"

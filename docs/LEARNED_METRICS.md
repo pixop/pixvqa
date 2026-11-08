@@ -14,9 +14,18 @@ For SDR/PQ/HLG format support and input caveats (YUV layout, transfer tags, QCS)
 What you must provide falls into **two** buckets:
 
 1. **Python environment and packages** — a CPython 3.12 virtual environment with the locked dependencies in [`python/requirements/learned-env.txt`](../python/requirements/learned-env.txt), plus ColorVideoVDP at the pinned commit (installed from a local Git checkout; [`scripts/setup_learned_env.sh`](../scripts/setup_learned_env.sh) never downloads model weights). That same environment includes PyTorchVideo and related pins so you can run the SimpleVQA adapter against a Git checkout under `deps/SimpleVQA` (or elsewhere).
-2. **Upstream repositories and model assets** — checkouts of CompressedVQA-HDR and SimpleVQA where each backend expects them; `.pth`/`.npy` and other checkpoints for those models. PixVQA does **not** download third-party model checkpoints automatically. Review each upstream license before redistributing or mirroring weights.
+2. **Upstream repositories and model assets** — Git checkouts under `deps/` (ColorVideoVDP, CompressedVQA-HDR, SimpleVQA, hdr_chipqa) plus NR/SimpleVQA checkpoints where each backend expects them. HDR-ChipQA SVR/scaler pickles ship **in** the hdr_chipqa repository (SHA-256 pinned). CompressedVQA-HDR NR weights are fetched from upstream Dropbox links when the installer can verify the pinned digest. SimpleVQA UGC weights are on **Google Drive**; the installer downloads only when the response verifies against the pinned SHA-256—otherwise it exits with an actionable manual-download message. Review each upstream license before redistributing or mirroring weights.
 
-The **guided installer** (`install_pixvqa.sh`) does **not** install learned metrics unless you opt in: the prompt defaults to **no**, or set `PIXVQA_ENABLE_LEARNED=1` for non-interactive installs. It never downloads NR or SimpleVQA checkpoints. If Python 3.12 is not already available, PixVQA provisions it in a private dependency prefix (`$HOME/pixvqa-deps/python312` by default, or `$PIXVQA_DEPS_ROOT/python312` for an isolated installation) using micromamba/Conda, without replacing Ubuntu system Python. This interpreter is distinct from the checkout-local `.venv` it creates. Provide `PYTHON=/path/to/python3.12` to override automatic discovery/provisioning. When opted in, it runs [`scripts/install_learned_metrics.sh`](../scripts/install_learned_metrics.sh), which can create a **repository-local** `.venv` and clone ColorVideoVDP under `deps/ColorVideoVDP` by default (both paths are Git-ignored). System-installed Python, CUDA, the NVIDIA driver, and package-manager or pip **caches** outside the repo are still normal prerequisites and are not removed when you move or delete the checkout.
+The **guided installer** (`install_pixvqa.sh`) does **not** install learned metrics unless you opt in: the prompt defaults to **no**, or set `PIXVQA_ENABLE_LEARNED=1` for non-interactive installs. If Python 3.12 is not already available, PixVQA provisions it in a private dependency prefix (`$HOME/pixvqa-deps/python312` by default, or `$PIXVQA_DEPS_ROOT/python312` for an isolated installation) using micromamba/Conda, without replacing Ubuntu system Python. This interpreter is distinct from the checkout-local `.venv` it creates. Provide `PYTHON=/path/to/python3.12` to override automatic discovery/provisioning. When opted in, it runs [`scripts/install_learned_metrics.sh`](../scripts/install_learned_metrics.sh), which:
+
+- creates or reuses the **repository-local** `.venv` (CVVDP + NR + SimpleVQA deps) and clones ColorVideoVDP under `deps/ColorVideoVDP` by default (Git-ignored);
+- provisions HDR-ChipQA **inference** on private **CPython 3.10** (`$PIXVQA_DEPS_ROOT/python310` via micromamba when needed) with **sklearn 1.0.2** in `.venv-chipqa-inference` by default;
+- reuses the shared `.venv` for HDR-ChipQA **feature** extraction (adds `scikit-image` when missing);
+- clones or reuses pinned upstream repos, downloads verifiable checkpoints, merges `config/learned_metrics.local.toml` without overwriting your paths, and runs readiness checks (import/load probes).
+
+Set `PIXVQA_LEARNED_INSTALL_OFFLINE=1` to skip network fetch (verify-only). The installer **never** overwrites an existing file that matches the pin, **never** accepts HTML as a checkpoint, and **never** claims full installation when Google Drive or Dropbox fetches fail verification.
+
+System-installed Python, CUDA, the NVIDIA driver, and package-manager or pip **caches** outside the repo are still normal prerequisites and are not removed when you move or delete the checkout.
 
 For **manual setup** (full control, CI, or an existing environment), create the venv and config yourself:
 
@@ -35,6 +44,10 @@ Copy [`config/learned_metrics.example.toml`](../config/learned_metrics.example.t
 | `PIXVQA_LEARNED_ENV_DIR` | `<repo>/.venv` | Virtual environment directory; must be an absolute path when set |
 | `PIXVQA_CVVDP_SOURCE` | `<repo>/deps/ColorVideoVDP` | ColorVideoVDP Git checkout used by `setup_learned_env.sh` |
 | `PIXVQA_LEARNED_VENV_USE_SYMLINKS` | unset | If set (non-empty), `setup_learned_env.sh` creates the venv **without** `--copies` even on WSL 9p/drvfs mounts (Linux ext4 or intentional symlink venv) |
+| `PIXVQA_HDR_CHIPQA_INFERENCE_ENV_DIR` | `<repo>/.venv-chipqa-inference` | sklearn 1.0.2 SVR environment (CPython 3.10) |
+| `PIXVQA_HDR_CHIPQA_FEATURE_PYTHON` | shared `.venv` | Override HDR-ChipQA feature extractor interpreter |
+| `PIXVQA_HDR_CHIPQA_INFERENCE_PYTHON` | unset | Override host 3.10 used to create the inference venv |
+| `PIXVQA_LEARNED_INSTALL_OFFLINE` | unset | If set, `install_learned_metrics.sh` verifies local assets only (no clone/download) |
 
 Older documentation referred to `$HOME/pixvqa-learned-env`; that remains valid if you set `PIXVQA_LEARNED_ENV_DIR` accordingly. The installer does **not** silently migrate or re-point an existing `learned_metrics.local.toml`. If the file already lists a different `[learned].python` than the environment selected for this run, the script prints a **warning**; to opt into a repo-local venv, create a new venv, set `PIXVQA_LEARNED_ENV_DIR` to its path (or use the default `.venv`), update `[learned].python` and any checkpoint paths, and retire the old venv yourself.
 

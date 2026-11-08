@@ -34,22 +34,22 @@ path = "~/bin"
 # python = "../.venv/bin/python"
 
 [cvqa-hdr-nr]
-# Optional defaults beside the binary checkout: deps/CompressedVQA-HDR,
-# deps/CompressedVQA-HDR/NR_HDR_VQA.pth, deps/CompressedVQA-HDR/NR_HDR_VQA.npy
-repository = "~/src/CompressedVQA-HDR"
-checkpoint = "~/models/compressedvqa-hdr/NR_HDR_VQA.pth"
-profile = "~/models/compressedvqa-hdr/NR_HDR_VQA.npy"
+# Installer defaults (relative to this file): deps/CompressedVQA-HDR and NR_HDR_VQA.* beside it.
+# repository = "../deps/CompressedVQA-HDR"
+# checkpoint = "../deps/CompressedVQA-HDR/NR_HDR_VQA.pth"
+# profile = "../deps/CompressedVQA-HDR/NR_HDR_VQA.npy"
 # python = "../.venv/bin/python"
 
 [simplevqa]
 # Upstream SimpleVQA checkout and official UGC checkpoint (see docs/dev/SIMPLEVQA_REFERENCE.md).
+# Google Drive id 137XJdq3reNMJ9tkBNqKUYTY_dTlcwXc3 — installer verifies SHA-256 when downloaded.
 # repository = "../deps/SimpleVQA"
 # checkpoint = "../deps/SimpleVQA/ckpts/UGC_BVQA_model.pth"
 # python = "../.venv/bin/python"
 
 [hdr-chipqa]
 # Unified SDR + PQ HDR (+ experimental HLG) NR via deps/hdr_chipqa (see docs/dev/CHIPQA_REFERENCE.md).
-# feature_python and inference_python may differ (sklearn 1.0.2 on Python 3.10 for SVR).
+# Models are committed upstream; inference needs sklearn 1.0.2 on Python 3.10 (.venv-chipqa-inference).
 # repository = "../deps/hdr_chipqa"
 # feature_python = "../.venv/bin/python"
-# inference_python = "~/.venvs/pixvqa-chipqa-ref/bin/python"
+# inference_python = "../.venv-chipqa-inference/bin/python"
