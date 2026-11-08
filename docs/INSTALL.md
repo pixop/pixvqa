@@ -57,7 +57,7 @@ make install VARIANT=swdec PREFIX="$PWD"
 
 Replace `swdec` with `cpu` or `full` as appropriate. Building alone does not update `bin/pixvqa`. Bundled model JSON files are installed with the program; VMAF chooses an appropriate model automatically when it can.
 
-For Python-backed metrics, follow [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
+For Python-backed metrics, run `bash scripts/install_learned_metrics.sh` after a native installation. The script provisions a private Python 3.12 interpreter when missing, then creates the local learned-metric environment; pretrained third-party model assets still require manual configuration. See [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
 
 ## Rebuilding an existing installation
 

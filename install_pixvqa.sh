@@ -165,6 +165,11 @@ sudo apt-get update
 # release's binary packages.
 sudo apt-get install -y build-essential python3 python3-numpy git meson ninja-build nasm pkg-config curl ca-certificates bzip2 tar perl autoconf automake libtool m4
 for tool in g++ python3 git meson ninja nasm pkg-config make curl tar perl autoconf automake libtoolize m4; do require "$tool"; done
+if (( WITH_LEARNED )); then
+    info 'Preparing Python 3.12 for optional learned metrics'
+    export PYTHON="$(bash "$PIXVQA_SRC/scripts/ensure_learned_python.sh")"
+    printf 'Learned-metric Python: %s\n' "$PYTHON"
+fi
 [[ -x /usr/bin/g++ ]] || die 'Expected /usr/bin/g++ for GCC_ENV=/usr and for the final NVDEC link.'
 mkdir -p "$DEPS_SRC"
 
@@ -425,10 +430,8 @@ bash scripts/verify_installed_pixvqa.sh "$PREFIX" "$PIXVQA_EXPECT_BUILD" "$PIXVQ
 
 info 'Running smoke QA on the installed executable'
 pixvqa_run_installed_smoke "$PIXVQA_SRC" "$PREFIX"
-if (( WITH_LEARNED )); then
-    info 'Setting up optional learned metrics'
-    bash "$PIXVQA_SRC/scripts/install_learned_metrics.sh"
-fi
+# Native installation and QA are complete. Cleanup must precede saving the
+# persistent Make config, otherwise finish_install.sh would remove it.
 PIXVQA_SRC="$PIXVQA_SRC" bash scripts/finish_install.sh
 # Preserve resolved dependency paths for incremental `make` builds in future
 # terminal sessions. Never overwrite the saved configuration on failed installs.
@@ -451,6 +454,10 @@ if (( PIXVQA_DEPS_ISOLATED )); then
     write_make_default PIXVQA_DEPS_ROOT "$PIXVQA_DEPS_ROOT"
 fi
 mv -f "$config_tmp" "$PIXVQA_SRC/build/local-config.mk"
+if (( WITH_LEARNED )); then
+    info 'Setting up optional learned metrics'
+    bash "$PIXVQA_SRC/scripts/install_learned_metrics.sh"
+fi
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"
 printf 'Run it directly. Private libraries are recorded in the executable RPATH.\n'

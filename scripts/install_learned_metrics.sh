@@ -87,11 +87,7 @@ elif [[ -e "$env_dir" ]]; then
   echo 'Set PIXVQA_LEARNED_ENV_DIR to a new directory or manage this environment manually.' >&2
   exit 2
 else
-  python="${PYTHON:-python3.12}"
-  if ! command -v "$python" >/dev/null 2>&1 || ! "$python" -m venv --help >/dev/null 2>&1; then
-    echo "Learned setup requires $python with venv support; install Python 3.12 and python3.12-venv, or set PYTHON." >&2
-    exit 2
-  fi
+  python="$(bash "$root/scripts/ensure_learned_python.sh")"
   if [[ ! -d "$cvvdp_src/.git" ]]; then
     if [[ -e "$cvvdp_src" ]]; then
       echo "Learned setup: $cvvdp_src exists but is not a Git checkout." >&2

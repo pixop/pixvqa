@@ -13,7 +13,7 @@ bash install_pixvqa.sh
 
 The installer offers FFmpeg software decoding and optional CUDA/NVDEC support. NVIDIA requires a compatible driver and CUDA 12.8 already installed. To isolate downloaded dependencies inside the checkout, use `PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh`.
 
-For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1`, `PIXVQA_ENABLE_NVIDIA=0|1`, and optionally `PIXVQA_ENABLE_LEARNED=1` (the guided prompt for learned metrics defaults to **no**). Python-backed metrics always require [separate environment and asset setup](LEARNED_METRICS.md).
+For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1`, `PIXVQA_ENABLE_NVIDIA=0|1`, and optionally `PIXVQA_ENABLE_LEARNED=1` (the guided prompt for learned metrics defaults to **no**). When learned metrics are selected, the installer provisions a private Python 3.12 interpreter if needed, creates the checkout-local `.venv`, and installs pinned Python dependencies. Upstream model checkpoints are supplied separately; see [Learned Metrics](LEARNED_METRICS.md).
 
 ## Build variants
 
