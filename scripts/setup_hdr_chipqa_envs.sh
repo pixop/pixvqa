@@ -62,7 +62,7 @@ done
 if (( ${#missing_feature[@]} )); then
   printf '%s: installing missing HDR-ChipQA feature packages: %s\n' \
     "$0" "${missing_feature[*]}" >&2
-  "${pip_feature[@]}" install --no-cache-dir "${missing_feature[@]}"
+  "${pip_feature[@]}" install --no-cache-dir "${missing_feature[@]}" >&2
 fi
 "$feature_py" -c 'import numpy, scipy, skimage, cv2, joblib' || {
   echo "$0: HDR-ChipQA feature dependencies are still unavailable after installation" >&2
@@ -77,7 +77,7 @@ elif [[ -x "$infer_dir/bin/python" ]]; then
   printf 'Learned setup: completing HDR-ChipQA inference env at %s\n' "$infer_dir" >&2
   pip_infer=("$infer_dir/bin/python" -m pip --disable-pip-version-check)
   "${pip_infer[@]}" install --no-cache-dir \
-    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1'
+    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
   printf '%s\n' "$sklearn_pin" > "$stamp"
 else
   if [[ -e "$infer_dir" ]]; then
@@ -93,7 +93,7 @@ else
   "$host_py310" -m venv $venv_flags "$infer_dir"
   pip_infer=("$infer_dir/bin/python" -m pip --disable-pip-version-check)
   "${pip_infer[@]}" install --no-cache-dir \
-    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1'
+    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
   printf '%s\n' "$sklearn_pin" > "$stamp"
   printf 'Learned setup: created HDR-ChipQA inference env at %s (sklearn %s)\n' "$infer_dir" "$sklearn_pin" >&2
 fi
@@ -115,7 +115,7 @@ import joblib
 repo = Path('${hdr_repo}')
 for name in ('hdrchipqa_livehdr_fitted_scaler.z', 'hdrchipqa_livehdr_trained_svr.z'):
     joblib.load(repo / name)
-print('HDR-ChipQA SVR models loaded OK')
+print('HDR-ChipQA SVR models loaded OK', file=__import__('sys').stderr)
 " || {
     echo "$0: HDR-ChipQA model load failed in inference env" >&2
     exit 1

@@ -25,6 +25,7 @@ if [[ "$1" == -c ]]; then
 fi
 if [[ "$1" == -m && "$2" == pip ]]; then
   printf '%s\n' "$*" >> "${0%/bin/python}/pip-calls"
+  echo 'Collecting packages (simulated pip output)'
   case " $* " in
     *' opencv-python-headless==4.11.0.86 '*) touch "${0%/bin/python}/cv2-installed" ;;
     *) exit 3 ;;
@@ -40,9 +41,11 @@ exit 0
 PY
 chmod +x "$work/infer/bin/python"
 printf '1.0.2\n' > "$work/infer/SKLEARN_PIN"
-"$work/scripts/setup_hdr_chipqa_envs.sh" "$work/feature/bin/python" "$work/infer" >/dev/null
+output="$("$work/scripts/setup_hdr_chipqa_envs.sh" "$work/feature/bin/python" "$work/infer")"
+[[ "$output" == "$work/infer/bin/python" ]] || { echo "stdout contaminated: $output" >&2; exit 1; }
 [[ -f "$work/feature/cv2-installed" ]] || exit 1
 grep -q opencv-python-headless "$work/feature/pip-calls"
-"$work/scripts/setup_hdr_chipqa_envs.sh" "$work/feature/bin/python" "$work/infer" >/dev/null
+output="$("$work/scripts/setup_hdr_chipqa_envs.sh" "$work/feature/bin/python" "$work/infer")"
+[[ "$output" == "$work/infer/bin/python" ]] || { echo "stdout contaminated: $output" >&2; exit 1; }
 [[ $(wc -l < "$work/feature/pip-calls") == 1 ]] || { echo 'reinstalled on second run' >&2; exit 1; }
-echo 'PASS HDR-ChipQA reused feature environment installs missing cv2 once'
+echo 'PASS HDR-ChipQA reused feature env repairs cv2 and emits only inference path on stdout'
