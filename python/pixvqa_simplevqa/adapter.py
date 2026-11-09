@@ -60,6 +60,25 @@ _CPU_OVERLAY_NEW_BLOCK = """    model = UGC_BVQA_model.resnet50(pretrained=False
     model = model.to(device=device)"""
 # The official demo leaves SlowFast in training mode while calling eval() only
 # on the spatial regressor. Disable stochastic/training-time behavior in both.
+# Opt-in reproducibility probe. Staged upstream files run in their own Python
+# interpreter and therefore must configure CUDA determinism inside that process.
+# The setting is deliberately not on by default pending GPU/backend validation.
+_SIMPLEVQA_DETERMINISM_HELPER = '''
+def _pixvqa_deterministic_inference():
+    import os as _os
+    if _os.environ.get("PIXVQA_LEARNED_DETERMINISTIC", "").lower() not in ("1", "true", "yes"):
+        return
+    _os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    import random as _random
+    import numpy as _numpy
+    _random.seed(0)
+    _numpy.random.seed(0)
+    torch.manual_seed(0)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(True)
+'''
+
 _MOTION_MODEL_TO_DEVICE = "    model_motion = model_motion.to(device)"
 _MOTION_MODEL_EVAL = "    model_motion.eval()"
 
@@ -74,6 +93,16 @@ def _motion_eval_overlay(text: str) -> str:
             _MOTION_MODEL_TO_DEVICE + "\n" + _MOTION_MODEL_EVAL,
             1,
         )
+    init = "    model_motion = slowfast()"
+    if text.count(init) != 1:
+        raise SetupError("upstream SimpleVQA motion-model construction changed")
+    if "def _pixvqa_deterministic_inference():" not in text:
+        # Insert helper above the entrypoint, never inside its function body.
+        anchor = "def main(config):"
+        if text.count(anchor) != 1:
+            raise SetupError("upstream SimpleVQA entrypoint changed")
+        text = text.replace(anchor, _SIMPLEVQA_DETERMINISM_HELPER + "\n" + anchor, 1)
+    text = text.replace(init, "    _pixvqa_deterministic_inference()\n" + init, 1)
     return text
 
 
@@ -578,6 +607,7 @@ def load_models_once(device):
     global _MODEL_CACHE
     if _MODEL_CACHE is not None:
         return _MODEL_CACHE
+    _pixvqa_deterministic_inference()
     model_motion = slowfast()
     model_motion = model_motion.to(device)
     model_motion.eval()
