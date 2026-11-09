@@ -4,9 +4,9 @@ No PyTorch code is vendored. The official demo is executed in a temporary,
 isolated working directory to satisfy its fixed relative ckpts/ path.
 CPU runs a staged overlay (no DataParallel; ``map_location`` on load) because
 upstream unconditionally wraps the model in DataParallel. The default CUDA
-path symlinks upstream ``test_demo.py`` unchanged. Optional ``--use-worker``
-stages a parity-reviewed single-decode overlay and amortizes imports for batch
-CUDA scoring. This is a parity baseline, not a native implementation.
+path stages a bounded-window single-decode overlay. Optional ``--use-worker``
+amortizes imports for batch CUDA scoring. An experimental streaming mode
+is opt-in pending full numerical-parity validation. This is a parity baseline, not a native implementation.
 """
 from __future__ import annotations
 
@@ -68,7 +68,11 @@ _CPU_OVERLAY_EXTRA = (
 # Parity-reviewed on official 960x540/8s clip (exact FP32 score 2.9507508277893066).
 _CUDA_SINGLE_DECODE_MAIN_OLD = """        video_dist_spatial, video_name = video_processing_spatial(config.dist)
         video_dist_motion, video_name = video_processing_motion(config.dist)"""
-_CUDA_SINGLE_DECODE_MAIN_NEW = """        video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)"""
+_CUDA_SINGLE_DECODE_MAIN_NEW = """        if os.environ.get('PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING') == '1':
+            video_dist_spatial, video_name = video_processing_spatial(config.dist)
+            video_dist_motion, video_name = video_processing_motion_stream(config.dist)
+        else:
+            video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)"""
 _CUDA_UNIFIED_FN_ANCHOR = "def pack_pathway_output(frames, device):"
 _CUDA_UNIFIED_FN = '''
 
@@ -160,6 +164,90 @@ def video_processing_unified(dist):
         for i in range(video_clip, video_clip_min):
             motion_clips.append(motion_clips[video_clip - 1])
     return transformed_video, motion_clips, video_name_dis
+'''
+
+# Experimental streaming alternative to the current bounded-window CUDA path.
+# It preserves all selected full-frame spatial samples and exactly the same
+# SlowFast motion windows. Activation is opt-in pending authentic-score parity.
+_CUDA_STREAMING_MOTION_FN = '''
+def video_processing_motion_stream(dist):
+    """Yield upstream SlowFast windows while keeping at most 32 decoded tensors."""
+    from collections import deque
+
+    cap = cv2.VideoCapture(dist)
+    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = int(round(cap.get(cv2.CAP_PROP_FPS)))
+    if fps <= 0:
+        cap.release()
+        raise ValueError("SimpleVQA: OpenCV reported an invalid frame rate")
+    n_clip = int(video_length / fps)
+    if n_clip < 1:
+        cap.release()
+        raise ValueError("SimpleVQA requires at least one full second of video")
+    tf = transforms.Compose([
+        transforms.Resize([224, 224]), transforms.ToTensor(),
+        transforms.Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
+    ])
+
+    class MotionWindows:
+        def __len__(self):
+            return max(8, n_clip)
+
+        def __iter__(self):
+            # OpenCV capture belongs to this iterator; it is closed on exhaustion
+            # or generator finalization (including exceptions).
+            window = deque(maxlen=32)
+            decoded = 0
+            next_clip = 0
+            last_frame = None
+            last_clip = None
+            try:
+                for _ in range(video_length):
+                    ok, frame = cap.read()
+                    if not ok:
+                        continue
+                    # Keep only a single decoded-frame index, even on corrupt inputs.
+                    idx = decoded
+                    decoded += 1
+                    last_frame = frame
+                    # We need the transformed frame only if a motion window uses it.
+                    first_clip = max(0, (idx - 31 + fps - 1) // fps)
+                    last_including = min(n_clip - 1, idx // fps)
+                    if first_clip > last_including:
+                        continue
+                    tensor = tf(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+                    window.append((idx, tensor))
+                    while next_clip < n_clip and idx >= next_clip * fps + 31:
+                        start = next_clip * fps
+                        selected = [value for pos, value in window if start <= pos < start + 32]
+                        if len(selected) != 32:
+                            raise RuntimeError("SimpleVQA streaming motion window incomplete")
+                        last_clip = torch.stack(selected)
+                        yield last_clip
+                        next_clip += 1
+
+                if last_frame is None:
+                    raise ValueError("SimpleVQA: no decoded frames")
+                # Upstream pads unread frames with the final successfully decoded
+                # frame and pads the last incomplete 32-frame motion window.
+                tail = tf(Image.fromarray(cv2.cvtColor(last_frame, cv2.COLOR_BGR2RGB)))
+                while next_clip < n_clip:
+                    start = next_clip * fps
+                    selected = [value for pos, value in window if start <= pos < start + 32]
+                    # Missing indices are contiguous after the last decoded frame.
+                    first_missing = max(start, decoded)
+                    if len(selected) != max(0, min(decoded, start + 32) - start):
+                        raise RuntimeError("SimpleVQA streaming tail window incomplete")
+                    selected.extend([tail] * (32 - len(selected)))
+                    last_clip = torch.stack(selected)
+                    yield last_clip
+                    next_clip += 1
+                for _ in range(n_clip, 8):
+                    yield last_clip
+            finally:
+                cap.release()
+
+    return MotionWindows(), dist
 '''
 
 # PQ / HLG and common alias strings from ffprobe color_transfer (SDR-only reference).
@@ -465,7 +553,7 @@ def cuda_single_decode_overlay_test_demo(src: Path) -> str:
         )
     if "def video_processing_unified(" in text:
         raise SetupError("upstream test_demo.py already contains video_processing_unified")
-    text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
+    text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_STREAMING_MOTION_FN + "\n" + _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
     text = text.replace(_CUDA_SINGLE_DECODE_MAIN_OLD, _CUDA_SINGLE_DECODE_MAIN_NEW, 1)
     return text
 
