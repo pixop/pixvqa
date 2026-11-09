@@ -19,6 +19,7 @@ from pixvqa_simplevqa.adapter import (
     _CUDA_SINGLE_DECODE_MAIN_OLD,
     _CUDA_UNIFIED_FN_ANCHOR,
     _CUDA_UNIFIED_FN,
+    _CUDA_STREAMING_MOTION_FN,
     cpu_overlay_test_demo,
     cuda_single_decode_overlay_test_demo,
     inspect_video,
@@ -63,6 +64,12 @@ def test_bounded_motion_window_equivalence():
         @staticmethod
         def zeros(shape):
             return FakeBuffer(shape[0])
+
+        @staticmethod
+        def stack(values):
+            result = FakeBuffer(len(values))
+            result.data[:] = values
+            return result
 
     class FakeTransforms:
         @staticmethod
@@ -119,7 +126,7 @@ def test_bounded_motion_window_equivalence():
 
                 capture = FakeCapture()
                 cv2 = SimpleNamespace(
-                    VideoCapture=lambda: capture,
+                    VideoCapture=lambda *args: capture,
                     CAP_PROP_FRAME_COUNT=1,
                     CAP_PROP_FPS=2,
                     COLOR_BGR2RGB=3,
@@ -149,6 +156,29 @@ def test_bounded_motion_window_equivalence():
                 while len(expected_motion) < 8:
                     expected_motion.append(expected_motion[-1])
                 assert [m.data for m in motion] == expected_motion, (fps, seconds, dropped, "motion")
+
+                # Test opt-in streaming windows independently, including clip
+                # overlap, unsampled gaps, decode truncation and 8-clip padding.
+                capture_stream = FakeCapture()
+                cv2_stream = SimpleNamespace(
+                    VideoCapture=lambda *args: capture_stream,
+                    CAP_PROP_FRAME_COUNT=1,
+                    CAP_PROP_FPS=2,
+                    COLOR_BGR2RGB=3,
+                    cvtColor=lambda frame, conversion: frame,
+                )
+                scope_stream = {
+                    "cv2": cv2_stream, "Image": FakeImage, "torch": FakeTorch,
+                    "transforms": FakeTransforms,
+                }
+                exec(_CUDA_STREAMING_MOTION_FN, scope_stream)
+                motion_iter, _ = scope_stream["video_processing_motion_stream"]("mock.mp4")
+                assert len(motion_iter) == max(8, length)
+                stream_windows = list(motion_iter)
+                assert capture_stream.released
+                assert [m.data for m in stream_windows] == expected_motion, (
+                    fps, seconds, dropped, "streaming motion"
+                )
 
     # Regression: invalid metadata should fail before allocating or dividing.
     capture = SimpleNamespace(open=lambda path: True, get=lambda prop: 0, release=lambda: None)
