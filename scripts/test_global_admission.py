@@ -142,6 +142,34 @@ def test_vram_budget_five_cvqa():
     print("OK   vram-five-daemon")
 
 
+
+def test_cvqa_low_memory_is_queued_not_rejected():
+    """A transient MemAvailable dip must not be labeled permanently impossible."""
+    ledger = AdmissionLedger(
+        budget=SchedulerBudget(mem_available_floor_mib=2048, gpu_headroom_mib=512)
+    )
+    profile = ledger.resolve_profile("cvqa-hdr-nr")
+    assert profile.ram_reserve_mib == 2500, "test requires conservative CVQA profile"
+
+    # Reproduce 5-job GNU Parallel failure: 4244 MiB available versus
+    # 2500 MiB reservation + 2048 MiB safety floor.
+    available = [4244.0]
+    with patch("pixvqa_scheduler.admission_ledger.mem_available_mib",
+               side_effect=lambda: available[0]), patch(
+        "pixvqa_scheduler.admission_ledger.gpu_memory_mib",
+        return_value=(0, 16384)
+    ), patch(
+        "pixvqa_scheduler.admission_ledger.check_host_resources",
+        return_value=None
+    ):
+        assert ledger.profile_never_admissible(profile, leases={}) is None
+        assert ledger.can_admit(profile, leases={}) is not None
+        available[0] = 5000.0
+        assert ledger.can_admit(profile, leases={}) is None
+    print("OK   cvqa-transient-ram-queues")
+
+
+
 def test_skip_env_no_double_acquire():
     script = """
 import os, sys
@@ -216,6 +244,7 @@ def test_long_scheduler_dir_socket_fallback():
 def main() -> int:
     test_skip_env_no_double_acquire()
     test_vram_budget_five_cvqa()
+    test_cvqa_low_memory_is_queued_not_rejected()
     test_cli_status()
     test_socket_path_error_message()
     test_long_scheduler_dir_socket_fallback()

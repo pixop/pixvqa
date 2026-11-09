@@ -89,13 +89,10 @@ class AdmissionLedger:
         return max(telemetry, self.vram_reserved)
 
     def profile_never_admissible(self, profile: MetricProfile, *, leases: dict | None = None) -> str | None:
-        floor = self.budget.mem_available_floor_mib
         headroom = self.budget.gpu_headroom_mib
-        if profile.ram_reserve_mib + floor > mem_available_mib():
-            return (
-                f"profile RAM reserve {profile.ram_reserve_mib:.0f} MiB + floor "
-                f"{floor:.0f} MiB exceeds MemAvailable {mem_available_mib():.0f} MiB"
-            )
+        # MemAvailable is dynamic, not a machine-capacity limit. A shortage
+        # here is transient contention and must be handled by can_admit()
+        # (queued with a bounded timeout), never rejected as impossible.
         vram_need = self.vram_delta_for_admit(profile, leases=leases)
         if vram_need <= 0:
             return None
