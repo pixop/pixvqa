@@ -29,6 +29,11 @@ def main() -> int:
         + _CPU_OVERLAY_OLD_BLOCK + "\n"
         + "    with torch.no_grad():\n"
         + "        feature_motion = torch.zeros([n_clip, 2048+256])\n"
+        + "            video_dist_spatial = video_dist_spatial.to(device)\n"
+        + "            for idx, ele in enumerate(video_dist_motion):\n"
+        + "                ele = pack_pathway_output(ele, device)\n"
+        + "                ele_slow_feature, ele_fast_feature = model_motion(ele)\n"
+        + "            outputs = model(video_dist_spatial, feature_motion)\n"
         + _CUDA_SINGLE_DECODE_MAIN_OLD + "\n"
         + _CUDA_UNIFIED_FN_ANCHOR + "\n    pass\n"
     )
@@ -53,6 +58,9 @@ def main() -> int:
                 3 if name == "shared-gpu" else 2
             ), name
             assert "torch.use_deterministic_algorithms(True)" in staged, name
+            assert "def _pixvqa_trace_tensor(stage, value):" in staged, name
+            assert "_pixvqa_trace_tensor('spatial_input', video_dist_spatial)" in staged, name
+            assert "_pixvqa_trace_tensor('motion_features', feature_motion)" in staged, name
             compile(staged, f"<{name}-overlay>", "exec")
             print(f"OK   simplevqa-{name}-motion-eval")
     print("PASS: SimpleVQA motion evaluation-mode regression")
