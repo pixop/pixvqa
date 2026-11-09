@@ -29,6 +29,7 @@ def main() -> int:
         + _CPU_OVERLAY_OLD_BLOCK + "\n"
         + "    with torch.no_grad():\n"
         + "        feature_motion = torch.zeros([n_clip, 2048+256])\n"
+        + "        if True:\n"
         + "            video_dist_spatial = video_dist_spatial.to(device)\n"
         + "            for idx, ele in enumerate(video_dist_motion):\n"
         + "                ele = pack_pathway_output(ele, device)\n"
