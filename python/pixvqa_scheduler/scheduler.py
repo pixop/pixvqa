@@ -1,0 +1,446 @@
+"""Resource-aware metric job scheduler (opt-in, subprocess-only)."""
+from __future__ import annotations
+
+import os
+import threading
+import time
+import uuid
+from collections import deque
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+from .launcher import RunningJob, launch, wait_job
+from .profiles import MetricProfile, SchedulerBudget, default_profiles, profile_for
+from .telemetry import HostTelemetry, check_host_resources
+
+
+def scheduler_enabled() -> bool:
+    return os.environ.get("PIXVQA_SCHEDULER", "").strip().lower() in ("1", "true", "yes")
+
+
+class JobState(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class JobSpec:
+    metric: str
+    command: list[str]
+    job_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    env: dict[str, str] | None = None
+    cwd: str | Path | None = None
+    timeout_s: float | None = None
+    shared_gpu: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class JobResult:
+    spec: JobSpec
+    state: JobState
+    returncode: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    wall_seconds: float = 0.0
+    admission_wait_seconds: float = 0.0
+    error: str | None = None
+    profile: MetricProfile | None = None
+
+
+@dataclass
+class SchedulerConfig:
+    enabled: bool = field(default_factory=scheduler_enabled)
+    budget: SchedulerBudget = field(default_factory=SchedulerBudget)
+    profiles: dict[str, MetricProfile] = field(default_factory=default_profiles)
+    telemetry_poll_s: float = 0.25
+    stagger_start_s: float = field(
+        default_factory=lambda: float(os.environ.get("PIXVQA_SCHEDULER_STAGGER_S", "0"))
+    )
+    cross_invocation_warning: str = (
+        "Scheduler budgets apply only within this Python process. Separate shell "
+        "invocations or pixvqa binaries do not share admission state."
+    )
+
+
+@dataclass
+class SchedulerReport:
+    jobs: list[JobResult]
+    telemetry: dict
+    warnings: list[str]
+    total_wall_seconds: float
+
+
+class _QueuedJob:
+    __slots__ = ("spec", "enqueued_at", "profile", "event", "result")
+
+    def __init__(self, spec: JobSpec, profile: MetricProfile):
+        self.spec = spec
+        self.profile = profile
+        self.enqueued_at = time.monotonic()
+        self.event = threading.Event()
+        self.result: JobResult | None = None
+
+
+class MetricScheduler:
+    """Admits metric subprocess jobs under per-metric and global resource caps."""
+
+    def __init__(self, config: SchedulerConfig | None = None):
+        self.config = config or SchedulerConfig()
+        self._budget = self.config.budget
+        self._profiles = dict(self.config.profiles)
+        self._lock = threading.RLock()
+        self._cv = threading.Condition(self._lock)
+        self._queue: deque[_QueuedJob] = deque()
+        self._active: dict[str, tuple[_QueuedJob, RunningJob, float]] = {}
+        self._results: list[JobResult] = []
+        self._metric_active: dict[str, int] = {}
+        self._ram_reserved = 0.0
+        self._vram_reserved = 0.0
+        self._telemetry = HostTelemetry(poll_interval_s=self.config.telemetry_poll_s)
+        self._dispatcher: threading.Thread | None = None
+        self._shutdown = threading.Event()
+        self._started = False
+        self._abort_reason: str | None = None
+
+    def _resolve_profile(self, spec: JobSpec) -> MetricProfile:
+        if spec.metric == "simplevqa" and spec.shared_gpu:
+            return profile_for("simplevqa", shared_gpu=True)
+        key = spec.metric.lower()
+        if key in self._profiles:
+            return self._profiles[key]
+        return profile_for(spec.metric, shared_gpu=spec.shared_gpu)
+
+    def _shared_vram_key(self, profile: MetricProfile) -> str | None:
+        if profile.execution == "shared_gpu":
+            return f"{profile.metric}:{profile.execution}"
+        return None
+
+    def _shared_slot_occupied(self, profile: MetricProfile) -> bool:
+        key = self._shared_vram_key(profile)
+        if key is None:
+            return False
+        for qj, _, _ in self._active.values():
+            if self._shared_vram_key(qj.profile) == key:
+                return True
+        return False
+
+    def _vram_delta_for_admit(self, profile: MetricProfile) -> float:
+        if profile.execution == "shared_gpu" and self._shared_slot_occupied(profile):
+            return 0.0
+        return profile.vram_reserve_mib
+
+    def _vram_delta_for_release(self, profile: MetricProfile) -> float:
+        if profile.execution == "shared_gpu" and self._shared_slot_occupied(profile):
+            return 0.0
+        return profile.vram_reserve_mib
+
+    def _can_admit(self, profile: MetricProfile) -> str | None:
+        metric = profile.metric
+        cap = profile.effective_max_concurrent()
+        active_metric = self._metric_active.get(metric, 0)
+        if active_metric >= cap:
+            return f"{metric} at per-metric cap {cap}"
+        if len(self._active) >= self._budget.max_total_concurrent:
+            return f"global concurrent cap {self._budget.max_total_concurrent}"
+        reason = check_host_resources(
+            mem_floor_mib=self._budget.mem_available_floor_mib,
+            gpu_headroom_mib=self._budget.gpu_headroom_mib,
+            swap_limit_mib=self._budget.swap_limit_mib,
+        )
+        if reason:
+            return reason
+        from .telemetry import gpu_memory_mib, mem_available_mib
+
+        ram_need = self._ram_reserved + profile.ram_reserve_mib + self._budget.mem_available_floor_mib
+        if mem_available_mib() < ram_need:
+            return (
+                f"RAM reservation {ram_need:.0f} MiB exceeds MemAvailable "
+                f"{mem_available_mib():.0f} MiB"
+            )
+        vram_add = self._vram_delta_for_admit(profile)
+        gpu_used, gpu_total = gpu_memory_mib()
+        if gpu_total > 0 and vram_add > 0:
+            projected = gpu_used + self._vram_reserved + vram_add + self._budget.gpu_headroom_mib
+            if projected > gpu_total:
+                return (
+                    f"VRAM budget would exceed device total "
+                    f"(used {gpu_used} + reserved {self._vram_reserved + vram_add:.0f} + "
+                    f"headroom {self._budget.gpu_headroom_mib} > {gpu_total} MiB)"
+                )
+        return None
+
+    def _reserve(self, profile: MetricProfile) -> None:
+        self._ram_reserved += profile.ram_reserve_mib
+        self._vram_reserved += self._vram_delta_for_admit(profile)
+        self._metric_active[profile.metric] = self._metric_active.get(profile.metric, 0) + 1
+
+    def _release(self, profile: MetricProfile) -> None:
+        self._ram_reserved = max(0.0, self._ram_reserved - profile.ram_reserve_mib)
+        self._vram_reserved = max(0.0, self._vram_reserved - self._vram_delta_for_release(profile))
+        count = self._metric_active.get(profile.metric, 1) - 1
+        if count <= 0:
+            self._metric_active.pop(profile.metric, None)
+        else:
+            self._metric_active[profile.metric] = count
+
+    def _start_telemetry(self) -> None:
+        if not self._started:
+            self._telemetry.start()
+            self._started = True
+
+    def _dispatcher_loop(self) -> None:
+        while not self._shutdown.is_set():
+            with self._cv:
+                while self._queue and not self._abort_reason:
+                    qj = self._queue[0]
+                    reason = self._can_admit(qj.profile)
+                    if reason:
+                        break
+                    self._queue.popleft()
+                    self._reserve(qj.profile)
+                    if self.config.stagger_start_s > 0 and self._active:
+                        self._cv.release()
+                        time.sleep(self.config.stagger_start_s)
+                        self._cv.acquire()
+                    try:
+                        running = launch(
+                            qj.spec.job_id,
+                            qj.spec.metric,
+                            qj.spec.command,
+                            env=qj.spec.env,
+                            cwd=qj.spec.cwd,
+                        )
+                    except OSError as exc:
+                        self._release(qj.profile)
+                        qj.result = JobResult(
+                            spec=qj.spec,
+                            state=JobState.FAILED,
+                            error=str(exc),
+                            profile=qj.profile,
+                            admission_wait_seconds=time.monotonic() - qj.enqueued_at,
+                        )
+                        qj.event.set()
+                        continue
+                    self._active[qj.spec.job_id] = (qj, running, time.monotonic())
+                    threading.Thread(
+                        target=self._watch_job,
+                        args=(qj, running),
+                        daemon=True,
+                        name=f"pixvqa-sched-{qj.spec.job_id}",
+                    ).start()
+                self._cv.wait(timeout=0.2)
+
+    def _watch_job(self, qj: _QueuedJob, running: RunningJob) -> None:
+        def on_tick() -> None:
+            reason = self._telemetry.should_abort(
+                mem_floor_mib=self._budget.mem_available_floor_mib,
+                gpu_headroom_mib=self._budget.gpu_headroom_mib,
+                swap_limit_mib=self._budget.swap_limit_mib,
+            )
+            if reason:
+                with self._lock:
+                    self._abort_reason = reason
+                running.process.kill()
+
+        t0 = time.monotonic()
+        rc, stdout, stderr = wait_job(
+            running,
+            timeout_s=qj.spec.timeout_s,
+            on_tick=on_tick,
+        )
+        wall = time.monotonic() - t0
+        if self._abort_reason:
+            state = JobState.CANCELLED
+            err = self._abort_reason
+        elif rc == -9 and qj.spec.timeout_s:
+            state = JobState.TIMEOUT
+            err = "job timeout"
+        elif rc != 0:
+            state = JobState.FAILED
+            err = f"exit {rc}"
+        else:
+            state = JobState.COMPLETED
+            err = None
+        result = JobResult(
+            spec=qj.spec,
+            state=state,
+            returncode=rc,
+            stdout=stdout,
+            stderr=stderr,
+            wall_seconds=wall,
+            admission_wait_seconds=time.monotonic() - qj.enqueued_at - wall,
+            error=err,
+            profile=qj.profile,
+        )
+        with self._lock:
+            self._active.pop(qj.spec.job_id, None)
+            self._release(qj.profile)
+            self._results.append(result)
+            qj.result = result
+            qj.event.set()
+            self._cv.notify_all()
+
+    def submit(self, spec: JobSpec) -> str:
+        """Queue a job; returns job_id."""
+        if not self.config.enabled:
+            raise RuntimeError(
+                "MetricScheduler is disabled (set PIXVQA_SCHEDULER=1 to enable)"
+            )
+        self._start_telemetry()
+        profile = self._resolve_profile(spec)
+        qj = _QueuedJob(spec, profile)
+        with self._lock:
+            if self._dispatcher is None or not self._dispatcher.is_alive():
+                self._dispatcher = threading.Thread(
+                    target=self._dispatcher_loop, daemon=True, name="pixvqa-sched-dispatch"
+                )
+                self._dispatcher.start()
+            self._queue.append(qj)
+            self._cv.notify_all()
+        return spec.job_id
+
+    def submit_many(self, specs: list[JobSpec]) -> list[str]:
+        return [self.submit(s) for s in specs]
+
+    def _find_queued(self, job_id: str) -> _QueuedJob | None:
+        for qj in self._queue:
+            if qj.spec.job_id == job_id:
+                return qj
+        return None
+
+    def wait_job(self, job_id: str, *, timeout_s: float | None = None) -> JobResult:
+        deadline = time.monotonic() + timeout_s if timeout_s else None
+        qj: _QueuedJob | None = None
+        while True:
+            with self._lock:
+                for r in self._results:
+                    if r.spec.job_id == job_id:
+                        return r
+                qj = self._find_queued(job_id)
+                if qj is None and job_id in self._active:
+                    qj = self._active[job_id][0]
+                if qj is None:
+                    raise KeyError(job_id)
+                if qj.result is not None:
+                    return qj.result
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            if remaining is not None and remaining == 0.0:
+                raise TimeoutError(f"job {job_id} wait timed out")
+            qj.event.wait(timeout=remaining if remaining is not None else 1.0)
+
+    def run_batch(
+        self,
+        specs: list[JobSpec],
+        *,
+        batch_timeout_s: float | None = None,
+    ) -> SchedulerReport:
+        """Submit all specs and block until each reaches a terminal state."""
+        if not self.config.enabled:
+            # Pass-through: run sequentially without admission (backward compatible).
+            return self._run_batch_passthrough(specs)
+        t0 = time.monotonic()
+        ids = self.submit_many(specs)
+        results: list[JobResult] = []
+        deadline = time.monotonic() + batch_timeout_s if batch_timeout_s else None
+        for job_id in ids:
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            try:
+                results.append(self.wait_job(job_id, timeout_s=remaining))
+            except TimeoutError:
+                results.append(
+                    JobResult(
+                        spec=next(s for s in specs if s.job_id == job_id),
+                        state=JobState.TIMEOUT,
+                        error="batch wait timeout",
+                    )
+                )
+        self.shutdown()
+        warnings = [self.config.cross_invocation_warning]
+        if self._abort_reason:
+            warnings.append(f"safety abort: {self._abort_reason}")
+        return SchedulerReport(
+            jobs=results,
+            telemetry=self._telemetry.summary(),
+            warnings=warnings,
+            total_wall_seconds=time.monotonic() - t0,
+        )
+
+    def _run_batch_passthrough(self, specs: list[JobSpec]) -> SchedulerReport:
+        t0 = time.monotonic()
+        results: list[JobResult] = []
+        for spec in specs:
+            profile = self._resolve_profile(spec)
+            t_job = time.monotonic()
+            try:
+                running = launch(spec.job_id, spec.metric, spec.command, env=spec.env, cwd=spec.cwd)
+                rc, stdout, stderr = wait_job(running, timeout_s=spec.timeout_s)
+                state = JobState.COMPLETED if rc == 0 else JobState.FAILED
+                results.append(
+                    JobResult(
+                        spec=spec,
+                        state=state,
+                        returncode=rc,
+                        stdout=stdout,
+                        stderr=stderr,
+                        wall_seconds=time.monotonic() - t_job,
+                        profile=profile,
+                    )
+                )
+            except OSError as exc:
+                results.append(
+                    JobResult(
+                        spec=spec,
+                        state=JobState.FAILED,
+                        error=str(exc),
+                        profile=profile,
+                    )
+                )
+        return SchedulerReport(
+            jobs=results,
+            telemetry={},
+            warnings=["scheduler disabled: sequential pass-through"],
+            total_wall_seconds=time.monotonic() - t0,
+        )
+
+    def shutdown(self) -> None:
+        self._shutdown.set()
+        with self._cv:
+            self._cv.notify_all()
+        if self._dispatcher is not None:
+            self._dispatcher.join(timeout=5)
+        self._telemetry.stop()
+
+    def cancel_all(self, reason: str = "cancelled") -> None:
+        with self._lock:
+            self._abort_reason = reason
+            while self._queue:
+                qj = self._queue.popleft()
+                qj.result = JobResult(
+                    spec=qj.spec,
+                    state=JobState.CANCELLED,
+                    error=reason,
+                    profile=qj.profile,
+                )
+                qj.event.set()
+            for job_id, (_, running, _) in list(self._active.items()):
+                if running.process.poll() is None:
+                    running.process.kill()
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {
+                "queued": len(self._queue),
+                "active": len(self._active),
+                "ram_reserved_mib": round(self._ram_reserved, 1),
+                "vram_reserved_mib": round(self._vram_reserved, 1),
+                "metric_active": dict(self._metric_active),
+                "abort_reason": self._abort_reason,
+            }
