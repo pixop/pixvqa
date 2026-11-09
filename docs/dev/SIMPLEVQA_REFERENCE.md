@@ -134,3 +134,52 @@ when stderr is empty) is included in the error text for diagnosis.
 
 The unrelated Superposition `ENOMEM` native-read failure remains open.
 Do not run experiments on the active separate benchmarking computer.
+
+## Memory optimization experiments (PR #22)
+
+PixVQA's default CUDA path uses a **bounded-window FP32 overlay** that stores only the selected
+SlowFast motion windows. It preserves the pinned model and full-frame spatial sampling.
+
+For a more memory-constrained implementation, an **experimental streaming path** retains
+at most one rolling 32-frame motion window and passes each window to the same upstream
+SlowFast inference loop. It uses a separate motion decode pass (like the upstream
+reference) to avoid storing all selected windows simultaneously. The 448x448 spatial
+samples, model weights, FP32 operations, and final whole-video regressor are unchanged.
+This is **not** the Pixop Prime salient-region/partial-video variant.
+
+The streaming mode is intentionally disabled by default until genuine-checkpoint
+numerical parity and memory profiling are completed. Opt in for an individual
+test with:
+
+```bash
+PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING=1 ./bin/pixvqa \
+  --metrics simplevqa -t /path/to/sdr_clip.mp4
+```
+
+For a three-way comparison with the pinned **unmodified upstream** script and
+both PixVQA variants, from the PixVQA checkout run:
+
+```bash
+.venv/bin/python scripts/benchmark_simplevqa_memory_parity.py \
+  --videos /path/to/clip1.mp4 /path/to/clip2.mp4 \
+  --output /tmp/simplevqa_parity.json
+```
+
+The comparison requires CUDA, installed learned dependencies, upstream assets,
+`/usr/bin/time`, and the pretrained SlowFast cache. It reports full precision
+scores, absolute differences, process peak RSS (GNU time), and elapsed time.
+It **does not** measure process-exclusive GPU VRAM. The initial absolute error
+threshold of 1e-4 is a provisional acceptance gate, not a guarantee of
+perceptual equivalence; review bias, ranking stability and real RD sensitivity.
+
+Do not merge or activate streaming by default based solely on mock tests.
+GPU numerical parity must be demonstrated on representative SDR clips,
+including short, long, high-motion, low-light, and compression-impaired video.
+
+### Reduced-precision research (not enabled)
+
+FP16 and BF16 can be evaluated in a future, separately controlled experiment
+against the validated FP32 implementation. Do not change the default inference
+dtype or checkpoints unless numerical deviation, bias, content rankings, peak
+memory, and throughput are measured and approved. INT8 quantization remains
+a lower-priority research option.
