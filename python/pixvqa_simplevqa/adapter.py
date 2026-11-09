@@ -96,11 +96,17 @@ def video_processing_unified(dist):
         transforms.Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
     ])
 
+    # Keep only the actual 32-frame SlowFast windows, not a tensor of every
+    # decoded frame. Each clip retains the upstream order, shape, and FP32 data.
     transformed_video = torch.zeros([video_length_read, video_channel, 448, 448])
-    transformed_frame_all = torch.zeros([video_length, video_channel, 224, 224])
+    motion_clips = [
+        torch.zeros([video_length_clip, video_channel, 224, 224])
+        for _ in range(video_clip)
+    ]
     video_read_index = 0
     frame_idx = 0
     spatial_idx = 0
+    last_motion_frame = None
 
     for i in range(video_length):
         has_frames, frame = video_capture.read()
@@ -108,7 +114,13 @@ def video_processing_unified(dist):
             continue
         read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         motion_frame = motion_tf(read_frame)
-        transformed_frame_all[video_read_index] = motion_frame
+        last_motion_frame = motion_frame
+        t = video_read_index
+        # A frame can belong to multiple 32-frame windows when fps < 32.
+        first_clip = max(0, (t - video_length_clip + video_frame_rate) // video_frame_rate)
+        last_clip = min(video_clip - 1, t // video_frame_rate)
+        for clip_idx in range(first_clip, last_clip + 1):
+            motion_clips[clip_idx][t - clip_idx * video_frame_rate] = motion_frame
         if (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0):
             transformed_video[spatial_idx] = spatial_tf(read_frame)
             spatial_idx += 1
@@ -118,22 +130,17 @@ def video_processing_unified(dist):
     if spatial_idx < video_length_read:
         for i in range(spatial_idx, video_length_read):
             transformed_video[i] = transformed_video[spatial_idx - 1]
-    if video_read_index < video_length:
-        for i in range(video_read_index, video_length):
-            transformed_frame_all[i] = transformed_frame_all[video_read_index - 1]
+
+    # Upstream pads missing frames with the final decoded frame and also pads
+    # the last incomplete 32-frame window. Empty decode retains zero buffers.
+    if last_motion_frame is not None:
+        for clip_idx, clip_tensor in enumerate(motion_clips):
+            start = clip_idx * video_frame_rate
+            padded_from = min(video_length_clip, max(0, min(video_read_index, video_length) - start))
+            if padded_from < video_length_clip:
+                clip_tensor[padded_from:] = last_motion_frame
 
     video_capture.release()
-    motion_clips = []
-    for i in range(video_clip):
-        clip_tensor = torch.zeros([video_length_clip, video_channel, 224, 224])
-        if (i * video_frame_rate + video_length_clip) <= video_length:
-            clip_tensor = transformed_frame_all[i * video_frame_rate : (i * video_frame_rate + video_length_clip)]
-        else:
-            n = video_length - i * video_frame_rate
-            clip_tensor[:n] = transformed_frame_all[i * video_frame_rate :]
-            for j in range(n, video_length_clip):
-                clip_tensor[j] = clip_tensor[n - 1]
-        motion_clips.append(clip_tensor)
     if video_clip < video_clip_min:
         for i in range(video_clip, video_clip_min):
             motion_clips.append(motion_clips[video_clip - 1])
@@ -499,8 +506,8 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
         }
     # Check dependencies before launching the heavyweight upstream demo.
     # The demo internally loads slowfast_r50(pretrained=True); that call may
-    # trigger PyTorchVideo/hub download and large full-video allocations — not
-    # initiated by this wrapper, but not safe on huge inputs. Never suppress
+    # trigger PyTorchVideo/hub download and substantial model allocations — not
+    # initiated by this wrapper. Never suppress
     # failures or silently accept a randomly initialized backbone.
     with tempfile.TemporaryDirectory(prefix="pixvqa_simplevqa_") as tmp:
         root = Path(tmp)
@@ -515,10 +522,12 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
             upstream_test_demo = "cpu-overlay"
         else:
             try:
-                (root / "test_demo.py").symlink_to(upstream_demo, target_is_directory=False)
+                (root / "test_demo.py").write_text(
+                    cuda_single_decode_overlay_test_demo(upstream_demo), encoding="utf-8"
+                )
             except OSError as exc:
-                raise SetupError(f"could not stage upstream test_demo.py symlink: {exc}") from exc
-            upstream_test_demo = "symlink-unmodified"
+                raise SetupError(f"could not stage CUDA overlay test_demo.py: {exc}") from exc
+            upstream_test_demo = "cuda-bounded-motion-overlay"
         try:
             (root / "model").symlink_to(repo / "model", target_is_directory=True)
         except OSError as exc:
