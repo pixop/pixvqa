@@ -400,6 +400,22 @@ def test_mix_cvqa_simplevqa_profiles():
     print("OK   mix-profiles")
 
 
+def test_cvqa_1080p_batch_profile_defaults():
+    os.environ.pop("PIXVQA_SCHEDULER_CVQA_RAM_MIB", None)
+    os.environ.pop("PIXVQA_SCHEDULER_CVQA_VRAM_MIB", None)
+    os.environ["PIXVQA_SCHEDULER_CVQA_PROFILE"] = "1080p-batch"
+    # Re-import tier defaults (profile_for caches module-level profile).
+    from pixvqa_scheduler import profiles as prof_mod  # noqa: E402
+
+    ram, vram = prof_mod._cvqa_default_reserves()
+    assert ram == 1650.0
+    assert vram == 1300.0
+    os.environ["PIXVQA_SCHEDULER_CVQA_PROFILE"] = "conservative"
+    ram_c, vram_c = prof_mod._cvqa_default_reserves()
+    assert ram_c == 2500.0 and vram_c == 2800.0
+    print("OK   cvqa-profile-tiers")
+
+
 def test_cancel_all():
     os.environ["PIXVQA_SCHEDULER"] = "1"
     sched = MetricScheduler(SchedulerConfig(enabled=True))
@@ -485,6 +501,7 @@ def test_scheduler_enabled_env():
 def main() -> int:
     test_scheduler_enabled_env()
     test_mix_cvqa_simplevqa_profiles()
+    test_cvqa_1080p_batch_profile_defaults()
     test_host_resource_guard_trips()
     test_resource_guard_reexport()
     test_scheduler_disabled_passthrough()

@@ -58,23 +58,45 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
-# Defaults are conservative and keyed to PR #22 measured evidence where available.
+# CVQA reservation tiers (PR #22 RTX 5080 WSL, BasketballDrive 1080p60 60 s loop).
+# Measured 5× bare concurrent: global VRAM peak 5614 MiB, host drop ~7.6 GiB.
+# Do NOT treat 5614/5 as an exact per-process cap — GPU is device-global and jobs
+# load unevenly; use empirical per-job reservations + margin, not naive division.
+_CVQA_1080P_BATCH_RAM_MIB = 1650.0   # ~1.52 GiB/job measured + ~8% margin
+_CVQA_1080P_BATCH_VRAM_MIB = 1300.0  # ~1.12 GiB/job inferred + ~15% margin; floor 1100
+_CVQA_CONSERVATIVE_RAM_MIB = 2500.0  # UHD / unknown content — prior default
+_CVQA_CONSERVATIVE_VRAM_MIB = 2800.0
+
+
+def _cvqa_profile_tier() -> str:
+    return os.environ.get("PIXVQA_SCHEDULER_CVQA_PROFILE", "1080p-batch").strip().lower()
+
+
+def _cvqa_default_reserves() -> tuple[float, float]:
+    """Per-job RAM/VRAM scheduler reservations (accounting only, not RSS/VRAM caps)."""
+    tier = _cvqa_profile_tier()
+    if tier in ("conservative", "uhd", "unknown", "4k", "2160p"):
+        return _CVQA_CONSERVATIVE_RAM_MIB, _CVQA_CONSERVATIVE_VRAM_MIB
+    # 1080p-batch: measured safe for 5 concurrent on RTX 5080; not proven for UHD.
+    return _CVQA_1080P_BATCH_RAM_MIB, _CVQA_1080P_BATCH_VRAM_MIB
+
+
+_cvqa_ram_default, _cvqa_vram_default = _cvqa_default_reserves()
+
 # CompressedVQA-HDR-NR: each ``python -m pixvqa_cvqahdr`` subprocess loads its own
-# model in-process (see adapter ``run()``). Five concurrent pixvqa/python invocations
-# have been reported to complete, but simultaneous independent CUDA model residency
-# was NOT instrumented — do not assume 5× full VRAM without local verification.
+# model in-process (see adapter ``run()``).
 _CVQA_HDR_NR = MetricProfile(
     metric="cvqa-hdr-nr",
     execution="independent",
     max_concurrent=_int_env("PIXVQA_SCHEDULER_MAX_CONCURRENT_CVQA_HDR_NR", 5),
-    ram_reserve_mib=_float_env("PIXVQA_SCHEDULER_CVQA_RAM_MIB", 2500.0),
-    vram_reserve_mib=_float_env("PIXVQA_SCHEDULER_CVQA_VRAM_MIB", 2800.0),
+    ram_reserve_mib=_float_env("PIXVQA_SCHEDULER_CVQA_RAM_MIB", _cvqa_ram_default),
+    vram_reserve_mib=_float_env("PIXVQA_SCHEDULER_CVQA_VRAM_MIB", _cvqa_vram_default),
     module="pixvqa_cvqahdr",
     verified_concurrency=(
         "Each job is a separate Python process (fork/exec from pixvqa C++ or direct "
-        "``python -m pixvqa_cvqahdr``). Model load occurs inside that process "
-        "(``NR_model.SigLIP2_384_multi_dataset()``). Concurrent calls observed to "
-        "succeed in user testing; independent CUDA instances not verified."
+        "``python -m pixvqa_cvqahdr``). PR #22 RTX 5080: 5× concurrent 1080p60 "
+        "BasketballDrive 60 s succeeded (bare GPU peak 5614 MiB global). "
+        "Set PIXVQA_SCHEDULER_CVQA_PROFILE=conservative for UHD/unknown workloads."
     ),
 )
 

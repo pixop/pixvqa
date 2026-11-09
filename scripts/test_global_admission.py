@@ -171,10 +171,33 @@ def test_cli_status():
     print("OK   cli-daemon-status")
 
 
+def test_long_scheduler_dir_socket_fallback():
+    """Nested PIXVQA_SCHEDULER_DIR must fall back to a short AF_UNIX path."""
+    if not admission_daemon_available():
+        print("SKIP long-socket-fallback")
+        return
+    long_dir = tempfile.mkdtemp(prefix="pixvqa-adm-test-")
+    # Simulate validation harness nesting (>107-byte socket path).
+    nested = Path(long_dir) / "reports" / "pr22_validation_20261109" / "cvqa_concurrency" / ".admission_daemon"
+    nested.mkdir(parents=True)
+    sock = nested / "admission.sock"
+    assert len(str(sock)) > 107, f"test setup too short: {len(str(sock))}"
+    os.environ["PIXVQA_SCHEDULER_DIR"] = str(nested)
+    from pixvqa_scheduler.ipc import socket_address  # noqa: E402
+
+    address = socket_address()
+    assert len(address) <= 107, f"fallback socket still too long: {len(address)} {address!r}"
+    ensure_admission_daemon()
+    lease = acquire("cvqa-hdr-nr", timeout_s=10)
+    release(lease)
+    print("OK   long-socket-fallback")
+
+
 def main() -> int:
     test_skip_env_no_double_acquire()
     test_vram_budget_five_cvqa()
     test_cli_status()
+    test_long_scheduler_dir_socket_fallback()
     test_daemon_probe()
     test_parallel_clients()
     test_long_lease_survives_heartbeat_window()

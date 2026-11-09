@@ -21,7 +21,7 @@ The scheduler/daemon:
 
 ## Global admission daemon
 
-Per-user socket under `$XDG_RUNTIME_DIR/pixvqa/` or `$PIXVQA_SCHEDULER_DIR` (WSL/Linux; requires `AF_UNIX` + `flock`).
+Per-user socket under `$XDG_RUNTIME_DIR/pixvqa/` or `$PIXVQA_SCHEDULER_DIR` (WSL/Linux; requires `AF_UNIX` + `flock`). Linux `sun_path` is **107 bytes** (path + NUL). If `PIXVQA_SCHEDULER_DIR/.../admission.sock` would exceed that limit, the runtime dir **automatically falls back** to `/tmp/pixvqa-adm-<uid>-<hash12>/` (deterministic per long path — no namespace collision between distinct dirs). Set `PIXVQA_SCHEDULER_DAEMON_SOCKET` for a fixed short path, or choose a short `PIXVQA_SCHEDULER_DIR` yourself. Overlong explicit socket paths raise `SocketPathError`.
 
 ```bash
 export PIXVQA_SCHEDULER_ADMISSION=1
@@ -96,7 +96,10 @@ python -m pixvqa_scheduler simplevqa-batch \
 | `PIXVQA_SCHEDULER` | off | `1` enables batch orchestrator admission |
 | `PIXVQA_SCHEDULER_ADMISSION` | off | `1` enables global daemon leases in backends / `--scheduler-admission` |
 | `PIXVQA_SCHEDULER_ADMISSION_SKIP` | off | Internal: parent holds lease |
-| `PIXVQA_SCHEDULER_DIR` | `$XDG_RUNTIME_DIR/pixvqa` | Daemon socket + lock directory |
+| `PIXVQA_SCHEDULER_DIR` | `$XDG_RUNTIME_DIR/pixvqa` | Daemon socket + lock directory (auto short fallback if path >107 B) |
+| `PIXVQA_SCHEDULER_CVQA_PROFILE` | `1080p-batch` | `conservative` / `uhd` restores 2500/2800 MiB reserves for unknown/UHD |
+| `PIXVQA_SCHEDULER_CVQA_RAM_MIB` | 1650 (`1080p-batch`) | Per-job host RAM reservation (scheduler accounting) |
+| `PIXVQA_SCHEDULER_CVQA_VRAM_MIB` | 1300 (`1080p-batch`) | Per-job VRAM reservation (not PID-exclusive) |
 | `PIXVQA_SCHEDULER_MAX_CONCURRENT_CVQA_HDR_NR` | 5 | Per-metric cap |
 | `PIXVQA_SCHEDULER_MAX_CONCURRENT_SIMPLEVQA` | 2 | Independent SimpleVQA cap |
 | `PIXVQA_SCHEDULER_MEM_FLOOR_MIB` | 2048 | Minimum MemAvailable |
@@ -108,6 +111,15 @@ python -m pixvqa_scheduler simplevqa-batch \
 ## Reservation accounting
 
 Admission compares **live telemetry** with **scheduler commitments** without double-counting resident memory (same rules as in-process batch scheduler). See commit `42c7419` audit.
+
+### CVQA profile tiers (data-driven caveats)
+
+| Tier | RAM / VRAM per job | Source |
+|------|-------------------|--------|
+| `1080p-batch` (default) | 1650 / 1300 MiB | PR #22 RTX 5080: 5× BasketballDrive 1080p60 60 s bare peak **5614 MiB global VRAM**, ~7.6 GiB host drop. Margins applied; **not** `5614÷5` as an exact per-process value. |
+| `conservative` / `uhd` | 2500 / 2800 MiB | Prior defaults; use for 4K/UHD or unprofiled content. |
+
+Five concurrent 1080p jobs may **queue unnecessarily** under `conservative` reserves even when telemetry shows headroom — switch tier or override env MiB knobs. Scheduler reservations are **not** hard RSS/VRAM caps; live `MemAvailable` / `nvidia-smi` guards still apply.
 
 ## Caveats
 
