@@ -2,6 +2,7 @@
 """Contract tests for the SimpleVQA reference wrapper (no PyTorch required)."""
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from pixvqa_simplevqa.adapter import (
     _CPU_OVERLAY_OLD_BLOCK,
     _CUDA_SINGLE_DECODE_MAIN_OLD,
     _CUDA_UNIFIED_FN_ANCHOR,
+    _CUDA_UNIFIED_FN,
+    _CUDA_STREAMING_MOTION_FN,
     cpu_overlay_test_demo,
     cuda_single_decode_overlay_test_demo,
     inspect_video,
@@ -38,6 +41,174 @@ def _ffprobe_json_pair(stream_obj: dict, fmt_obj: dict) -> list[CompletedProcess
         _completed(0, json.dumps({"format": fmt_obj})),
     ]
 
+
+
+# Exercise the generated CUDA preprocessing overlay without PyTorch or GPU.
+# Integer frame IDs stand in for identically transformed RGB tensors.
+def test_bounded_motion_window_equivalence():
+    from types import SimpleNamespace
+
+    class FakeBuffer:
+        def __init__(self, count):
+            self.data = [None] * count
+
+        def __getitem__(self, index):
+            return self.data[index]
+
+        def __setitem__(self, index, value):
+            if isinstance(index, slice):
+                self.data[index] = [value] * len(range(*index.indices(len(self.data))))
+            else:
+                self.data[index] = value
+
+    class FakeTorch:
+        @staticmethod
+        def zeros(shape):
+            return FakeBuffer(shape[0])
+
+        @staticmethod
+        def stack(values):
+            result = FakeBuffer(len(values))
+            result.data[:] = values
+            return result
+
+    class FakeTransforms:
+        @staticmethod
+        def Compose(operations):
+            return lambda frame: frame
+
+        @staticmethod
+        def Resize(*args):
+            return None
+
+        @staticmethod
+        def CenterCrop(*args):
+            return None
+
+        @staticmethod
+        def ToTensor(*args):
+            return None
+
+        @staticmethod
+        def Normalize(*args, **kwargs):
+            return None
+
+    class FakeImage:
+        @staticmethod
+        def fromarray(frame):
+            return frame
+
+    for fps in (1, 2, 15, 24, 30, 32, 60, 120):
+        for seconds in (1, 2, 8, 60):
+            total = fps * seconds
+            for dropped in (0, 1, min(5, total // 2)):
+                # Failed reads do not advance the upstream decoded-frame index.
+                source = [i for i in range(total) if i < total - dropped]
+                class FakeCapture:
+                    def __init__(self):
+                        self.index = 0
+                        self.released = False
+
+                    def open(self, path):
+                        return True
+
+                    def get(self, prop):
+                        return total if prop == 1 else fps
+
+                    def read(self):
+                        if self.index >= total:
+                            return False, None
+                        i = self.index
+                        self.index += 1
+                        return (i < total - dropped), (i if i < total - dropped else None)
+
+                    def release(self):
+                        self.released = True
+
+                capture = FakeCapture()
+                cv2 = SimpleNamespace(
+                    VideoCapture=lambda *args: capture,
+                    CAP_PROP_FRAME_COUNT=1,
+                    CAP_PROP_FPS=2,
+                    COLOR_BGR2RGB=3,
+                    cvtColor=lambda frame, conversion: frame,
+                )
+                scope = {
+                    "cv2": cv2, "Image": FakeImage, "torch": FakeTorch,
+                    "transforms": FakeTransforms,
+                }
+                exec(_CUDA_UNIFIED_FN, scope)
+                spatial, motion, _ = scope["video_processing_unified"]("mock.mp4")
+                assert capture.released
+                length = total // fps
+                expected = source + ([source[-1]] * (total - len(source)) if source else [None] * total)
+                expected_spatial = [source[i * fps] for i in range(length) if i * fps < len(source)]
+                if len(expected_spatial) < length:
+                    fill = expected_spatial[-1] if expected_spatial else None
+                    expected_spatial += [fill] * (length - len(expected_spatial))
+                assert spatial.data == expected_spatial, (fps, seconds, dropped, "spatial")
+                expected_motion = []
+                for idx in range(length):
+                    start = idx * fps
+                    window = expected[start:start + 32]
+                    if len(window) < 32:
+                        window += [window[-1]] * (32 - len(window))
+                    expected_motion.append(window)
+                while len(expected_motion) < 8:
+                    expected_motion.append(expected_motion[-1])
+                assert [m.data for m in motion] == expected_motion, (fps, seconds, dropped, "motion")
+
+                # Test opt-in streaming windows independently, including clip
+                # overlap, unsampled gaps, decode truncation and 8-clip padding.
+                capture_stream = FakeCapture()
+                cv2_stream = SimpleNamespace(
+                    VideoCapture=lambda *args: capture_stream,
+                    CAP_PROP_FRAME_COUNT=1,
+                    CAP_PROP_FPS=2,
+                    COLOR_BGR2RGB=3,
+                    cvtColor=lambda frame, conversion: frame,
+                )
+                scope_stream = {
+                    "cv2": cv2_stream, "Image": FakeImage, "torch": FakeTorch,
+                    "transforms": FakeTransforms,
+                }
+                exec(_CUDA_STREAMING_MOTION_FN, scope_stream)
+                motion_iter, _ = scope_stream["video_processing_motion_stream"]("mock.mp4")
+                assert len(motion_iter) == max(8, length)
+                if not source:
+                    try:
+                        list(motion_iter)
+                    except ValueError as exc:
+                        assert "no decoded frames" in str(exc)
+                    else:
+                        raise AssertionError("empty decode accepted by streaming backend")
+                    assert capture_stream.released
+                else:
+                    stream_windows = list(motion_iter)
+                    assert capture_stream.released
+                    assert [m.data for m in stream_windows] == expected_motion, (
+                        fps, seconds, dropped, "streaming motion"
+                    )
+
+    # Regression: invalid metadata should fail before allocating or dividing.
+    capture = SimpleNamespace(open=lambda path: True, get=lambda prop: 0, release=lambda: None)
+    cv2 = SimpleNamespace(
+        VideoCapture=lambda: capture, CAP_PROP_FRAME_COUNT=1, CAP_PROP_FPS=2,
+    )
+    scope = {"cv2": cv2, "Image": FakeImage, "torch": FakeTorch, "transforms": FakeTransforms}
+    exec(_CUDA_UNIFIED_FN, scope)
+    try:
+        scope["video_processing_unified"]("bad-fps.mp4")
+    except ValueError as exc:
+        assert "frame rate" in str(exc)
+    else:
+        raise AssertionError("zero FPS was accepted")
+
+
+test_bounded_motion_window_equivalence()
+
+# Keep the optional real-checkpoint parity harness syntactically checked in CPU CI.
+ast.parse((ROOT / "scripts/benchmark_simplevqa_memory_parity.py").read_text(encoding="utf-8"))
 
 with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     d = Path(tmp)
@@ -98,7 +269,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert result["backend"] == "upstream-test_demo"
         result = run(repo, checkpoint, video, device="cuda")
         assert result["device"] == "cuda"
-        assert result["upstream_test_demo"] == "symlink-unmodified"
+        assert result["upstream_test_demo"] == "cuda-streaming-motion-overlay"
         try:
             run(repo, checkpoint, video, device="gpu")
         except SetupError:
@@ -192,6 +363,16 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
             assert "second" in str(e).lower()
         else:
             raise AssertionError("subsecond duration accepted")
+
+    # Upstream pads motion to 8 clips but does not pad spatial; reject <8s clips.
+    two_sec = {**stream_base, "nb_frames": 120}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(two_sec, {"duration": "2.0"})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "8" in str(e)
+        else:
+            raise AssertionError("two-second clip accepted")
 
     # nb_frames too low vs rounded fps
     low_fc = {**stream_base, "nb_frames": 20}
@@ -291,8 +472,8 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
             raise AssertionError("missing ffprobe not SetupError")
 
     # --- upstream subprocess diagnostics (run) ---
-    ok_stream = {**stream_base, "nb_frames": 120}
-    ok_fmt = {"duration": "2.0"}
+    ok_stream = {**stream_base, "nb_frames": 480}
+    ok_fmt = {"duration": "8.0"}
     with patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
     ), patch("pixvqa_simplevqa.adapter.cpu_overlay_test_demo", side_effect=_identity_overlay), patch(
@@ -358,8 +539,15 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     if real_upstream.is_file():
         patched_cuda = cuda_single_decode_overlay_test_demo(real_upstream)
         assert "video_processing_unified" in patched_cuda
+        assert "transformed_frame_all = torch.zeros" not in patched_cuda.split("def video_processing_unified")[1].split("def pack_pathway_output")[0]
+        assert "motion_clips = [" in patched_cuda
         assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
-        assert "video_processing_spatial(config.dist)" not in patched_cuda.split("def main")[1]
+        main_body = patched_cuda.split("def main")[1]
+        assert "video_processing_motion_stream(config.dist)" in main_body
+        assert "video_processing_motion(config.dist)" not in main_body
+        # Default streaming keeps upstream spatial decode; legacy bounded is unified.
+        assert main_body.count("video_processing_spatial(config.dist)") == 1
+        assert "PIXVQA_SIMPLEVQA_LEGACY_BOUNDED" in main_body
         assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
         bad_cuda = d / "bad_cuda_upstream"
         bad_cuda.mkdir()

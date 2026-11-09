@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+from pixvqa_scheduler.admission import AdmissionError, optional_admission
+
 from .adapter import InferenceError, SetupError, run, validate
 
 
@@ -61,6 +63,14 @@ def main(argv=None) -> int:
         action="store_true",
         help="Opt-in: reuse a persistent CUDA worker to amortize import cost across clips.",
     )
+    ap.add_argument(
+        "--use-shared-gpu-worker",
+        action="store_true",
+        help=(
+            "Opt-in prototype: one cross-process CUDA model scores video paths from "
+            "multiple clients (serialized GPU queue; not pipelined)."
+        ),
+    )
     args = ap.parse_args(argv)
     if args.max_frames not in (-1, 0):
         print("pixvqa-simplevqa: --max-frames is not enforced by the upstream demo (full-clip score)",
@@ -72,15 +82,28 @@ def main(argv=None) -> int:
             result["note"] = "SlowFast pretrained cache and successful inference not checked."
         else:
             dev = resolve_device(args.device)
-            result = run(
-                args.repo,
-                args.checkpoint,
-                args.test,
-                device=dev,
-                ffprobe=args.ffprobe,
-                timeout=args.timeout,
-                use_worker=args.use_worker,
-            )
+            if args.use_worker and args.use_shared_gpu_worker:
+                print(
+                    "pixvqa-simplevqa: --use-worker and --use-shared-gpu-worker are mutually exclusive",
+                    file=sys.stderr,
+                )
+                return 2
+            with optional_admission(
+                "simplevqa", shared_gpu=args.use_shared_gpu_worker
+            ):
+                result = run(
+                    args.repo,
+                    args.checkpoint,
+                    args.test,
+                    device=dev,
+                    ffprobe=args.ffprobe,
+                    timeout=args.timeout,
+                    use_worker=args.use_worker,
+                    use_shared_gpu_worker=args.use_shared_gpu_worker,
+                )
+    except AdmissionError as exc:
+        print(f"pixvqa-simplevqa: admission: {exc}", file=sys.stderr)
+        return 3
     except SetupError as exc:
         print(f"pixvqa-simplevqa: setup: {exc}", file=sys.stderr)
         return 2

@@ -10,6 +10,7 @@ import os
 import sys
 
 from pixvqa_cvqahdr.adapter import AdapterError, PreflightError, preflight, run
+from pixvqa_scheduler.admission import AdmissionError, optional_admission
 
 
 @contextlib.contextmanager
@@ -91,16 +92,20 @@ def main(argv=None) -> int:
                 preflight(args.test, args.repo, args.checkpoint, args.profile, args.device,
                           max_frames=args.max_frames)
             else:
-                record = run(
-                    args.test,
-                    args.repo,
-                    args.checkpoint,
-                    args.profile,
-                    args.device,
-                    args.output_json,
-                    args.verify_decoded_frames,
-                    max_frames=args.max_frames,
-                )
+                with optional_admission("cvqa-hdr-nr"):
+                    record = run(
+                        args.test,
+                        args.repo,
+                        args.checkpoint,
+                        args.profile,
+                        args.device,
+                        args.output_json,
+                        args.verify_decoded_frames,
+                        max_frames=args.max_frames,
+                    )
+    except AdmissionError as exc:
+        print(f"pixvqa-cvqa-hdr-nr: admission: {exc}", file=sys.stderr)
+        return 3
     except PreflightError as exc:
         print(f"pixvqa-cvqa-hdr-nr: error: {exc}", file=sys.stderr)
         return 2

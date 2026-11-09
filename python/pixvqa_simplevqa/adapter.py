@@ -4,9 +4,11 @@ No PyTorch code is vendored. The official demo is executed in a temporary,
 isolated working directory to satisfy its fixed relative ckpts/ path.
 CPU runs a staged overlay (no DataParallel; ``map_location`` on load) because
 upstream unconditionally wraps the model in DataParallel. The default CUDA
-path symlinks upstream ``test_demo.py`` unchanged. Optional ``--use-worker``
-stages a parity-reviewed single-decode overlay and amortizes imports for batch
-CUDA scoring. This is a parity baseline, not a native implementation.
+path stages a rolling-window streaming overlay (spatial decode + yielded
+motion windows). Optional ``--use-worker`` amortizes imports for batch CUDA
+scoring. A legacy bounded single-decode overlay remains internal-only behind
+``PIXVQA_SIMPLEVQA_LEGACY_BOUNDED=1`` (TODO: remove). This is a parity
+baseline, not a native implementation.
 """
 from __future__ import annotations
 
@@ -68,7 +70,12 @@ _CPU_OVERLAY_EXTRA = (
 # Parity-reviewed on official 960x540/8s clip (exact FP32 score 2.9507508277893066).
 _CUDA_SINGLE_DECODE_MAIN_OLD = """        video_dist_spatial, video_name = video_processing_spatial(config.dist)
         video_dist_motion, video_name = video_processing_motion(config.dist)"""
-_CUDA_SINGLE_DECODE_MAIN_NEW = """        video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)"""
+_CUDA_SINGLE_DECODE_MAIN_NEW = """        if os.environ.get('PIXVQA_SIMPLEVQA_LEGACY_BOUNDED') == '1':
+            # TODO(PR #22): remove legacy bounded path once streaming is sole default.
+            video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)
+        else:
+            video_dist_spatial, video_name = video_processing_spatial(config.dist)
+            video_dist_motion, video_name = video_processing_motion_stream(config.dist)"""
 _CUDA_UNIFIED_FN_ANCHOR = "def pack_pathway_output(frames, device):"
 _CUDA_UNIFIED_FN = '''
 
@@ -78,10 +85,12 @@ def video_processing_unified(dist):
     video_name_dis = video_name
     video_capture = cv2.VideoCapture()
     video_capture.open(dist)
-    cap = cv2.VideoCapture(dist)
     video_channel = 3
-    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    video_frame_rate = int(round(cap.get(cv2.CAP_PROP_FPS)))
+    video_length = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_frame_rate = int(round(video_capture.get(cv2.CAP_PROP_FPS)))
+    if video_frame_rate <= 0:
+        video_capture.release()
+        raise ValueError("SimpleVQA: OpenCV reported an invalid frame rate")
     video_length_read = int(video_length / video_frame_rate)
     video_clip = int(video_length / video_frame_rate)
     video_clip_min = 8
@@ -96,48 +105,152 @@ def video_processing_unified(dist):
         transforms.Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
     ])
 
+    # Keep only the actual 32-frame SlowFast windows, not a tensor of every
+    # decoded frame. Each clip retains the upstream order, shape, and FP32 data.
     transformed_video = torch.zeros([video_length_read, video_channel, 448, 448])
-    transformed_frame_all = torch.zeros([video_length, video_channel, 224, 224])
+    motion_clips = [
+        torch.zeros([video_length_clip, video_channel, 224, 224])
+        for _ in range(video_clip)
+    ]
     video_read_index = 0
     frame_idx = 0
     spatial_idx = 0
+    last_decoded_frame = None
 
     for i in range(video_length):
         has_frames, frame = video_capture.read()
         if not has_frames:
             continue
-        read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        motion_frame = motion_tf(read_frame)
-        transformed_frame_all[video_read_index] = motion_frame
-        if (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0):
-            transformed_video[spatial_idx] = spatial_tf(read_frame)
-            spatial_idx += 1
+        # Retain the last decoded BGR frame for exact upstream tail padding.
+        # It may lie beyond the final 32-frame motion window.
+        last_decoded_frame = frame
+        t = video_read_index
+        # A frame can belong to multiple 32-frame windows when fps < 32.
+        first_clip = max(0, (t - video_length_clip + video_frame_rate) // video_frame_rate)
+        last_clip = min(video_clip - 1, t // video_frame_rate)
+        need_motion = first_clip <= last_clip
+        need_spatial = (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0)
+        if need_motion or need_spatial:
+            read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if need_motion:
+                motion_frame = motion_tf(read_frame)
+                for clip_idx in range(first_clip, last_clip + 1):
+                    motion_clips[clip_idx][t - clip_idx * video_frame_rate] = motion_frame
+            if need_spatial:
+                transformed_video[spatial_idx] = spatial_tf(read_frame)
+                spatial_idx += 1
         video_read_index += 1
         frame_idx += 1
 
     if spatial_idx < video_length_read:
         for i in range(spatial_idx, video_length_read):
             transformed_video[i] = transformed_video[spatial_idx - 1]
-    if video_read_index < video_length:
-        for i in range(video_read_index, video_length):
-            transformed_frame_all[i] = transformed_frame_all[video_read_index - 1]
+
+    # The upstream reference pads a truncated decode with its final frame,
+    # then pads any incomplete 32-frame window with the same last frame.
+    # Convert that tail frame only if one of the selected windows needs it.
+    needs_padding = any(
+        video_read_index < clip_idx * video_frame_rate + video_length_clip
+        for clip_idx in range(video_clip)
+    )
+    if last_decoded_frame is not None and needs_padding:
+        last_image = Image.fromarray(cv2.cvtColor(last_decoded_frame, cv2.COLOR_BGR2RGB))
+        last_motion_frame = motion_tf(last_image)
+        for clip_idx, clip_tensor in enumerate(motion_clips):
+            start = clip_idx * video_frame_rate
+            padded_from = min(video_length_clip, max(0, video_read_index - start))
+            if padded_from < video_length_clip:
+                clip_tensor[padded_from:] = last_motion_frame
 
     video_capture.release()
-    motion_clips = []
-    for i in range(video_clip):
-        clip_tensor = torch.zeros([video_length_clip, video_channel, 224, 224])
-        if (i * video_frame_rate + video_length_clip) <= video_length:
-            clip_tensor = transformed_frame_all[i * video_frame_rate : (i * video_frame_rate + video_length_clip)]
-        else:
-            n = video_length - i * video_frame_rate
-            clip_tensor[:n] = transformed_frame_all[i * video_frame_rate :]
-            for j in range(n, video_length_clip):
-                clip_tensor[j] = clip_tensor[n - 1]
-        motion_clips.append(clip_tensor)
     if video_clip < video_clip_min:
         for i in range(video_clip, video_clip_min):
             motion_clips.append(motion_clips[video_clip - 1])
     return transformed_video, motion_clips, video_name_dis
+'''
+
+# Default CUDA rolling-window motion decode. Preserves all selected full-frame
+# spatial samples and exactly the same SlowFast motion windows as upstream.
+# Legacy bounded alternative: video_processing_unified (single decode pass).
+_CUDA_STREAMING_MOTION_FN = '''
+def video_processing_motion_stream(dist):
+    """Yield upstream SlowFast windows while keeping at most 32 decoded tensors."""
+    from collections import deque
+
+    cap = cv2.VideoCapture(dist)
+    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = int(round(cap.get(cv2.CAP_PROP_FPS)))
+    if fps <= 0:
+        cap.release()
+        raise ValueError("SimpleVQA: OpenCV reported an invalid frame rate")
+    n_clip = int(video_length / fps)
+    if n_clip < 1:
+        cap.release()
+        raise ValueError("SimpleVQA requires at least one full second of video")
+    tf = transforms.Compose([
+        transforms.Resize([224, 224]), transforms.ToTensor(),
+        transforms.Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
+    ])
+
+    class MotionWindows:
+        def __len__(self):
+            return max(8, n_clip)
+
+        def __iter__(self):
+            # OpenCV capture belongs to this iterator; it is closed on exhaustion
+            # or generator finalization (including exceptions).
+            window = deque(maxlen=32)
+            decoded = 0
+            next_clip = 0
+            last_frame = None
+            last_clip = None
+            try:
+                for _ in range(video_length):
+                    ok, frame = cap.read()
+                    if not ok:
+                        continue
+                    # Keep only a single decoded-frame index, even on corrupt inputs.
+                    idx = decoded
+                    decoded += 1
+                    last_frame = frame
+                    # We need the transformed frame only if a motion window uses it.
+                    first_clip = max(0, (idx - 31 + fps - 1) // fps)
+                    last_including = min(n_clip - 1, idx // fps)
+                    if first_clip > last_including:
+                        continue
+                    tensor = tf(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+                    window.append((idx, tensor))
+                    while next_clip < n_clip and idx >= next_clip * fps + 31:
+                        start = next_clip * fps
+                        selected = [value for pos, value in window if start <= pos < start + 32]
+                        if len(selected) != 32:
+                            raise RuntimeError("SimpleVQA streaming motion window incomplete")
+                        last_clip = torch.stack(selected)
+                        yield last_clip
+                        next_clip += 1
+
+                if last_frame is None:
+                    raise ValueError("SimpleVQA: no decoded frames")
+                # Upstream pads unread frames with the final successfully decoded
+                # frame and pads the last incomplete 32-frame motion window.
+                tail = tf(Image.fromarray(cv2.cvtColor(last_frame, cv2.COLOR_BGR2RGB)))
+                while next_clip < n_clip:
+                    start = next_clip * fps
+                    selected = [value for pos, value in window if start <= pos < start + 32]
+                    # Missing indices are contiguous after the last decoded frame.
+                    first_missing = max(start, decoded)
+                    if len(selected) != max(0, min(decoded, start + 32) - start):
+                        raise RuntimeError("SimpleVQA streaming tail window incomplete")
+                    selected.extend([tail] * (32 - len(selected)))
+                    last_clip = torch.stack(selected)
+                    yield last_clip
+                    next_clip += 1
+                for _ in range(n_clip, 8):
+                    yield last_clip
+            finally:
+                cap.release()
+
+    return MotionWindows(), dist
 '''
 
 # PQ / HLG and common alias strings from ffprobe color_transfer (SDR-only reference).
@@ -148,6 +261,8 @@ _HDR_TRANSFER_REJECT = frozenset({
     "hlg",
     "smpte428",
 })
+# Upstream pads motion clips to this minimum while keeping one spatial sample per second.
+_UPSTREAM_CLIP_MIN = 8
 
 
 def digest(path: Path) -> str:
@@ -352,6 +467,19 @@ def inspect_video(path: Path, ffprobe: str = "ffprobe") -> dict:
             "cannot verify video length for SimpleVQA preflight (missing nb_frames and duration)"
         )
 
+    if nb_parsed is not None:
+        spatial_samples = nb_parsed // rounded_fps
+        if spatial_samples < _UPSTREAM_CLIP_MIN:
+            raise SetupError(
+                f"upstream SimpleVQA requires at least {_UPSTREAM_CLIP_MIN} spatial "
+                f"samples (~{_UPSTREAM_CLIP_MIN}s); got {spatial_samples}"
+            )
+    elif duration_s is not None and duration_s < float(_UPSTREAM_CLIP_MIN):
+        raise SetupError(
+            f"upstream SimpleVQA requires at least {_UPSTREAM_CLIP_MIN}s of video "
+            f"(motion clips pad to {_UPSTREAM_CLIP_MIN} while spatial stays at duration)"
+        )
+
     tr_raw = stream.get("color_transfer")
     tr_norm = str(tr_raw).strip().lower() if tr_raw not in (None, "") else None
     if tr_norm in _HDR_TRANSFER_REJECT:
@@ -422,6 +550,66 @@ def cpu_overlay_test_demo(src: Path) -> str:
     return text
 
 
+_SHARED_GPU_MODEL_FN = '''
+
+_MODEL_CACHE = None
+
+def load_models_once(device):
+    """Load SlowFast + ResNet regressor once; reuse for all subsequent inferences."""
+    global _MODEL_CACHE
+    if _MODEL_CACHE is not None:
+        return _MODEL_CACHE
+    model_motion = slowfast()
+    model_motion = model_motion.to(device)
+    model = UGC_BVQA_model.resnet50(pretrained=False)
+    model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.load_state_dict(torch.load('ckpts/UGC_BVQA_model.pth'))
+    model.eval()
+    _MODEL_CACHE = (model_motion, model, device)
+    return _MODEL_CACHE
+
+
+def infer_from_tensors(spatial_cpu, motion_clips, device=None):
+    """FP32 inference from CPU spatial tensor and motion clip tensors (parity with main())."""
+    if device is None:
+        device = torch.device('cuda')
+    model_motion, model, _ = load_models_once(device)
+    with torch.no_grad():
+        model.eval()
+        video_dist_spatial = spatial_cpu.to(device)
+        video_dist_spatial = video_dist_spatial.unsqueeze(dim=0)
+        n_clip = len(motion_clips)
+        feature_motion = torch.zeros([n_clip, 2048 + 256])
+        for idx, ele in enumerate(motion_clips):
+            ele = ele.unsqueeze(dim=0)
+            ele = ele.permute(0, 2, 1, 3, 4)
+            ele = pack_pathway_output(ele, device)
+            ele_slow_feature, ele_fast_feature = model_motion(ele)
+            ele_slow_feature = ele_slow_feature.squeeze()
+            ele_fast_feature = ele_fast_feature.squeeze()
+            ele_feature_motion = torch.cat([ele_slow_feature, ele_fast_feature])
+            ele_feature_motion = ele_feature_motion.unsqueeze(dim=0)
+            feature_motion[idx] = ele_feature_motion
+        feature_motion = feature_motion.unsqueeze(dim=0)
+        outputs = model(video_dist_spatial, feature_motion)
+        return outputs.item()
+
+
+def score_video_path(dist, device=None):
+    """Decode (streaming overlay) + single-model inference — used by shared GPU daemon."""
+    if device is None:
+        device = torch.device('cuda')
+    load_models_once(device)
+    video_dist_spatial, video_name = video_processing_spatial(dist)
+    video_dist_motion, _ = video_processing_motion_stream(dist)
+    score = infer_from_tensors(video_dist_spatial, video_dist_motion, device)
+    return score, video_name
+'''
+
+_MAIN_ANCHOR = "def main(config):"
+
+
 def cuda_single_decode_overlay_test_demo(src: Path) -> str:
     """Return CUDA test_demo.py with single OpenCV decode (parity-reviewed; no math change).
 
@@ -443,8 +631,21 @@ def cuda_single_decode_overlay_test_demo(src: Path) -> str:
         )
     if "def video_processing_unified(" in text:
         raise SetupError("upstream test_demo.py already contains video_processing_unified")
-    text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
+    text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_STREAMING_MOTION_FN + "\n" + _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
     text = text.replace(_CUDA_SINGLE_DECODE_MAIN_OLD, _CUDA_SINGLE_DECODE_MAIN_NEW, 1)
+    return text
+
+
+def cuda_shared_gpu_overlay_test_demo(src: Path) -> str:
+    """Streaming CUDA overlay plus one-time model load and tensor-level inference API."""
+    text = cuda_single_decode_overlay_test_demo(src)
+    if "def load_models_once(" in text:
+        return text
+    if _MAIN_ANCHOR not in text:
+        raise SetupError(
+            "upstream test_demo.py layout changed; main() anchor not found for shared GPU overlay"
+        )
+    text = text.replace(_MAIN_ANCHOR, _SHARED_GPU_MODEL_FN + "\n" + _MAIN_ANCHOR, 1)
     return text
 
 
@@ -470,14 +671,37 @@ def parse_score(text: str, expected_video: Path) -> float:
 
 def run(repo: Path, checkpoint: Path, video: Path, *,
         device: str = "cpu", ffprobe: str = "ffprobe",
-        timeout: int = 3600, use_worker: bool = False) -> dict:
+        timeout: int = 3600, use_worker: bool = False,
+        use_shared_gpu_worker: bool = False) -> dict:
     if device not in ("cpu", "cuda"):
         raise SetupError("device must be cpu or cuda")
     if timeout <= 0:
         raise SetupError("timeout must be positive")
+    if use_worker and use_shared_gpu_worker:
+        raise SetupError("use_worker and use_shared_gpu_worker are mutually exclusive")
     info = validate(repo, checkpoint, video, ffprobe=ffprobe)
     repo, checkpoint, video = Path(info["repo"]), Path(info["checkpoint"]), Path(info["video"])
     video_in = str(video)
+    if use_shared_gpu_worker:
+        if device != "cuda":
+            raise SetupError("shared GPU worker backend requires device=cuda")
+        from .shared_gpu_client import run_via_shared_gpu_worker
+
+        score, worker_meta = run_via_shared_gpu_worker(
+            repo, checkpoint, video, timeout=timeout,
+        )
+        return {
+            "metric": "simplevqa", "quality_score": score, "device": device,
+            "checkpoint_sha256": digest(checkpoint),
+            "upstream_repo": str(repo), "upstream_commit": git_revision(repo),
+            "upstream_test_demo": "cuda-shared-gpu-worker",
+            "video": str(video), "video_metadata": info["input"],
+            "backend": "shared-gpu-worker",
+            "shared_gpu_worker": worker_meta,
+            "temporal_semantics": "pooled-video",
+            "slowfast_pretrained_source": "upstream PyTorchVideo pretrained cache/download",
+            "runtime_stack": info.get("runtime_stack") or runtime_stack_versions(),
+        }
     if use_worker:
         if device != "cuda":
             raise SetupError("persistent worker backend requires device=cuda")
@@ -499,8 +723,8 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
         }
     # Check dependencies before launching the heavyweight upstream demo.
     # The demo internally loads slowfast_r50(pretrained=True); that call may
-    # trigger PyTorchVideo/hub download and large full-video allocations — not
-    # initiated by this wrapper, but not safe on huge inputs. Never suppress
+    # trigger PyTorchVideo/hub download and substantial model allocations — not
+    # initiated by this wrapper. Never suppress
     # failures or silently accept a randomly initialized backbone.
     with tempfile.TemporaryDirectory(prefix="pixvqa_simplevqa_") as tmp:
         root = Path(tmp)
@@ -515,10 +739,12 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
             upstream_test_demo = "cpu-overlay"
         else:
             try:
-                (root / "test_demo.py").symlink_to(upstream_demo, target_is_directory=False)
+                (root / "test_demo.py").write_text(
+                    cuda_single_decode_overlay_test_demo(upstream_demo), encoding="utf-8"
+                )
             except OSError as exc:
-                raise SetupError(f"could not stage upstream test_demo.py symlink: {exc}") from exc
-            upstream_test_demo = "symlink-unmodified"
+                raise SetupError(f"could not stage CUDA overlay test_demo.py: {exc}") from exc
+            upstream_test_demo = "cuda-streaming-motion-overlay"
         try:
             (root / "model").symlink_to(repo / "model", target_is_directory=True)
         except OSError as exc:
