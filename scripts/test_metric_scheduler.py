@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import tempfile
 import textwrap
 import time
@@ -373,13 +374,37 @@ def test_gpu_guard_abort_during_job():
         )
     )
     sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(2.0), job_id="guarded"))
-    time.sleep(0.05)
-    with patch.object(sched._telemetry, "should_abort", return_value="gpu spike"):
-        time.sleep(0.3)
-    r = sched.wait_job("guarded", timeout_s=10)
-    assert r.state == JobState.CANCELLED
-    assert "gpu spike" in (r.error or "")
-    sched.shutdown()
+    # Admission and subprocess launch may take >50 ms on a busy host.
+    # Wait for a live process before simulating the GPU safety violation.
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        with sched._lock:
+            active = sched._active.get("guarded")
+            if active is not None and active[1].process.poll() is None:
+                break
+        time.sleep(0.01)
+    else:
+        result = sched.wait_job("guarded", timeout_s=1)
+        sched.shutdown()
+        raise AssertionError(f"guarded job never reached RUNNING: {result}")
+
+    spike_observed = threading.Event()
+
+    def fake_gpu_spike(**_kwargs):
+        spike_observed.set()
+        return "gpu spike"
+
+    try:
+        with patch.object(sched._telemetry, "should_abort", side_effect=fake_gpu_spike):
+            assert spike_observed.wait(timeout=1.5), "running-job GPU guard was not polled"
+            r = sched.wait_job("guarded", timeout_s=10)
+        assert r.state == JobState.CANCELLED, (
+            f"expected GPU-safety cancellation; got {r.state}, "
+            f"returncode={r.returncode}, error={r.error!r}"
+        )
+        assert "gpu spike" in (r.error or "")
+    finally:
+        sched.shutdown()
     print("OK   gpu-guard-abort")
 
 
