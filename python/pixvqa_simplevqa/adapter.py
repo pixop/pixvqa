@@ -258,6 +258,8 @@ _HDR_TRANSFER_REJECT = frozenset({
     "hlg",
     "smpte428",
 })
+# Upstream pads motion clips to this minimum while keeping one spatial sample per second.
+_UPSTREAM_CLIP_MIN = 8
 
 
 def digest(path: Path) -> str:
@@ -460,6 +462,19 @@ def inspect_video(path: Path, ffprobe: str = "ffprobe") -> dict:
     else:
         raise SetupError(
             "cannot verify video length for SimpleVQA preflight (missing nb_frames and duration)"
+        )
+
+    if nb_parsed is not None:
+        spatial_samples = nb_parsed // rounded_fps
+        if spatial_samples < _UPSTREAM_CLIP_MIN:
+            raise SetupError(
+                f"upstream SimpleVQA requires at least {_UPSTREAM_CLIP_MIN} spatial "
+                f"samples (~{_UPSTREAM_CLIP_MIN}s); got {spatial_samples}"
+            )
+    elif duration_s is not None and duration_s < float(_UPSTREAM_CLIP_MIN):
+        raise SetupError(
+            f"upstream SimpleVQA requires at least {_UPSTREAM_CLIP_MIN}s of video "
+            f"(motion clips pad to {_UPSTREAM_CLIP_MIN} while spatial stays at duration)"
         )
 
     tr_raw = stream.get("color_transfer")

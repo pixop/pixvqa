@@ -364,6 +364,16 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         else:
             raise AssertionError("subsecond duration accepted")
 
+    # Upstream pads motion to 8 clips but does not pad spatial; reject <8s clips.
+    two_sec = {**stream_base, "nb_frames": 120}
+    with _patch_ffprobe_sequence(_ffprobe_json_pair(two_sec, {"duration": "2.0"})):
+        try:
+            inspect_video(video)
+        except SetupError as e:
+            assert "8" in str(e)
+        else:
+            raise AssertionError("two-second clip accepted")
+
     # nb_frames too low vs rounded fps
     low_fc = {**stream_base, "nb_frames": 20}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(low_fc, {"duration": "5.0"})):
@@ -462,8 +472,8 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
             raise AssertionError("missing ffprobe not SetupError")
 
     # --- upstream subprocess diagnostics (run) ---
-    ok_stream = {**stream_base, "nb_frames": 120}
-    ok_fmt = {"duration": "2.0"}
+    ok_stream = {**stream_base, "nb_frames": 480}
+    ok_fmt = {"duration": "8.0"}
     with patch(
         "pixvqa_simplevqa.adapter.importlib.util.find_spec", return_value=object()
     ), patch("pixvqa_simplevqa.adapter.cpu_overlay_test_demo", side_effect=_identity_overlay), patch(
@@ -532,7 +542,11 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert "transformed_frame_all = torch.zeros" not in patched_cuda.split("def video_processing_unified")[1].split("def pack_pathway_output")[0]
         assert "motion_clips = [" in patched_cuda
         assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
-        assert "video_processing_spatial(config.dist)" not in patched_cuda.split("def main")[1]
+        main_body = patched_cuda.split("def main")[1]
+        assert "video_processing_unified(config.dist)" in main_body
+        assert "video_processing_motion(config.dist)" not in main_body
+        # Opt-in streaming keeps upstream spatial decode; bounded path is unified.
+        assert main_body.count("video_processing_spatial(config.dist)") == 1
         assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
         bad_cuda = d / "bad_cuda_upstream"
         bad_cuda.mkdir()

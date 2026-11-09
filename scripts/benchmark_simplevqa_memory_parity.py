@@ -19,6 +19,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "python"))
+from pixvqa_simplevqa.adapter import SetupError, inspect_video  # noqa: E402
+
 MAX_RSS_RE = re.compile(r"Maximum resident set size \(kbytes\):\s*(\d+)")
 
 
@@ -39,8 +42,8 @@ def invoke(command: list[str], *, cwd: Path, environment: dict[str, str],
     duration = time.monotonic() - started
     if result.returncode:
         raise RuntimeError(
-            f"{label}: exited {result.returncode}\\n"
-            f"stdout tail: {result.stdout[-1000:]}\\n"
+            f"{label}: exited {result.returncode}\n"
+            f"stdout tail: {result.stdout[-1000:]}\n"
             f"stderr tail: {result.stderr[-2000:]}"
         )
     resource_text = time_file.read_text(encoding="utf-8", errors="replace")
@@ -130,6 +133,10 @@ def main() -> int:
         video = raw.resolve()
         if not video.is_file():
             parser.error(f"video not found: {video}")
+        try:
+            inspect_video(video)
+        except SetupError as exc:
+            parser.error(f"{video}: preflight failed ({exc})")
         results.append(evaluate(video, repo=repo, checkpoint=checkpoint,
                                 timeout=args.timeout))
     worst = max(
