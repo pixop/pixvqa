@@ -78,10 +78,12 @@ def video_processing_unified(dist):
     video_name_dis = video_name
     video_capture = cv2.VideoCapture()
     video_capture.open(dist)
-    cap = cv2.VideoCapture(dist)
     video_channel = 3
-    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    video_frame_rate = int(round(cap.get(cv2.CAP_PROP_FPS)))
+    video_length = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_frame_rate = int(round(video_capture.get(cv2.CAP_PROP_FPS)))
+    if video_frame_rate <= 0:
+        video_capture.release()
+        raise ValueError("SimpleVQA: OpenCV reported an invalid frame rate")
     video_length_read = int(video_length / video_frame_rate)
     video_clip = int(video_length / video_frame_rate)
     video_clip_min = 8
