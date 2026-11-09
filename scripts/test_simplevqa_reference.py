@@ -98,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert result["backend"] == "upstream-test_demo"
         result = run(repo, checkpoint, video, device="cuda")
         assert result["device"] == "cuda"
-        assert result["upstream_test_demo"] == "symlink-unmodified"
+        assert result["upstream_test_demo"] == "cuda-bounded-motion-overlay"
         try:
             run(repo, checkpoint, video, device="gpu")
         except SetupError:
@@ -358,6 +358,8 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     if real_upstream.is_file():
         patched_cuda = cuda_single_decode_overlay_test_demo(real_upstream)
         assert "video_processing_unified" in patched_cuda
+        assert "transformed_frame_all = torch.zeros" not in patched_cuda.split("def video_processing_unified")[1].split("def pack_pathway_output")[0]
+        assert "motion_clips = [" in patched_cuda
         assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
         assert "video_processing_spatial(config.dist)" not in patched_cuda.split("def main")[1]
         assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
