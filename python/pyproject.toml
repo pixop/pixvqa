@@ -13,6 +13,7 @@ packages = [
     "pixvqa_cvvdp",
     "pixvqa_cvqahdr",
     "pixvqa_simplevqa",
+    "pixvqa_video",
     "pixvqa_hdr_chipqa",
     "pixvqa_learned_install",
 ]
