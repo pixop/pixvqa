@@ -2,6 +2,7 @@
 """Contract tests for the SimpleVQA reference wrapper (no PyTorch required)."""
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -205,6 +206,9 @@ def test_bounded_motion_window_equivalence():
 
 
 test_bounded_motion_window_equivalence()
+
+# Keep the optional real-checkpoint parity harness syntactically checked in CPU CI.
+ast.parse((ROOT / "scripts/benchmark_simplevqa_memory_parity.py").read_text(encoding="utf-8"))
 
 with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     d = Path(tmp)
