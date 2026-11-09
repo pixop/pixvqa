@@ -68,7 +68,7 @@ class FFmpegCapture:
         self._command = [
             ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
             "-threads", "1", "-i", source, "-map", "0:v:0",
-            "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+            "-an", "-sn", "-dn", "-vsync", "0",
             "-pix_fmt", "bgr24", "-f", "rawvideo", "-",
         ]
         self._read_frames = 0
@@ -95,6 +95,17 @@ class FFmpegCapture:
         if not self.isOpened():
             return False, None
         if self._read_frames >= self._frames:
+            # Confirm that the decoder exited successfully, not merely that
+            # the container advertised the expected number of frames.
+            if self._proc is not None:
+                assert self._proc.stdout is not None
+                remaining = self._proc.stdout.read(1)
+                status = self._proc.wait()
+                if remaining or status != 0:
+                    raise RuntimeError(
+                        "FFmpegCapture decoded frame count or process status mismatch "
+                        f"(extra_bytes={bool(remaining)}, exit={status})"
+                    )
             return False, None
         if self._proc is None:
             self._proc = subprocess.Popen(
