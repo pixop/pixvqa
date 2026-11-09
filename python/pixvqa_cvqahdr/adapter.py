@@ -19,6 +19,27 @@ from pixvqa_device import (
 )
 
 
+def configure_deterministic_inference() -> bool:
+    """Opt-in reproducibility diagnostic; must run before CUDA initialization.
+
+    May raise at inference time when an operator has no deterministic CUDA path.
+    """
+    if os.environ.get("PIXVQA_LEARNED_DETERMINISTIC", "").lower() not in ("1", "true", "yes"):
+        return False
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    import random
+    import numpy as np
+    import torch
+
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(True)
+    return True
+
+
 class AdapterError(RuntimeError):
     """A preflight or official-model failure."""
 
@@ -476,6 +497,7 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
 
 def run(test: str, repository: str, checkpoint: str, profile: str, device: str, output_json: str,
         verify_decoded_frames: bool = False, max_frames: int = -1) -> dict:
+    deterministic = configure_deterministic_inference()
     context = preflight(test, repository, checkpoint, profile, device,
                         max_frames=max_frames)
     upstream = context["upstream"]
@@ -573,6 +595,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
                   file=sys.stderr, flush=True)
     record = {
         "adapter": "pixvqa_cvqahdr",
+        "deterministic_inference_requested": deterministic,
         "metric": "cvqa-hdr-nr",
         "upstream": {"url": PINNED_UPSTREAM, **upstream},
         "device": effective,
