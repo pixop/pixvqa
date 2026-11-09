@@ -79,6 +79,33 @@ def _pixvqa_deterministic_inference():
     torch.use_deterministic_algorithms(True)
 '''
 
+# Optional one-process-per-file trace for locating the first differing tensor.
+# Enabled only by PIXVQA_SIMPLEVQA_TRACE_DIR and has no effect on normal scoring.
+_SIMPLEVQA_TRACE_HELPER = '''
+def _pixvqa_trace_tensor(stage, value):
+    import os as _os
+    _root = _os.environ.get("PIXVQA_SIMPLEVQA_TRACE_DIR")
+    if not _root:
+        return
+    import hashlib as _hashlib
+    import json as _json
+    from pathlib import Path as _Path
+    import torch as _torch
+    _path = _Path(_root)
+    _path.mkdir(parents=True, exist_ok=True)
+    _tensor = value.detach().to("cpu").contiguous()
+    _arr = _tensor.numpy()
+    _record = {
+        "stage": stage,
+        "sha256": _hashlib.sha256(_arr.tobytes()).hexdigest(),
+        "shape": list(_tensor.shape),
+        "dtype": str(_tensor.dtype),
+        "deterministic": _torch.are_deterministic_algorithms_enabled(),
+    }
+    with (_path / ("simplevqa-" + str(_os.getpid()) + ".jsonl")).open("a", encoding="utf-8") as _out:
+        _out.write(_json.dumps(_record, sort_keys=True) + "\\n")
+'''
+
 _MOTION_MODEL_TO_DEVICE = "    model_motion = model_motion.to(device)"
 _MOTION_MODEL_EVAL = "    model_motion.eval()"
 
@@ -103,6 +130,22 @@ def _motion_eval_overlay(text: str) -> str:
             raise SetupError("upstream SimpleVQA entrypoint changed")
         text = text.replace(anchor, _SIMPLEVQA_DETERMINISM_HELPER + "\n" + anchor, 1)
     text = text.replace(init, "    _pixvqa_deterministic_inference()\n" + init, 1)
+    if "def _pixvqa_trace_tensor(" not in text:
+        anchor = "def main(config):"
+        text = text.replace(anchor, _SIMPLEVQA_TRACE_HELPER + "\n" + anchor, 1)
+    # Only instrument the official main() path here; the persistent worker
+    # executes the same main(), whereas shared-GPU uses infer_from_tensors().
+    spatial = "            video_dist_spatial = video_dist_spatial.to(device)"
+    motion = "                ele = pack_pathway_output(ele, device)"
+    features = "                ele_slow_feature, ele_fast_feature = model_motion(ele)"
+    output = "            outputs = model(video_dist_spatial, feature_motion)"
+    for snippet in (spatial, motion, features, output):
+        if text.count(snippet) != 1:
+            raise SetupError("upstream SimpleVQA trace anchor changed: " + snippet.strip())
+    text = text.replace(spatial, spatial + "\n            _pixvqa_trace_tensor('spatial_input', video_dist_spatial)", 1)
+    text = text.replace(motion, motion + "\n                _pixvqa_trace_tensor('motion_slow_%d' % idx, ele[0])" + "\n                _pixvqa_trace_tensor('motion_fast_%d' % idx, ele[1])", 1)
+    text = text.replace(features, features + "\n                _pixvqa_trace_tensor('slowfast_slow_%d' % idx, ele_slow_feature)" + "\n                _pixvqa_trace_tensor('slowfast_fast_%d' % idx, ele_fast_feature)", 1)
+    text = text.replace(output, "            _pixvqa_trace_tensor('motion_features', feature_motion)\n" + output + "\n            _pixvqa_trace_tensor('score', outputs)", 1)
     return text
 
 
