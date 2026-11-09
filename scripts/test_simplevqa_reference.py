@@ -174,11 +174,20 @@ def test_bounded_motion_window_equivalence():
                 exec(_CUDA_STREAMING_MOTION_FN, scope_stream)
                 motion_iter, _ = scope_stream["video_processing_motion_stream"]("mock.mp4")
                 assert len(motion_iter) == max(8, length)
-                stream_windows = list(motion_iter)
-                assert capture_stream.released
-                assert [m.data for m in stream_windows] == expected_motion, (
-                    fps, seconds, dropped, "streaming motion"
-                )
+                if not source:
+                    try:
+                        list(motion_iter)
+                    except ValueError as exc:
+                        assert "no decoded frames" in str(exc)
+                    else:
+                        raise AssertionError("empty decode accepted by streaming backend")
+                    assert capture_stream.released
+                else:
+                    stream_windows = list(motion_iter)
+                    assert capture_stream.released
+                    assert [m.data for m in stream_windows] == expected_motion, (
+                        fps, seconds, dropped, "streaming motion"
+                    )
 
     # Regression: invalid metadata should fail before allocating or dividing.
     capture = SimpleNamespace(open=lambda path: True, get=lambda prop: 0, release=lambda: None)
