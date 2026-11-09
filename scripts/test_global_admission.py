@@ -61,6 +61,29 @@ def test_parallel_clients():
     print("OK   parallel-clients")
 
 
+def test_long_lease_survives_heartbeat_window():
+    """Leases without client heartbeats must not expire while the holder PID is alive."""
+    if not admission_daemon_available():
+        print("SKIP long-lease")
+        return
+    sched_dir = tempfile.mkdtemp(prefix="pixvqa-adm-test-")
+    os.environ["PIXVQA_SCHEDULER_DIR"] = sched_dir
+    os.environ["PIXVQA_SCHEDULER_MAX_CONCURRENT_CVQA_HDR_NR"] = "1"
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "python")}
+    ensure_admission_daemon()
+    hold = subprocess.Popen(_sleep_cmd(65.0), env=env)
+    time.sleep(1.0)
+    t0 = time.monotonic()
+    second = subprocess.Popen(_sleep_cmd(2.0), env=env)
+    code = second.wait(timeout=120)
+    elapsed = time.monotonic() - t0
+    hold.wait(timeout=120)
+    assert code == 0, "second client should wait behind the long lease"
+    assert elapsed >= 58.0, f"slot released too early ({elapsed:.1f}s)"
+    assert hold.returncode == 0, hold.returncode
+    print("OK   long-lease")
+
+
 def test_crash_releases_slot():
     if not admission_daemon_available():
         print("SKIP crash-release")
@@ -154,6 +177,7 @@ def main() -> int:
     test_cli_status()
     test_daemon_probe()
     test_parallel_clients()
+    test_long_lease_survives_heartbeat_window()
     test_crash_releases_slot()
     print("PASS: global admission tests")
     return 0

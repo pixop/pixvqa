@@ -59,7 +59,7 @@ class AdmissionDaemon:
             last = float(lease.get("last_heartbeat", lease.get("created", now)))
             if not _pid_alive(pid):
                 dead.append(token)
-            elif now - last > _HEARTBEAT_TIMEOUT_S:
+            elif lease.get("heartbeats", 0) > 0 and now - last > _HEARTBEAT_TIMEOUT_S:
                 dead.append(token)
         for token in dead:
             self._release_token(token, reason="stale lease cleanup")
@@ -204,6 +204,7 @@ class AdmissionDaemon:
                 if lease is None:
                     return {"status": "error", "id": req_id, "error": "unknown lease"}
                 lease["last_heartbeat"] = time.monotonic()
+                lease["heartbeats"] = int(lease.get("heartbeats", 0)) + 1
                 if not _pid_alive(int(lease.get("pid", 0))):
                     self._release_token(token, reason="pid exited")
                     self._try_admit_queue()

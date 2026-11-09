@@ -19,6 +19,7 @@ add_library(pixvqa_core
   src/xpsnr.cpp
   src/hdr.cpp
   src/pu21.cpp
+  src/metric_resolve.cpp
 )
 
 target_include_directories(pixvqa_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
