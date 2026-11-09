@@ -48,6 +48,11 @@ def main() -> int:
             assert staged.count("model_motion.eval()") == (
                 2 if name == "shared-gpu" else 1
             ), name
+            assert "def _pixvqa_deterministic_inference():" in staged, name
+            assert staged.count("_pixvqa_deterministic_inference()") == (
+                3 if name == "shared-gpu" else 2
+            ), name
+            assert "torch.use_deterministic_algorithms(True)" in staged, name
             compile(staged, f"<{name}-overlay>", "exec")
             print(f"OK   simplevqa-{name}-motion-eval")
     print("PASS: SimpleVQA motion evaluation-mode regression")
