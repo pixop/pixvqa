@@ -104,6 +104,8 @@ class MetricScheduler:
         self._metric_active: dict[str, int] = {}
         self._ram_reserved = 0.0
         self._vram_reserved = 0.0
+        self._mem_baseline_mib: float | None = None
+        self._gpu_baseline_mib: int | None = None
         self._telemetry = HostTelemetry(poll_interval_s=self.config.telemetry_poll_s)
         self._dispatcher: threading.Thread | None = None
         self._shutdown = threading.Event()
@@ -142,6 +144,71 @@ class MetricScheduler:
             return 0.0
         return profile.vram_reserve_mib
 
+    def _ensure_baselines(self) -> None:
+        """Capture host baselines once for unrealized reservation accounting."""
+        from .telemetry import gpu_memory_mib, mem_available_mib
+
+        if self._mem_baseline_mib is None:
+            self._mem_baseline_mib = mem_available_mib()
+        if self._gpu_baseline_mib is None:
+            used, _ = gpu_memory_mib()
+            self._gpu_baseline_mib = max(0, used)
+
+    def _scheduler_ram_realized_mib(self) -> float:
+        from .telemetry import mem_available_mib
+
+        if self._mem_baseline_mib is None:
+            return 0.0
+        return max(0.0, self._mem_baseline_mib - mem_available_mib())
+
+    def _scheduler_vram_realized_mib(self) -> float:
+        from .telemetry import gpu_memory_mib
+
+        if self._gpu_baseline_mib is None:
+            return 0.0
+        gpu_used, _ = gpu_memory_mib()
+        if gpu_used < 0:
+            return 0.0
+        return max(0.0, float(gpu_used - self._gpu_baseline_mib))
+
+    def _unrealized_ram_mib(self) -> float:
+        """Scheduler RAM commitments not yet reflected in MemAvailable."""
+        return max(0.0, self._ram_reserved - self._scheduler_ram_realized_mib())
+
+    def _unrealized_vram_mib(self) -> float:
+        """Scheduler VRAM commitments not yet reflected in nvidia-smi used."""
+        return max(0.0, self._vram_reserved - self._scheduler_vram_realized_mib())
+
+    def _effective_vram_load_mib(self) -> float:
+        """Device-global GPU used vs scheduler commitments (no double-count)."""
+        from .telemetry import gpu_memory_mib
+
+        gpu_used, _ = gpu_memory_mib()
+        telemetry = float(gpu_used) if gpu_used >= 0 else 0.0
+        return max(telemetry, self._vram_reserved)
+
+    def _profile_never_admissible(self, profile: MetricProfile) -> str | None:
+        """Reject when a single job's reserve can never satisfy budgets."""
+        from .telemetry import gpu_memory_mib, mem_available_mib
+
+        floor = self._budget.mem_available_floor_mib
+        headroom = self._budget.gpu_headroom_mib
+        if profile.ram_reserve_mib + floor > mem_available_mib():
+            return (
+                f"profile RAM reserve {profile.ram_reserve_mib:.0f} MiB + floor "
+                f"{floor:.0f} MiB exceeds MemAvailable {mem_available_mib():.0f} MiB"
+            )
+        vram_need = self._vram_delta_for_admit(profile)
+        if vram_need <= 0:
+            return None
+        _, gpu_total = gpu_memory_mib()
+        if gpu_total > 0 and vram_need + headroom > gpu_total:
+            return (
+                f"profile VRAM reserve {vram_need:.0f} MiB + headroom "
+                f"{headroom} MiB exceeds GPU total {gpu_total} MiB"
+            )
+        return None
+
     def _can_admit(self, profile: MetricProfile) -> str | None:
         metric = profile.metric
         cap = profile.effective_max_concurrent()
@@ -159,20 +226,29 @@ class MetricScheduler:
             return reason
         from .telemetry import gpu_memory_mib, mem_available_mib
 
-        ram_need = self._ram_reserved + profile.ram_reserve_mib + self._budget.mem_available_floor_mib
-        if mem_available_mib() < ram_need:
+        never = self._profile_never_admissible(profile)
+        if never:
+            return never
+
+        floor = self._budget.mem_available_floor_mib
+        ram_need = floor + self._unrealized_ram_mib() + profile.ram_reserve_mib
+        avail = mem_available_mib()
+        if avail < ram_need:
             return (
-                f"RAM reservation {ram_need:.0f} MiB exceeds MemAvailable "
-                f"{mem_available_mib():.0f} MiB"
+                f"RAM need {ram_need:.0f} MiB (floor {floor:.0f} + unrealized "
+                f"{self._unrealized_ram_mib():.0f} + new {profile.ram_reserve_mib:.0f}) "
+                f"exceeds MemAvailable {avail:.0f} MiB"
             )
         vram_add = self._vram_delta_for_admit(profile)
-        gpu_used, gpu_total = gpu_memory_mib()
+        _, gpu_total = gpu_memory_mib()
         if gpu_total > 0 and vram_add > 0:
-            projected = gpu_used + self._vram_reserved + vram_add + self._budget.gpu_headroom_mib
+            projected = (
+                self._effective_vram_load_mib() + vram_add + self._budget.gpu_headroom_mib
+            )
             if projected > gpu_total:
                 return (
                     f"VRAM budget would exceed device total "
-                    f"(used {gpu_used} + reserved {self._vram_reserved + vram_add:.0f} + "
+                    f"(effective {self._effective_vram_load_mib():.0f} + new {vram_add:.0f} + "
                     f"headroom {self._budget.gpu_headroom_mib} > {gpu_total} MiB)"
                 )
         return None
@@ -193,16 +269,56 @@ class MetricScheduler:
 
     def _start_telemetry(self) -> None:
         if not self._started:
+            self._ensure_baselines()
             self._telemetry.start()
             self._started = True
+
+    def _reject_queued(self, qj: _QueuedJob, reason: str, state: JobState) -> None:
+        qj.result = JobResult(
+            spec=qj.spec,
+            state=state,
+            error=reason,
+            profile=qj.profile,
+            admission_wait_seconds=time.monotonic() - qj.enqueued_at,
+        )
+        self._results.append(qj.result)
+        qj.event.set()
+
+    def _expire_queued_jobs(self) -> None:
+        """Drop jobs that waited too long or can never be admitted."""
+        if not self._queue:
+            return
+        now = time.monotonic()
+        timeout = self._budget.queue_timeout_s
+        kept: deque[_QueuedJob] = deque()
+        while self._queue:
+            qj = self._queue.popleft()
+            never = self._profile_never_admissible(qj.profile)
+            if never:
+                self._reject_queued(qj, never, JobState.REJECTED)
+                continue
+            if timeout > 0 and now - qj.enqueued_at >= timeout:
+                self._reject_queued(
+                    qj,
+                    f"queue wait exceeded {timeout:.0f}s",
+                    JobState.TIMEOUT,
+                )
+                continue
+            kept.append(qj)
+        self._queue = kept
 
     def _dispatcher_loop(self) -> None:
         while not self._shutdown.is_set():
             with self._cv:
+                self._expire_queued_jobs()
                 while self._queue and not self._abort_reason:
                     qj = self._queue[0]
                     reason = self._can_admit(qj.profile)
                     if reason:
+                        if self._profile_never_admissible(qj.profile):
+                            self._queue.popleft()
+                            self._reject_queued(qj, reason, JobState.REJECTED)
+                            continue
                         break
                     self._queue.popleft()
                     self._reserve(qj.profile)
@@ -298,11 +414,18 @@ class MetricScheduler:
         profile = self._resolve_profile(spec)
         qj = _QueuedJob(spec, profile)
         with self._lock:
+            never = self._profile_never_admissible(profile)
+            if never:
+                self._reject_queued(qj, never, JobState.REJECTED)
+                return spec.job_id
             if self._dispatcher is None or not self._dispatcher.is_alive():
                 self._dispatcher = threading.Thread(
                     target=self._dispatcher_loop, daemon=True, name="pixvqa-sched-dispatch"
                 )
                 self._dispatcher.start()
+            if len(self._queue) >= self._budget.max_queue_depth:
+                self._reject_queued(qj, "queue depth limit", JobState.REJECTED)
+                return spec.job_id
             self._queue.append(qj)
             self._cv.notify_all()
         return spec.job_id
@@ -423,16 +546,11 @@ class MetricScheduler:
             self._abort_reason = reason
             while self._queue:
                 qj = self._queue.popleft()
-                qj.result = JobResult(
-                    spec=qj.spec,
-                    state=JobState.CANCELLED,
-                    error=reason,
-                    profile=qj.profile,
-                )
-                qj.event.set()
+                self._reject_queued(qj, reason, JobState.CANCELLED)
             for job_id, (_, running, _) in list(self._active.items()):
                 if running.process.poll() is None:
                     running.process.kill()
+            self._cv.notify_all()
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -441,6 +559,8 @@ class MetricScheduler:
                 "active": len(self._active),
                 "ram_reserved_mib": round(self._ram_reserved, 1),
                 "vram_reserved_mib": round(self._vram_reserved, 1),
+                "unrealized_ram_mib": round(self._unrealized_ram_mib(), 1),
+                "unrealized_vram_mib": round(self._unrealized_vram_mib(), 1),
                 "metric_active": dict(self._metric_active),
                 "abort_reason": self._abort_reason,
             }

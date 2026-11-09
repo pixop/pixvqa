@@ -59,5 +59,18 @@ def wait_job(
                 on_tick()
             if deadline is not None and time.monotonic() >= deadline:
                 job.process.kill()
-                stdout, stderr = job.process.communicate()
-                return -9, stdout or "", stderr or ""
+                stdout, stderr = _drain_after_kill(job.process)
+                return -9, stdout, stderr
+
+
+def _drain_after_kill(proc: subprocess.Popen[str]) -> tuple[str, str]:
+    """Read pipes after SIGKILL so communicate() cannot block on full buffers."""
+    deadline = time.monotonic() + 30.0
+    while proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    try:
+        out, err = proc.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, err = proc.communicate(timeout=5)
+    return out or "", err or ""

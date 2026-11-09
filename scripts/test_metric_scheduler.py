@@ -102,9 +102,9 @@ def test_failure_releases_slot():
     print("OK   failure-release")
 
 
-def test_queue_timeout_rejected():
+def test_queue_order_with_cap():
     os.environ["PIXVQA_SCHEDULER"] = "1"
-    long = MetricProfile(
+    cvqa = MetricProfile(
         metric="cvqa-hdr-nr",
         execution="independent",
         max_concurrent=1,
@@ -113,20 +113,279 @@ def test_queue_timeout_rejected():
         module="pixvqa_cvqahdr",
         verified_concurrency="test",
     )
-    budget = SchedulerBudget(max_total_concurrent=1, queue_timeout_s=3600.0)
     sched = MetricScheduler(
-        SchedulerConfig(enabled=True, profiles={"cvqa-hdr-nr": long}, budget=budget)
+        SchedulerConfig(enabled=True, profiles={"cvqa-hdr-nr": cvqa})
     )
     sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(0.2), job_id="a"))
     sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_echo_script("b"), job_id="b"))
-    with patch.object(sched, "_can_admit", return_value="blocked"):
-        time.sleep(0.05)
     r_a = sched.wait_job("a", timeout_s=30)
     r_b = sched.wait_job("b", timeout_s=30)
     assert r_a.state == JobState.COMPLETED
-    assert r_b.state in (JobState.COMPLETED, JobState.FAILED)
+    assert r_b.state == JobState.COMPLETED
     sched.shutdown()
     print("OK   queue-order")
+
+
+def test_vram_no_double_count_five_cvqa():
+    """Five 2.8 GiB CVQA jobs should admit on a ~16 GiB GPU without double-counting."""
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    cvqa = MetricProfile(
+        metric="cvqa-hdr-nr",
+        execution="independent",
+        max_concurrent=5,
+        ram_reserve_mib=100,
+        vram_reserve_mib=2800,
+        module="pixvqa_cvqahdr",
+        verified_concurrency="test",
+    )
+    budget = SchedulerBudget(gpu_headroom_mib=512, mem_available_floor_mib=256)
+    sched = MetricScheduler(SchedulerConfig(enabled=True, profiles={"cvqa-hdr-nr": cvqa}, budget=budget))
+
+    gpu_used = {"value": 0}
+
+    def fake_gpu(_=None):
+        return gpu_used["value"], 16_384
+
+    def fake_mem():
+        return 32_768.0
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu), patch(
+        "pixvqa_scheduler.telemetry.mem_available_mib", side_effect=fake_mem
+    ):
+        specs = [
+            JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(0.04), job_id=f"c{i}")
+            for i in range(5)
+        ]
+        report = sched.run_batch(specs, batch_timeout_s=60)
+    completed = [r for r in report.jobs if r.state == JobState.COMPLETED]
+    assert len(completed) == 5, [r.state for r in report.jobs]
+    print("OK   vram-five-cvqa")
+
+
+def test_vram_sixth_cvqa_blocked_not_hung():
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    cvqa = MetricProfile(
+        metric="cvqa-hdr-nr",
+        execution="independent",
+        max_concurrent=5,
+        ram_reserve_mib=100,
+        vram_reserve_mib=2800,
+        module="pixvqa_cvqahdr",
+        verified_concurrency="test",
+    )
+    budget = SchedulerBudget(
+        gpu_headroom_mib=512,
+        mem_available_floor_mib=256,
+        queue_timeout_s=2.0,
+    )
+    sched = MetricScheduler(SchedulerConfig(enabled=True, profiles={"cvqa-hdr-nr": cvqa}, budget=budget))
+
+    def fake_gpu(_=None):
+        return 0, 16_384
+
+    def fake_mem():
+        return 32_768.0
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu), patch(
+        "pixvqa_scheduler.telemetry.mem_available_mib", side_effect=fake_mem
+    ):
+        for i in range(5):
+            sched.submit(
+                JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(3.0), job_id=f"hold{i}")
+            )
+        time.sleep(0.15)
+        sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_echo_script("x"), job_id="sixth"))
+        r6 = sched.wait_job("sixth", timeout_s=10)
+    assert r6.state in (JobState.TIMEOUT, JobState.REJECTED, JobState.FAILED)
+    sched.cancel_all("cleanup")
+    sched.shutdown()
+    print("OK   vram-sixth-blocked")
+
+
+def test_impossible_vram_profile_rejected():
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    huge = MetricProfile(
+        metric="cvqa-hdr-nr",
+        execution="independent",
+        max_concurrent=1,
+        ram_reserve_mib=100,
+        vram_reserve_mib=20_000,
+        module="pixvqa_cvqahdr",
+        verified_concurrency="test",
+    )
+    sched = MetricScheduler(SchedulerConfig(enabled=True, profiles={"cvqa-hdr-nr": huge}))
+
+    def fake_gpu(_=None):
+        return 0, 16_384
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu):
+        job_id = sched.submit(
+            JobSpec(metric="cvqa-hdr-nr", command=_echo_script("nope"), job_id="big")
+        )
+        r = sched.wait_job(job_id, timeout_s=5)
+    assert r.state == JobState.REJECTED
+    sched.shutdown()
+    print("OK   impossible-vram-rejected")
+
+
+def test_mix_cvqa_simplevqa_admission():
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    cvqa = MetricProfile(
+        metric="cvqa-hdr-nr",
+        execution="independent",
+        max_concurrent=3,
+        ram_reserve_mib=100,
+        vram_reserve_mib=2800,
+        module="pixvqa_cvqahdr",
+        verified_concurrency="test",
+    )
+    shared = MetricProfile(
+        metric="simplevqa",
+        execution="shared_gpu",
+        max_concurrent=8,
+        ram_reserve_mib=100,
+        vram_reserve_mib=4200,
+        module="pixvqa_simplevqa",
+        verified_concurrency="test",
+    )
+    profiles = {"cvqa-hdr-nr": cvqa, "simplevqa:shared_gpu": shared}
+    sched = MetricScheduler(
+        SchedulerConfig(enabled=True, profiles=profiles, budget=SchedulerBudget(gpu_headroom_mib=512))
+    )
+
+    def fake_gpu(_=None):
+        return 0, 16_384
+
+    def fake_mem():
+        return 32_768.0
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu), patch(
+        "pixvqa_scheduler.telemetry.mem_available_mib", side_effect=fake_mem
+    ):
+        specs = [
+            JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(0.03), job_id="c1"),
+            JobSpec(
+                metric="simplevqa",
+                command=_sleep_script(0.03),
+                job_id="s1",
+                shared_gpu=True,
+            ),
+            JobSpec(
+                metric="simplevqa",
+                command=_sleep_script(0.03),
+                job_id="s2",
+                shared_gpu=True,
+            ),
+        ]
+        report = sched.run_batch(specs, batch_timeout_s=30)
+    assert all(r.state == JobState.COMPLETED for r in report.jobs)
+    snap = sched.snapshot()
+    assert snap["vram_reserved_mib"] == 0.0
+    print("OK   mix-cvqa-shared-svqa")
+
+
+def test_shared_gpu_vram_release_once():
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    shared = MetricProfile(
+        metric="simplevqa",
+        execution="shared_gpu",
+        max_concurrent=4,
+        ram_reserve_mib=50,
+        vram_reserve_mib=4200,
+        module="pixvqa_simplevqa",
+        verified_concurrency="test",
+    )
+    sched = MetricScheduler(
+        SchedulerConfig(
+            enabled=True,
+            profiles={"simplevqa:shared_gpu": shared},
+            budget=SchedulerBudget(gpu_headroom_mib=256),
+        )
+    )
+
+    def fake_gpu(_=None):
+        return 0, 16_384
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu):
+        specs = [
+            JobSpec(
+                metric="simplevqa",
+                command=_sleep_script(0.05),
+                job_id=f"sh{i}",
+                shared_gpu=True,
+            )
+            for i in range(3)
+        ]
+        report = sched.run_batch(specs, batch_timeout_s=30)
+    assert all(r.state == JobState.COMPLETED for r in report.jobs)
+    print("OK   shared-gpu-release")
+
+
+def test_gpu_guard_abort_during_job():
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    sched = MetricScheduler(
+        SchedulerConfig(
+            enabled=True,
+            profiles={
+                "cvqa-hdr-nr": MetricProfile(
+                    metric="cvqa-hdr-nr",
+                    execution="independent",
+                    max_concurrent=1,
+                    ram_reserve_mib=10,
+                    vram_reserve_mib=10,
+                    module="pixvqa_cvqahdr",
+                    verified_concurrency="test",
+                )
+            },
+        )
+    )
+    sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(2.0), job_id="guarded"))
+    time.sleep(0.05)
+    with patch.object(sched._telemetry, "should_abort", return_value="gpu spike"):
+        time.sleep(0.3)
+    r = sched.wait_job("guarded", timeout_s=10)
+    assert r.state == JobState.CANCELLED
+    assert "gpu spike" in (r.error or "")
+    sched.shutdown()
+    print("OK   gpu-guard-abort")
+
+
+def test_accounting_mock_no_double_count():
+    """With telemetry showing full VRAM, scheduler must not add reserved again."""
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    cvqa = MetricProfile(
+        metric="cvqa-hdr-nr",
+        execution="independent",
+        max_concurrent=5,
+        ram_reserve_mib=100,
+        vram_reserve_mib=2800,
+        module="pixvqa_cvqahdr",
+        verified_concurrency="test",
+    )
+    sched = MetricScheduler(
+        SchedulerConfig(
+            enabled=True,
+            profiles={"cvqa-hdr-nr": cvqa},
+            budget=SchedulerBudget(gpu_headroom_mib=512, mem_available_floor_mib=256),
+        )
+    )
+    sched._vram_reserved = 5600.0
+    sched._ram_reserved = 200.0
+    sched._gpu_baseline_mib = 0
+    sched._mem_baseline_mib = 32_768.0
+
+    def fake_gpu(_=None):
+        return 5600, 16_384
+
+    def fake_mem():
+        return 32_500.0
+
+    with patch("pixvqa_scheduler.telemetry.gpu_memory_mib", side_effect=fake_gpu), patch(
+        "pixvqa_scheduler.telemetry.mem_available_mib", side_effect=fake_mem
+    ):
+        reason = sched._can_admit(cvqa)
+    assert reason is None, reason
+    print("OK   accounting-no-double-count")
 
 
 def test_mix_cvqa_simplevqa_profiles():
@@ -145,12 +404,13 @@ def test_cancel_all():
     os.environ["PIXVQA_SCHEDULER"] = "1"
     sched = MetricScheduler(SchedulerConfig(enabled=True))
     sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(2.0), job_id="slow"))
+    sched.submit(JobSpec(metric="cvqa-hdr-nr", command=_sleep_script(2.0), job_id="queued"))
     time.sleep(0.05)
     sched.cancel_all("test-cancel")
-    try:
-        r = sched.wait_job("slow", timeout_s=5)
-    except KeyError:
-        r = None
+    r_slow = sched.wait_job("slow", timeout_s=5)
+    r_queued = sched.wait_job("queued", timeout_s=5)
+    assert r_slow.state == JobState.CANCELLED
+    assert r_queued.state == JobState.CANCELLED
     sched.shutdown()
     print("OK   cancel-all")
 
@@ -230,7 +490,14 @@ def main() -> int:
     test_scheduler_disabled_passthrough()
     test_admission_and_release()
     test_failure_releases_slot()
-    test_queue_timeout_rejected()
+    test_queue_order_with_cap()
+    test_vram_no_double_count_five_cvqa()
+    test_vram_sixth_cvqa_blocked_not_hung()
+    test_impossible_vram_profile_rejected()
+    test_mix_cvqa_simplevqa_admission()
+    test_shared_gpu_vram_release_once()
+    test_gpu_guard_abort_during_job()
+    test_accounting_mock_no_double_count()
     test_cancel_all()
     test_cli_dry_run()
     test_pixvqa_cli_help_unchanged()

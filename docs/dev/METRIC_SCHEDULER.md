@@ -5,6 +5,10 @@ Module: `python/pixvqa_scheduler/`
 
 ## Purpose
 
+**Opt-in batch-only** Python orchestrator (`python -m pixvqa_scheduler …`). It is **not**
+wired into the `pixvqa` C++ binary, does **not** provide cross-shell locking, and does
+not change default metric execution when `PIXVQA_SCHEDULER` is unset.
+
 Opt-in admission control for **concurrent Python/PyTorch metric subprocesses** within a
 single Python orchestrator. The scheduler:
 
@@ -83,12 +87,29 @@ When `PIXVQA_SCHEDULER` is unset, `MetricScheduler.run_batch()` falls back to **
 | `PIXVQA_SCHEDULER_MAX_TOTAL` | 16 | Global in-flight cap |
 | `PIXVQA_SCHEDULER_STAGGER_S` | 0 | Optional start stagger |
 
+## Reservation accounting
+
+Admission compares **live telemetry** with **scheduler commitments** without double-counting
+resident memory:
+
+| Resource | Telemetry | Scheduler tracks | Admit check |
+|----------|-----------|------------------|-------------|
+| RAM | `MemAvailable` (actual free) | `_ram_reserved` for active jobs | `MemAvailable ≥ floor + unrealized_ram + new_reserve` where `unrealized = max(0, reserved − baseline_drop)` |
+| VRAM | `nvidia-smi memory.used` (device-global) | `_vram_reserved` (+ shared_gpu slot) | `max(telemetry, reserved) + new_delta + headroom ≤ total` |
+
+`nvidia-smi` already includes VRAM from running jobs; adding full `_vram_reserved` on top
+would reject healthy mixes (e.g. five 2.8 GiB CVQA jobs on a 16 GiB GPU).
+
+Jobs whose **single** reserve exceeds host totals are **`REJECTED` immediately** (no infinite
+queue wait). Queued jobs past `PIXVQA_SCHEDULER_QUEUE_TIMEOUT_S` become **`TIMEOUT`**.
+
 ## Caveats
 
 1. **Cross-invocation**: Budgets apply only inside one `MetricScheduler` Python process. Separate shells, CI shards, or concurrent `pixvqa` binaries do not share state (warning emitted in reports).
 2. **GPU telemetry is global**: `nvidia-smi memory.used` includes all GPU clients; do not infer per-job VRAM from these samples alone.
 3. **C++ pixvqa unchanged**: Single-invocation metric order and worker flags are untouched.
 4. **CVQA concurrency**: Scheduler does not add a global lock on CompressedVQA; caps are configurable and default to permissive (5).
+5. **Baselines**: RAM/VRAM unrealized accounting uses baselines captured at scheduler start; foreign host memory growth during a batch is not attributed to scheduler jobs.
 
 ## Tests
 
