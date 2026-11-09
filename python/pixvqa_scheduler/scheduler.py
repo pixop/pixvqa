@@ -350,6 +350,7 @@ class MetricScheduler:
                                 profile=qj.profile,
                                 admission_wait_seconds=time.monotonic() - qj.enqueued_at,
                             )
+                            self._results.append(qj.result)
                             qj.event.set()
                             continue
                     try:
@@ -363,6 +364,11 @@ class MetricScheduler:
                     except OSError as exc:
                         if not self._global_admission:
                             self._release(qj.profile)
+                        elif lease is not None:
+                            try:
+                                release(lease)
+                            except (AdmissionError, OSError):
+                                pass
                         qj.result = JobResult(
                             spec=qj.spec,
                             state=JobState.FAILED,
@@ -370,6 +376,7 @@ class MetricScheduler:
                             profile=qj.profile,
                             admission_wait_seconds=time.monotonic() - qj.enqueued_at,
                         )
+                        self._results.append(qj.result)
                         qj.event.set()
                         continue
                     if lease is not None:

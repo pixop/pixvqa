@@ -1,13 +1,25 @@
 """Host RAM and device-global CUDA VRAM telemetry for metric scheduling."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-NVIDIA_SMI = Path("/usr/lib/wsl/lib/nvidia-smi")
+_WSL_NVIDIA_SMI = Path("/usr/lib/wsl/lib/nvidia-smi")
+NVIDIA_SMI = _WSL_NVIDIA_SMI
+
+
+def resolve_nvidia_smi() -> Path | None:
+    """Locate nvidia-smi on WSL or native Linux."""
+    found = shutil.which("nvidia-smi")
+    if found:
+        return Path(found)
+    if _WSL_NVIDIA_SMI.is_file():
+        return _WSL_NVIDIA_SMI
+    return None
 
 MEM_AVAILABLE_FLOOR_MIB = 2048
 GPU_HEADROOM_MIB = 512
@@ -39,7 +51,9 @@ def gpu_memory_mib(nvidia_smi: Path | None = None) -> tuple[int, int]:
     Values come from ``nvidia-smi`` and reflect **device-global** memory use
   (all processes on the GPU), not PID-exclusive accounting.
     """
-    exe = nvidia_smi or NVIDIA_SMI
+    exe = nvidia_smi or resolve_nvidia_smi()
+    if exe is None:
+        return -1, -1
     try:
         out = subprocess.check_output(
             [str(exe), "--query-gpu=memory.used,memory.total",

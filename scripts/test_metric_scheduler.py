@@ -102,6 +102,38 @@ def test_failure_releases_slot():
     print("OK   failure-release")
 
 
+def test_global_admission_launch_failure_records_and_releases():
+    """OSError after acquire must release the daemon lease and not lose the job result."""
+    os.environ["PIXVQA_SCHEDULER"] = "1"
+    os.environ["PIXVQA_SCHEDULER_ADMISSION"] = "1"
+    profiles = {
+        "cvqa-hdr-nr": MetricProfile(
+            metric="cvqa-hdr-nr",
+            execution="independent",
+            max_concurrent=5,
+            ram_reserve_mib=10,
+            vram_reserve_mib=10,
+            module="pixvqa_cvqahdr",
+            verified_concurrency="test",
+        ),
+    }
+    sched = MetricScheduler(SchedulerConfig(enabled=True, profiles=profiles))
+
+    def boom(*_args, **_kwargs):
+        raise OSError("simulated launch failure")
+
+    with patch("pixvqa_scheduler.scheduler.launch", side_effect=boom):
+        report = sched.run_batch([
+            JobSpec(metric="cvqa-hdr-nr", command=_echo_script("x"), job_id="broken"),
+        ], batch_timeout_s=30)
+    assert len(report.jobs) == 1
+    assert report.jobs[0].state == JobState.FAILED
+    assert "simulated" in (report.jobs[0].error or "")
+    sched.shutdown()
+    os.environ.pop("PIXVQA_SCHEDULER_ADMISSION", None)
+    print("OK   global-admission-launch-failure")
+
+
 def test_queue_order_with_cap():
     os.environ["PIXVQA_SCHEDULER"] = "1"
     cvqa = MetricProfile(
@@ -323,6 +355,7 @@ def test_shared_gpu_vram_release_once():
 
 def test_gpu_guard_abort_during_job():
     os.environ["PIXVQA_SCHEDULER"] = "1"
+    os.environ.pop("PIXVQA_SCHEDULER_ADMISSION", None)
     sched = MetricScheduler(
         SchedulerConfig(
             enabled=True,
@@ -514,6 +547,7 @@ def main() -> int:
     test_scheduler_disabled_passthrough()
     test_admission_and_release()
     test_failure_releases_slot()
+    test_global_admission_launch_failure_records_and_releases()
     test_queue_order_with_cap()
     test_vram_no_double_count_five_cvqa()
     test_vram_sixth_cvqa_blocked_not_hung()
