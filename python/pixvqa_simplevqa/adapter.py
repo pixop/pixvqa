@@ -106,6 +106,16 @@ def _pixvqa_trace_tensor(stage, value):
         _out.write(_json.dumps(_record, sort_keys=True) + "\\n")
 '''
 
+# Capture factory is resolved in the staged interpreter; cv2 remains available
+# for color conversion. Original OpenCV decoding can be selected for A/B tests.
+_SIMPLEVQA_CAPTURE_HELPER = '''
+from pixvqa_video.ffmpeg_bgr import FFmpegCapture as _PixVqaFFmpegCapture
+_pixvqa_video_capture = (
+    cv2.VideoCapture if os.environ.get("PIXVQA_LEARNED_DECODER", "ffmpeg").lower() == "opencv"
+    else _PixVqaFFmpegCapture
+)
+'''
+
 _MOTION_MODEL_TO_DEVICE = "    model_motion = model_motion.to(device)"
 _MOTION_MODEL_EVAL = "    model_motion.eval()"
 
@@ -130,6 +140,13 @@ def _motion_eval_overlay(text: str) -> str:
             raise SetupError("upstream SimpleVQA entrypoint changed")
         text = text.replace(anchor, _SIMPLEVQA_DETERMINISM_HELPER + "\n" + anchor, 1)
     text = text.replace(init, "    _pixvqa_deterministic_inference()\n" + init, 1)
+    if "_pixvqa_video_capture = (" not in text:
+        anchor = "def main(config):"
+        text = text.replace(anchor, _SIMPLEVQA_CAPTURE_HELPER + "\n" + anchor, 1)
+    # Reuse the upstream sampling, resizing and color-conversion logic.
+    # Only substitute the VideoCapture implementation, including both the
+    # spatial and rolling-window motion decoding passes.
+    text = text.replace("cv2.VideoCapture(", "_pixvqa_video_capture(")
     if "def _pixvqa_trace_tensor(" not in text:
         anchor = "def main(config):"
         text = text.replace(anchor, _SIMPLEVQA_TRACE_HELPER + "\n" + anchor, 1)
