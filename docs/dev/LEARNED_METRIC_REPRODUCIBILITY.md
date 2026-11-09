@@ -91,3 +91,46 @@ PYTHONPATH=python python scripts/test_simplevqa_motion_eval.py
 
 This validates staging/textual injection but **does not** demonstrate numerical
 repeatability or compare models on the RTX 4070.
+
+## SimpleVQA stage-by-stage trace (single-process / persistent-worker path)
+
+To locate the first source of residual variation, PixVQA can hash the model
+inputs, the SlowFast outputs for each motion window, the assembled motion
+features and final score. This is an **opt-in diagnostic** that copies tensors
+to host memory and can significantly slow execution. It does not change tensor
+values, but should not be used for performance benchmarking. The shared-GPU
+path is not instrumented by this trace yet.
+
+```bash
+cd ~/codeccomp/metrics/pixvqa
+git pull --ff-only origin main
+PYTHONPATH=python python scripts/test_simplevqa_motion_eval.py
+
+# In the shell where the exact same single-video benchmark is invoked:
+export PIXVQA_LEARNED_DETERMINISTIC=1
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
+export PIXVQA_SIMPLEVQA_TRACE_DIR="$(mktemp -d /tmp/pixvqa-svqa-trace-XXXXXX)"
+echo "$PIXVQA_SIMPLEVQA_TRACE_DIR"
+
+# Execute the existing evaluation command three times sequentially, without
+# concurrent jobs and without re-encoding the input; use the same MP4 each time.
+# Then compare the traces:
+PYTHONPATH="$HOME/codeccomp/metrics/pixvqa/python" \
+  python "$HOME/codeccomp/metrics/pixvqa/scripts/compare_simplevqa_traces.py" \
+  "$PIXVQA_SIMPLEVQA_TRACE_DIR"
+```
+
+One JSONL file is created per independent inference process. If the trace
+contains only model input differences, investigate OpenCV and preprocessing.
+If the inputs match but SlowFast features differ, investigate SlowFast GPU
+kernels and checkpoint/state. If SlowFast outputs match but `score` differs,
+investigate spatial regressor operations including the `torch.std` reduction.
+
+A clean run means every trace file ends with a `score` stage. Do not mix
+traces from different input videos, inference backends, or model checkpoints.
+Verify the setting actually reached the child by checking `deterministic=true`
+in trace output. Clear these environment variables afterward.
+
+```bash
+unset PIXVQA_LEARNED_DETERMINISTIC CUBLAS_WORKSPACE_CONFIG PIXVQA_SIMPLEVQA_TRACE_DIR
+```
