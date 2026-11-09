@@ -18,6 +18,7 @@ from pixvqa_simplevqa.adapter import (
     _CPU_OVERLAY_OLD_BLOCK,
     _CUDA_SINGLE_DECODE_MAIN_OLD,
     _CUDA_UNIFIED_FN_ANCHOR,
+    _CUDA_UNIFIED_FN,
     cpu_overlay_test_demo,
     cuda_single_decode_overlay_test_demo,
     inspect_video,
@@ -38,6 +39,130 @@ def _ffprobe_json_pair(stream_obj: dict, fmt_obj: dict) -> list[CompletedProcess
         _completed(0, json.dumps({"format": fmt_obj})),
     ]
 
+
+
+# Exercise the generated CUDA preprocessing overlay without PyTorch or GPU.
+# Integer frame IDs stand in for identically transformed RGB tensors.
+def test_bounded_motion_window_equivalence():
+    from types import SimpleNamespace
+
+    class FakeBuffer:
+        def __init__(self, count):
+            self.data = [None] * count
+
+        def __getitem__(self, index):
+            return self.data[index]
+
+        def __setitem__(self, index, value):
+            if isinstance(index, slice):
+                self.data[index] = [value] * len(range(*index.indices(len(self.data))))
+            else:
+                self.data[index] = value
+
+    class FakeTorch:
+        @staticmethod
+        def zeros(shape):
+            return FakeBuffer(shape[0])
+
+    class FakeTransforms:
+        @staticmethod
+        def Compose(operations):
+            return lambda frame: frame
+
+        @staticmethod
+        def Resize(*args):
+            return None
+
+        @staticmethod
+        def CenterCrop(*args):
+            return None
+
+        @staticmethod
+        def ToTensor(*args):
+            return None
+
+        @staticmethod
+        def Normalize(*args, **kwargs):
+            return None
+
+    class FakeImage:
+        @staticmethod
+        def fromarray(frame):
+            return frame
+
+    for fps in (1, 2, 15, 24, 30, 32, 60, 120):
+        for seconds in (1, 2, 8, 60):
+            total = fps * seconds
+            for dropped in (0, 1, min(5, total // 2)):
+                # Failed reads do not advance the upstream decoded-frame index.
+                source = [i for i in range(total) if i < total - dropped]
+                class FakeCapture:
+                    def __init__(self):
+                        self.index = 0
+                        self.released = False
+
+                    def open(self, path):
+                        return True
+
+                    def get(self, prop):
+                        return total if prop == 1 else fps
+
+                    def read(self):
+                        if self.index >= total:
+                            return False, None
+                        i = self.index
+                        self.index += 1
+                        return (i < total - dropped), (i if i < total - dropped else None)
+
+                    def release(self):
+                        self.released = True
+
+                capture = FakeCapture()
+                cv2 = SimpleNamespace(
+                    VideoCapture=lambda: capture,
+                    CAP_PROP_FRAME_COUNT=1,
+                    CAP_PROP_FPS=2,
+                    COLOR_BGR2RGB=3,
+                    cvtColor=lambda frame, conversion: frame,
+                )
+                scope = {
+                    "cv2": cv2, "Image": FakeImage, "torch": FakeTorch,
+                    "transforms": FakeTransforms,
+                }
+                exec(_CUDA_UNIFIED_FN, scope)
+                spatial, motion, _ = scope["video_processing_unified"]("mock.mp4")
+                assert capture.released
+                length = total // fps
+                expected = source + ([source[-1]] * (total - len(source)) if source else [None] * total)
+                expected_spatial = [expected[i * fps] for i in range(length)]
+                assert spatial.data == expected_spatial, (fps, seconds, dropped, "spatial")
+                expected_motion = []
+                for idx in range(length):
+                    start = idx * fps
+                    window = expected[start:start + 32]
+                    if len(window) < 32:
+                        window += [window[-1]] * (32 - len(window))
+                    expected_motion.append(window)
+                while len(expected_motion) < 8:
+                    expected_motion.append(expected_motion[-1])
+                assert [m.data for m in motion] == expected_motion, (fps, seconds, dropped, "motion")
+
+    # Regression: invalid metadata should fail before allocating or dividing.
+    capture = SimpleNamespace(open=lambda path: True, get=lambda prop: 0, release=lambda: None)
+    cv2 = SimpleNamespace(
+        VideoCapture=lambda: capture, CAP_PROP_FRAME_COUNT=1, CAP_PROP_FPS=2,
+    )
+    scope = {"cv2": cv2, "Image": FakeImage, "torch": FakeTorch, "transforms": FakeTransforms}
+    exec(_CUDA_UNIFIED_FN, scope)
+    try:
+        scope["video_processing_unified"]("bad-fps.mp4")
+    except ValueError as exc:
+        assert "frame rate" in str(exc)
+    else:
+        raise AssertionError("zero FPS was accepted")
+
+
+test_bounded_motion_window_equivalence()
 
 with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     d = Path(tmp)
