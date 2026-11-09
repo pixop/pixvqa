@@ -108,24 +108,30 @@ def video_processing_unified(dist):
     video_read_index = 0
     frame_idx = 0
     spatial_idx = 0
-    last_motion_frame = None
+    last_decoded_frame = None
 
     for i in range(video_length):
         has_frames, frame = video_capture.read()
         if not has_frames:
             continue
-        read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        motion_frame = motion_tf(read_frame)
-        last_motion_frame = motion_frame
+        # Retain the last decoded BGR frame for exact upstream tail padding.
+        # It may lie beyond the final 32-frame motion window.
+        last_decoded_frame = frame
         t = video_read_index
         # A frame can belong to multiple 32-frame windows when fps < 32.
         first_clip = max(0, (t - video_length_clip + video_frame_rate) // video_frame_rate)
         last_clip = min(video_clip - 1, t // video_frame_rate)
-        for clip_idx in range(first_clip, last_clip + 1):
-            motion_clips[clip_idx][t - clip_idx * video_frame_rate] = motion_frame
-        if (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0):
-            transformed_video[spatial_idx] = spatial_tf(read_frame)
-            spatial_idx += 1
+        need_motion = first_clip <= last_clip
+        need_spatial = (spatial_idx < video_length_read) and (frame_idx % video_frame_rate == 0)
+        if need_motion or need_spatial:
+            read_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if need_motion:
+                motion_frame = motion_tf(read_frame)
+                for clip_idx in range(first_clip, last_clip + 1):
+                    motion_clips[clip_idx][t - clip_idx * video_frame_rate] = motion_frame
+            if need_spatial:
+                transformed_video[spatial_idx] = spatial_tf(read_frame)
+                spatial_idx += 1
         video_read_index += 1
         frame_idx += 1
 
@@ -133,12 +139,19 @@ def video_processing_unified(dist):
         for i in range(spatial_idx, video_length_read):
             transformed_video[i] = transformed_video[spatial_idx - 1]
 
-    # Upstream pads missing frames with the final decoded frame and also pads
-    # the last incomplete 32-frame window. Empty decode retains zero buffers.
-    if last_motion_frame is not None:
+    # The upstream reference pads a truncated decode with its final frame,
+    # then pads any incomplete 32-frame window with the same last frame.
+    # Convert that tail frame only if one of the selected windows needs it.
+    needs_padding = any(
+        video_read_index < clip_idx * video_frame_rate + video_length_clip
+        for clip_idx in range(video_clip)
+    )
+    if last_decoded_frame is not None and needs_padding:
+        last_image = Image.fromarray(cv2.cvtColor(last_decoded_frame, cv2.COLOR_BGR2RGB))
+        last_motion_frame = motion_tf(last_image)
         for clip_idx, clip_tensor in enumerate(motion_clips):
             start = clip_idx * video_frame_rate
-            padded_from = min(video_length_clip, max(0, min(video_read_index, video_length) - start))
+            padded_from = min(video_length_clip, max(0, video_read_index - start))
             if padded_from < video_length_clip:
                 clip_tensor[padded_from:] = last_motion_frame
 
