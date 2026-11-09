@@ -47,13 +47,12 @@ PYTHONPATH=python /path/to/learned-env/bin/python -m pixvqa_simplevqa \
   --device cuda
 ```
 
-The runner executes upstream `test_demo.py` in an isolated temporary working
-directory. **CUDA** (`--device cuda` / `--is_gpu` upstream) symlinks the
-unchanged upstream script; **CPU** stages a parity-reviewed overlay that drops
+The runner stages the upstream `test_demo.py` in an isolated temporary working
+directory. **CUDA** (`--device cuda` / `--is_gpu` upstream) uses PixVQA's bounded-motion-buffer single-decode overlay; **CPU** stages an overlay that drops
 unconditional `DataParallel` and loads the checkpoint with `map_location` (upstream
 lines 191–194 otherwise fail on CPU). `model/` is always symlinked; checkpoint via
 `ckpts/UGC_BVQA_model.pth`. The upstream checkout is never modified. JSON output
-includes `upstream_test_demo` (`cpu-overlay` vs `symlink-unmodified`), the pooled
+includes `upstream_test_demo` (`cpu-overlay` vs `cuda-bounded-motion-overlay`), the pooled
 quality score, model SHA-256, upstream revision, **runtime stack**
 (pip `importlib.metadata` versions for torch/torchvision/pytorchvideo/NumPy/OpenCV/Pillow when installed, plus Python implementation/version), and input metadata (including
 `duration_seconds` and `color_transfer` when ffprobe reports them). Failure
@@ -63,10 +62,7 @@ processing without a frame cap, optimizer, temporal score trace or QCS.
 ### Persistent CUDA worker (opt-in)
 
 For batch scoring on CUDA, `--use-worker` keeps one child process alive and
-reuses the loaded PyTorch/SlowFast stack across clips. The worker stages the
-parity-reviewed single-decode overlay (`cuda-single-decode-worker` metadata);
-the default subprocess CUDA path still symlinks upstream `test_demo.py`
-unchanged (`symlink-unmodified`).
+reuses the loaded PyTorch/SlowFast stack across clips. Both the worker and default CUDA subprocess stage the bounded-motion single-decode overlay; the worker still uses `cuda-single-decode-worker` provenance metadata.
 
 ```bash
 PYTHONPATH=python .venv/bin/python -m pixvqa_simplevqa \
@@ -104,12 +100,12 @@ when stderr is empty) is included in the error text for diagnosis.
 
 ## Known upstream limitations to address before integration
 
-- The demo allocates buffers proportional to the *entire decoded video*,
-  including one 224x224 RGB tensor per frame. Do **not** use unbounded
-  UHD/long-video inputs for initial runs.
+- The CPU reference path still allocates buffers proportional to the *entire decoded video*. The CUDA overlay instead keeps only the 32-frame motion windows required for scoring (plus spatial samples), but these windows still grow with video duration; do **not** assume unbounded video length is safe.
 - It uses approximately one spatial sample and one SlowFast temporal clip
   per second, with whole-video pooling; a video shorter than one second is
-  rejected by the wrapper.
+  rejected by the wrapper. To validate the CUDA optimization, compare against
+  the pinned upstream `test_demo.py` on identical videos and checkpoints.
+  Target identical scores; accept only negligible, measured differences.
 - The demo reads via OpenCV; this initial runner only supports compressed SDR
   video, not raw YUV. Raw sources in the NR corpus must be converted to
   format-tagged, deterministic compressed derivatives first.
