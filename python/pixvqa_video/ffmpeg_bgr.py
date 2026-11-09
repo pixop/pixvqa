@@ -65,20 +65,18 @@ class FFmpegCapture:
         self._frames = int(count)
         if self._frames <= 0:
             raise ValueError("FFmpegCapture requires a known positive frame count")
-        self._proc = subprocess.Popen(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
-             "-threads", "1", "-i", source, "-map", "0:v:0",
-             "-an", "-sn", "-dn", "-fps_mode", "passthrough",
-             "-pix_fmt", "bgr24", "-f", "rawvideo", "-"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
+        self._command = [
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-threads", "1", "-i", source, "-map", "0:v:0",
+            "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+            "-pix_fmt", "bgr24", "-f", "rawvideo", "-",
+        ]
         self._read_frames = 0
         self._released = False
         return True
 
     def isOpened(self):
-        return self._proc is not None and not self._released
+        return not self._released
 
     def getBackendName(self):
         return "FFMPEG_PIPE"
@@ -98,7 +96,11 @@ class FFmpegCapture:
             return False, None
         if self._read_frames >= self._frames:
             return False, None
-        assert self._proc is not None and self._proc.stdout is not None
+        if self._proc is None:
+            self._proc = subprocess.Popen(
+                self._command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            )
+        assert self._proc.stdout is not None
         size = self._width * self._height * 3
         data = self._proc.stdout.read(size)
         if len(data) != size:
