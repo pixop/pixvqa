@@ -134,7 +134,8 @@ def test_bounded_motion_window_equivalence():
                 assert capture.released
                 length = total // fps
                 expected = source + ([source[-1]] * (total - len(source)) if source else [None] * total)
-                expected_spatial = [expected[i * fps] for i in range(length)]
+                expected_spatial = [source[i * fps] for i in range(length) if i * fps < len(source)]
+                expected_spatial += [expected_spatial[-1]] * (length - len(expected_spatial))
                 assert spatial.data == expected_spatial, (fps, seconds, dropped, "spatial")
                 expected_motion = []
                 for idx in range(length):
