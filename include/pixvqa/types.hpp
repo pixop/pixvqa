@@ -249,6 +249,8 @@ struct Options {
   // Raw means the file is planar YUV. Software and Nvdec are independent.
   DecodeMode decode = DecodeMode::Raw;
   DecodeMode ref_decode = DecodeMode::Raw;
+  // Opt-in: set PIXVQA_SCHEDULER_ADMISSION for Python learned backends.
+  bool scheduler_admission = false;
 };
 
 inline double yuv_sample_weight_avg(double y, double u, double v, ChromaFormat fmt) {

@@ -5,6 +5,8 @@ The scheduler does not load CUDA models; it only admits and launches subprocesse
 """
 from __future__ import annotations
 
+from .admission import admission_enabled, optional_admission
+from .client import AdmissionError, AdmissionLease, acquire, release
 from .profiles import MetricProfile, default_profiles, profile_for
 from .scheduler import (
     JobResult,
@@ -17,7 +19,11 @@ from .scheduler import (
 from .telemetry import HostTelemetry, TelemetrySample, check_host_resources
 
 __all__ = [
+    "AdmissionError",
+    "AdmissionLease",
     "HostTelemetry",
+    "acquire",
+    "admission_enabled",
     "JobResult",
     "JobSpec",
     "MetricProfile",
@@ -27,6 +33,8 @@ __all__ = [
     "TelemetrySample",
     "check_host_resources",
     "default_profiles",
+    "optional_admission",
     "profile_for",
+    "release",
     "scheduler_enabled",
 ]

@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+from pixvqa_scheduler.admission import AdmissionError, optional_admission
+
 from .adapter import InferenceError, SetupError, run, validate
 
 
@@ -86,16 +88,22 @@ def main(argv=None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-            result = run(
-                args.repo,
-                args.checkpoint,
-                args.test,
-                device=dev,
-                ffprobe=args.ffprobe,
-                timeout=args.timeout,
-                use_worker=args.use_worker,
-                use_shared_gpu_worker=args.use_shared_gpu_worker,
-            )
+            with optional_admission(
+                "simplevqa", shared_gpu=args.use_shared_gpu_worker
+            ):
+                result = run(
+                    args.repo,
+                    args.checkpoint,
+                    args.test,
+                    device=dev,
+                    ffprobe=args.ffprobe,
+                    timeout=args.timeout,
+                    use_worker=args.use_worker,
+                    use_shared_gpu_worker=args.use_shared_gpu_worker,
+                )
+    except AdmissionError as exc:
+        print(f"pixvqa-simplevqa: admission: {exc}", file=sys.stderr)
+        return 3
     except SetupError as exc:
         print(f"pixvqa-simplevqa: setup: {exc}", file=sys.stderr)
         return 2

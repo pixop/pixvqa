@@ -11,6 +11,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .admission import admission_enabled
+from .client import AdmissionError, acquire, release
 from .launcher import RunningJob, launch, wait_job
 from .profiles import MetricProfile, SchedulerBudget, default_profiles, profile_for
 from .telemetry import HostTelemetry, check_host_resources
@@ -65,8 +67,8 @@ class SchedulerConfig:
         default_factory=lambda: float(os.environ.get("PIXVQA_SCHEDULER_STAGGER_S", "0"))
     )
     cross_invocation_warning: str = (
-        "Scheduler budgets apply only within this Python process. Separate shell "
-        "invocations or pixvqa binaries do not share admission state."
+        "Set PIXVQA_SCHEDULER_ADMISSION=1 (or pixvqa --scheduler-admission) for "
+        "cross-terminal leases via the AF_UNIX admission daemon."
     )
 
 
@@ -111,6 +113,8 @@ class MetricScheduler:
         self._shutdown = threading.Event()
         self._started = False
         self._abort_reason: str | None = None
+        self._global_admission = admission_enabled()
+        self._job_leases: dict[str, object] = {}
 
     def _resolve_profile(self, spec: JobSpec) -> MetricProfile:
         if spec.metric == "simplevqa" and spec.shared_gpu:
@@ -210,6 +214,8 @@ class MetricScheduler:
         return None
 
     def _can_admit(self, profile: MetricProfile) -> str | None:
+        if self._global_admission:
+            return self._profile_never_admissible(profile)
         metric = profile.metric
         cap = profile.effective_max_concurrent()
         active_metric = self._metric_active.get(metric, 0)
@@ -321,21 +327,42 @@ class MetricScheduler:
                             continue
                         break
                     self._queue.popleft()
-                    self._reserve(qj.profile)
+                    if not self._global_admission:
+                        self._reserve(qj.profile)
                     if self.config.stagger_start_s > 0 and self._active:
                         self._cv.release()
                         time.sleep(self.config.stagger_start_s)
                         self._cv.acquire()
+                    child_env = dict(qj.spec.env or {})
+                    lease = None
+                    if self._global_admission:
+                        try:
+                            lease = acquire(
+                                qj.spec.metric,
+                                shared_gpu=qj.spec.shared_gpu,
+                            )
+                            child_env["PIXVQA_SCHEDULER_ADMISSION_SKIP"] = "1"
+                        except AdmissionError as exc:
+                            qj.result = JobResult(
+                                spec=qj.spec,
+                                state=JobState.REJECTED,
+                                error=str(exc),
+                                profile=qj.profile,
+                                admission_wait_seconds=time.monotonic() - qj.enqueued_at,
+                            )
+                            qj.event.set()
+                            continue
                     try:
                         running = launch(
                             qj.spec.job_id,
                             qj.spec.metric,
                             qj.spec.command,
-                            env=qj.spec.env,
+                            env=child_env or qj.spec.env,
                             cwd=qj.spec.cwd,
                         )
                     except OSError as exc:
-                        self._release(qj.profile)
+                        if not self._global_admission:
+                            self._release(qj.profile)
                         qj.result = JobResult(
                             spec=qj.spec,
                             state=JobState.FAILED,
@@ -345,6 +372,8 @@ class MetricScheduler:
                         )
                         qj.event.set()
                         continue
+                    if lease is not None:
+                        self._job_leases[qj.spec.job_id] = lease
                     self._active[qj.spec.job_id] = (qj, running, time.monotonic())
                     threading.Thread(
                         target=self._watch_job,
@@ -396,9 +425,16 @@ class MetricScheduler:
             error=err,
             profile=qj.profile,
         )
+        lease = self._job_leases.pop(qj.spec.job_id, None)
+        if lease is not None:
+            try:
+                release(lease)
+            except (AdmissionError, OSError):
+                pass
         with self._lock:
             self._active.pop(qj.spec.job_id, None)
-            self._release(qj.profile)
+            if not self._global_admission:
+                self._release(qj.profile)
             self._results.append(result)
             qj.result = result
             qj.event.set()
@@ -486,7 +522,9 @@ class MetricScheduler:
                     )
                 )
         self.shutdown()
-        warnings = [self.config.cross_invocation_warning]
+        warnings = []
+        if not self._global_admission:
+            warnings.append(self.config.cross_invocation_warning)
         if self._abort_reason:
             warnings.append(f"safety abort: {self._abort_reason}")
         return SchedulerReport(

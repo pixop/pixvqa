@@ -47,6 +47,9 @@ def main(argv=None) -> int:
     svqa.add_argument("--shared-gpu", action="store_true")
     svqa.add_argument("--timeout", type=float, default=3600)
 
+    daemon_p = sub.add_parser("daemon", help="Run the cross-process admission daemon (foreground).")
+    daemon_p.add_argument("--status", action="store_true", help="Print daemon socket path and exit.")
+
     cvqa = sub.add_parser("cvqa-batch")
     cvqa.add_argument("--repo", required=True, type=Path)
     cvqa.add_argument("--checkpoint", required=True, type=Path)
@@ -62,6 +65,16 @@ def main(argv=None) -> int:
     if not args.cmd:
         ap.print_help()
         return 2
+
+    if args.cmd == "daemon":
+        from .ipc import socket_address
+
+        if args.status:
+            print(json.dumps({"socket": socket_address()}, indent=2))
+            return 0
+        from .daemon import main as daemon_main
+
+        return daemon_main()
 
     specs: list[JobSpec] = []
     if args.cmd == "mix-example":

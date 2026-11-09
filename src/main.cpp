@@ -353,6 +353,7 @@ void print_help_advanced() {
       "  --hdr-chipqa-output-json PATH  Persist HDR-ChipQA run record.\n"
       "  --cvqa-nr-sample-interval-sec N  Temporal sampling interval (default 1 second).\n"
       "  --cvqa-nr-chunk-size-sec N  Video seconds per GPU inference chunk (default 8).\n"
+      "  --scheduler-admission  Opt-in global metric resource admission (PIXVQA_SCHEDULER_ADMISSION).\n"
       "  Options override config defaults; see docs/LEARNED_METRICS.md.\n"
       "\n"
       "Advanced HDR settings\n"
@@ -2124,6 +2125,10 @@ bool hdr_chipqa_command(LearnedPlan& plan, std::vector<std::string>& args) {
   return true;
 }
 
+void apply_scheduler_admission_env(const Options& opt) {
+  if (opt.scheduler_admission) setenv("PIXVQA_SCHEDULER_ADMISSION", "1", 1);
+}
+
 bool learned_build_command(LearnedPlan& plan, LearnedBackendKind which, std::vector<std::string>& args) {
   switch (which) {
     case LearnedBackendKind::Cvvdp:
@@ -2189,6 +2194,7 @@ int preflight_one(LearnedPlan& plan, LearnedBackendKind which) {
 }
 
 int preflight_learned(LearnedPlan& plan) {
+  apply_scheduler_admission_env(plan.opt);
   if (plan.cvvdp.selected && preflight_one(plan, LearnedBackendKind::Cvvdp) != 0) return 2;
   if (plan.cvqahdr.selected && preflight_one(plan, LearnedBackendKind::CvqaHdr) != 0) return 2;
   if (plan.simplevqa.selected && preflight_one(plan, LearnedBackendKind::Simplevqa) != 0) return 2;
@@ -3741,6 +3747,8 @@ int run_cli(int argc, char** argv) {
     if (a == "--metrics") {
       if (!parse_metrics_list(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa, need("--metrics")))
         return 2;
+    } else if (a == "--scheduler-admission") {
+      opt.scheduler_admission = true;
     } else if (a == "--learned-config") {
       learned_config_path = need("--learned-config");
       if (learned_config_path.empty()) {
