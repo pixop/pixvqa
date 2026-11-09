@@ -30,7 +30,7 @@ def main() -> int:
         + "    with torch.no_grad():\n"
         + "        feature_motion = torch.zeros([n_clip, 2048+256])\n"
         + _CUDA_SINGLE_DECODE_MAIN_OLD + "\n"
-        + _CUDA_UNIFIED_FN_ANCHOR + "\n"
+        + _CUDA_UNIFIED_FN_ANCHOR + "\n    pass\n"
     )
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "test_demo.py"
