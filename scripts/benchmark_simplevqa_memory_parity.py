@@ -3,8 +3,9 @@
 
 Run from PixVQA checkout with the learned .venv Python. All three variants use
 the same reference checkpoint, SlowFast cache, input files and FP32 inference.
-The experimental streaming variant is opt-in and must pass score parity before
-promotion. GNU time reports peak RSS for its command and descendants.
+Default PixVQA CUDA uses rolling-window streaming; legacy bounded single-decode
+is available via ``PIXVQA_SIMPLEVQA_LEGACY_BOUNDED=1``. GNU time reports peak
+RSS for its command and descendants.
 """
 from __future__ import annotations
 
@@ -95,12 +96,12 @@ def evaluate(video: Path, *, repo: Path, checkpoint: Path, timeout: int) -> dict
             "--repo", str(repo), "--checkpoint", str(checkpoint),
             "--test", str(video), "--device", "cuda",
         ]
-        module_env.pop("PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING", None)
-        bounded = invoke(cmd, cwd=base, environment=module_env,
-                         timeout=timeout, label="bounded", output=score_file)
-        module_env["PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING"] = "1"
+        module_env.pop("PIXVQA_SIMPLEVQA_LEGACY_BOUNDED", None)
         streaming = invoke(cmd, cwd=base, environment=module_env,
                            timeout=timeout, label="streaming", output=score_file)
+        module_env["PIXVQA_SIMPLEVQA_LEGACY_BOUNDED"] = "1"
+        bounded = invoke(cmd, cwd=base, environment=module_env,
+                         timeout=timeout, label="bounded", output=score_file)
         for candidate in (bounded, streaming):
             candidate["abs_score_delta_vs_upstream"] = abs(
                 candidate["quality_score"] - upstream_result["quality_score"]

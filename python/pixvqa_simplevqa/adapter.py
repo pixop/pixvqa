@@ -4,9 +4,11 @@ No PyTorch code is vendored. The official demo is executed in a temporary,
 isolated working directory to satisfy its fixed relative ckpts/ path.
 CPU runs a staged overlay (no DataParallel; ``map_location`` on load) because
 upstream unconditionally wraps the model in DataParallel. The default CUDA
-path stages a bounded-window single-decode overlay. Optional ``--use-worker``
-amortizes imports for batch CUDA scoring. An experimental streaming mode
-is opt-in pending full numerical-parity validation. This is a parity baseline, not a native implementation.
+path stages a rolling-window streaming overlay (spatial decode + yielded
+motion windows). Optional ``--use-worker`` amortizes imports for batch CUDA
+scoring. A legacy bounded single-decode overlay remains internal-only behind
+``PIXVQA_SIMPLEVQA_LEGACY_BOUNDED=1`` (TODO: remove). This is a parity
+baseline, not a native implementation.
 """
 from __future__ import annotations
 
@@ -68,11 +70,12 @@ _CPU_OVERLAY_EXTRA = (
 # Parity-reviewed on official 960x540/8s clip (exact FP32 score 2.9507508277893066).
 _CUDA_SINGLE_DECODE_MAIN_OLD = """        video_dist_spatial, video_name = video_processing_spatial(config.dist)
         video_dist_motion, video_name = video_processing_motion(config.dist)"""
-_CUDA_SINGLE_DECODE_MAIN_NEW = """        if os.environ.get('PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING') == '1':
-            video_dist_spatial, video_name = video_processing_spatial(config.dist)
-            video_dist_motion, video_name = video_processing_motion_stream(config.dist)
+_CUDA_SINGLE_DECODE_MAIN_NEW = """        if os.environ.get('PIXVQA_SIMPLEVQA_LEGACY_BOUNDED') == '1':
+            # TODO(PR #22): remove legacy bounded path once streaming is sole default.
+            video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)
         else:
-            video_dist_spatial, video_dist_motion, video_name = video_processing_unified(config.dist)"""
+            video_dist_spatial, video_name = video_processing_spatial(config.dist)
+            video_dist_motion, video_name = video_processing_motion_stream(config.dist)"""
 _CUDA_UNIFIED_FN_ANCHOR = "def pack_pathway_output(frames, device):"
 _CUDA_UNIFIED_FN = '''
 
@@ -166,9 +169,9 @@ def video_processing_unified(dist):
     return transformed_video, motion_clips, video_name_dis
 '''
 
-# Experimental streaming alternative to the current bounded-window CUDA path.
-# It preserves all selected full-frame spatial samples and exactly the same
-# SlowFast motion windows. Activation is opt-in pending authentic-score parity.
+# Default CUDA rolling-window motion decode. Preserves all selected full-frame
+# spatial samples and exactly the same SlowFast motion windows as upstream.
+# Legacy bounded alternative: video_processing_unified (single decode pass).
 _CUDA_STREAMING_MOTION_FN = '''
 def video_processing_motion_stream(dist):
     """Yield upstream SlowFast windows while keeping at most 32 decoded tensors."""
@@ -645,7 +648,7 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
                 )
             except OSError as exc:
                 raise SetupError(f"could not stage CUDA overlay test_demo.py: {exc}") from exc
-            upstream_test_demo = "cuda-bounded-motion-overlay"
+            upstream_test_demo = "cuda-streaming-motion-overlay"
         try:
             (root / "model").symlink_to(repo / "model", target_is_directory=True)
         except OSError as exc:

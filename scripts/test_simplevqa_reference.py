@@ -269,7 +269,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert result["backend"] == "upstream-test_demo"
         result = run(repo, checkpoint, video, device="cuda")
         assert result["device"] == "cuda"
-        assert result["upstream_test_demo"] == "cuda-bounded-motion-overlay"
+        assert result["upstream_test_demo"] == "cuda-streaming-motion-overlay"
         try:
             run(repo, checkpoint, video, device="gpu")
         except SetupError:
@@ -543,10 +543,11 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         assert "motion_clips = [" in patched_cuda
         assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
         main_body = patched_cuda.split("def main")[1]
-        assert "video_processing_unified(config.dist)" in main_body
+        assert "video_processing_motion_stream(config.dist)" in main_body
         assert "video_processing_motion(config.dist)" not in main_body
-        # Opt-in streaming keeps upstream spatial decode; bounded path is unified.
+        # Default streaming keeps upstream spatial decode; legacy bounded is unified.
         assert main_body.count("video_processing_spatial(config.dist)") == 1
+        assert "PIXVQA_SIMPLEVQA_LEGACY_BOUNDED" in main_body
         assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
         bad_cuda = d / "bad_cuda_upstream"
         bad_cuda.mkdir()

@@ -48,12 +48,14 @@ PYTHONPATH=python /path/to/learned-env/bin/python -m pixvqa_simplevqa \
 ```
 
 The runner stages the upstream `test_demo.py` in an isolated temporary working
-directory. **CUDA** (`--device cuda` / `--is_gpu` upstream) uses PixVQA's bounded-motion-buffer single-decode overlay; **CPU** stages an overlay that drops
-unconditional `DataParallel` and loads the checkpoint with `map_location` (upstream
-lines 191–194 otherwise fail on CPU). `model/` is always symlinked; checkpoint via
+directory. **CUDA** (`--device cuda` / `--is_gpu` upstream) uses PixVQA's
+rolling-window streaming overlay: separate spatial decode plus yielded 32-frame
+SlowFast motion windows. **CPU** stages an overlay that drops unconditional
+`DataParallel` and loads the checkpoint with `map_location` (upstream lines
+191–194 otherwise fail on CPU). `model/` is always symlinked; checkpoint via
 `ckpts/UGC_BVQA_model.pth`. The upstream checkout is never modified. JSON output
-includes `upstream_test_demo` (`cpu-overlay` vs `cuda-bounded-motion-overlay`), the pooled
-quality score, model SHA-256, upstream revision, **runtime stack**
+includes `upstream_test_demo` (`cpu-overlay` vs `cuda-streaming-motion-overlay`),
+the pooled quality score, model SHA-256, upstream revision, **runtime stack**
 (pip `importlib.metadata` versions for torch/torchvision/pytorchvideo/NumPy/OpenCV/Pillow when installed, plus Python implementation/version), and input metadata (including
 `duration_seconds` and `color_transfer` when ffprobe reports them). Failure
 exits: 2 for setup, 1 for runtime/inference. At present it runs the upstream
@@ -62,7 +64,9 @@ processing without a frame cap, optimizer, temporal score trace or QCS.
 ### Persistent CUDA worker (opt-in)
 
 For batch scoring on CUDA, `--use-worker` keeps one child process alive and
-reuses the loaded PyTorch/SlowFast stack across clips. Both the worker and default CUDA subprocess stage the bounded-motion single-decode overlay; the worker still uses `cuda-single-decode-worker` provenance metadata.
+reuses the loaded PyTorch/SlowFast stack across clips. Both the worker and default
+CUDA subprocess stage the streaming overlay; the worker still uses
+`cuda-single-decode-worker` provenance metadata.
 
 ```bash
 PYTHONPATH=python .venv/bin/python -m pixvqa_simplevqa \
@@ -100,7 +104,7 @@ when stderr is empty) is included in the error text for diagnosis.
 
 ## Known upstream limitations to address before integration
 
-- The CPU reference path still allocates buffers proportional to the *entire decoded video*. The CUDA overlay instead keeps only the 32-frame motion windows required for scoring (plus spatial samples), but these windows still grow with video duration; do **not** assume unbounded video length is safe.
+- The CPU reference path still allocates buffers proportional to the *entire decoded video*. The CUDA streaming overlay keeps at most 32 transformed motion frames in a deque while yielding each SlowFast window; spatial samples still scale with duration.
 - It uses approximately one spatial sample and one SlowFast temporal clip
   per second, with whole-video pooling; a video shorter than one second is
   rejected by the wrapper. To validate the CUDA optimization, compare against
@@ -126,8 +130,7 @@ when stderr is empty) is included in the error text for diagnosis.
 2. Generate bounded SDR reference clips from the local real-video corpus.
 3. Compare direct official demo output to wrapper output for CPU/CUDA with
    identical inputs and pinned dependencies.
-4. Profile memory; implement streaming and optional max-frame windows while
-   retaining score parity.
+4. Profile memory on representative clips; retain score parity.
 5. Add native CLI dispatch/group and compatibility behavior, learned-metric
    configuration, failure semantics, and mixed FR+NR regression tests.
 6. Only after those gates, benchmark ONNX Runtime/TensorRT against PyTorch.
@@ -135,29 +138,37 @@ when stderr is empty) is included in the error text for diagnosis.
 The unrelated Superposition `ENOMEM` native-read failure remains open.
 Do not run experiments on the active separate benchmarking computer.
 
-## Memory optimization experiments (PR #22)
+## Memory optimization (PR #22, merged path)
 
-PixVQA's default CUDA path uses a **bounded-window FP32 overlay** that stores only the selected
-SlowFast motion windows. It preserves the pinned model and full-frame spatial sampling.
+PixVQA's **default CUDA path** uses a **rolling-window FP32 overlay** that:
 
-For a more memory-constrained implementation, an **experimental streaming path** retains
-at most one rolling 32-frame motion window and passes each window to the same upstream
-SlowFast inference loop. It uses a separate motion decode pass (like the upstream
-reference) to avoid storing all selected windows simultaneously. The 448x448 spatial
-samples, model weights, FP32 operations, and final whole-video regressor are unchanged.
-This is **not** the Pixop Prime salient-region/partial-video variant.
+- Decodes spatial keyframes via the same `video_processing_spatial` routine as upstream.
+- Yields each 32-frame SlowFast motion window from `video_processing_motion_stream`
+  without retaining all windows simultaneously (deque `maxlen=32`).
 
-The streaming mode is intentionally disabled by default until genuine-checkpoint
-numerical parity and memory profiling are completed. Opt in for an individual
-test with:
+448×448 spatial samples, model weights, FP32 operations, and the final whole-video
+regressor are unchanged. This is **not** the Pixop Prime salient-region/partial-video variant.
 
-```bash
-PIXVQA_SIMPLEVQA_EXPERIMENTAL_STREAMING=1 ./bin/pixvqa \
-  --metrics simplevqa -t /path/to/sdr_clip.mp4
-```
+**Validated FP32 parity** (exact scores, tolerance 1e-4) on:
 
-For a three-way comparison with the pinned **unmodified upstream** script and
-both PixVQA variants, from the PixVQA checkout run:
+| Clip | Duration | Score (all modes) |
+|------|----------|-------------------|
+| Official 960×540 | 8 s | 2.9507508277893066 |
+| BasketballDrive 1080p50 | 10 s | 3.8700046882629395 |
+| BasketballDrive looped | 60 s | 3.8700499534606934 |
+
+Peak host RSS (60 s 1080p): upstream ~3267 MiB; streaming default ~1730 MiB (−47%);
+legacy bounded single-decode ~2602 MiB (−20%).
+
+### Legacy bounded overlay (internal only, TODO remove)
+
+An earlier PR #22 single-decode path (`video_processing_unified`) remains behind
+`PIXVQA_SIMPLEVQA_LEGACY_BOUNDED=1` for regression comparison. It is **not** a
+supported user-facing mode and will be removed once streaming is sole default.
+
+### Benchmark harness
+
+From the PixVQA checkout with CUDA and learned dependencies:
 
 ```bash
 .venv/bin/python scripts/benchmark_simplevqa_memory_parity.py \
@@ -165,21 +176,15 @@ both PixVQA variants, from the PixVQA checkout run:
   --output /tmp/simplevqa_parity.json
 ```
 
-The comparison requires CUDA, installed learned dependencies, upstream assets,
-`/usr/bin/time`, and the pretrained SlowFast cache. It reports full precision
-scores, absolute differences, process peak RSS (GNU time), and elapsed time.
-It **does not** measure process-exclusive GPU VRAM. The initial absolute error
-threshold of 1e-4 is a provisional acceptance gate, not a guarantee of
-perceptual equivalence; review bias, ranking stability and real RD sensitivity.
-
-Do not merge or activate streaming by default based solely on mock tests.
-GPU numerical parity must be demonstrated on representative SDR clips,
-including short, long, high-motion, low-light, and compression-impaired video.
+The harness compares pinned **unmodified upstream**, default **streaming**, and
+optional **legacy bounded**. Requires `/usr/bin/time`, the pretrained SlowFast
+cache, and reports full-precision scores, absolute differences, process peak RSS,
+and elapsed time. It **does not** measure process-exclusive GPU VRAM.
 
 ### Reduced-precision research (not enabled)
 
-FP16 and BF16 can be evaluated in a future, separately controlled experiment
-against the validated FP32 implementation. Do not change the default inference
-dtype or checkpoints unless numerical deviation, bias, content rankings, peak
-memory, and throughput are measured and approved. INT8 quantization remains
-a lower-priority research option.
+FP16/BF16 evaluation is a separate opt-in experiment only. See
+[`reports/pr22_validation_20261109/FP16_BF16_RESEARCH.md`](../../reports/pr22_validation_20261109/FP16_BF16_RESEARCH.md)
+for benchmark design, risks, and acceptance gates. Default inference stays FP32;
+do not enable reduced precision in production CLI until measured deviation,
+ranking stability, and memory gains are approved.
