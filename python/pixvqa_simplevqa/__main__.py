@@ -61,6 +61,14 @@ def main(argv=None) -> int:
         action="store_true",
         help="Opt-in: reuse a persistent CUDA worker to amortize import cost across clips.",
     )
+    ap.add_argument(
+        "--use-shared-gpu-worker",
+        action="store_true",
+        help=(
+            "Opt-in prototype: one cross-process CUDA model scores video paths from "
+            "multiple clients (serialized GPU queue; not pipelined)."
+        ),
+    )
     args = ap.parse_args(argv)
     if args.max_frames not in (-1, 0):
         print("pixvqa-simplevqa: --max-frames is not enforced by the upstream demo (full-clip score)",
@@ -72,6 +80,12 @@ def main(argv=None) -> int:
             result["note"] = "SlowFast pretrained cache and successful inference not checked."
         else:
             dev = resolve_device(args.device)
+            if args.use_worker and args.use_shared_gpu_worker:
+                print(
+                    "pixvqa-simplevqa: --use-worker and --use-shared-gpu-worker are mutually exclusive",
+                    file=sys.stderr,
+                )
+                return 2
             result = run(
                 args.repo,
                 args.checkpoint,
@@ -80,6 +94,7 @@ def main(argv=None) -> int:
                 ffprobe=args.ffprobe,
                 timeout=args.timeout,
                 use_worker=args.use_worker,
+                use_shared_gpu_worker=args.use_shared_gpu_worker,
             )
     except SetupError as exc:
         print(f"pixvqa-simplevqa: setup: {exc}", file=sys.stderr)

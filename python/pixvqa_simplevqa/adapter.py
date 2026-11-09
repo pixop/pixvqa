@@ -550,6 +550,66 @@ def cpu_overlay_test_demo(src: Path) -> str:
     return text
 
 
+_SHARED_GPU_MODEL_FN = '''
+
+_MODEL_CACHE = None
+
+def load_models_once(device):
+    """Load SlowFast + ResNet regressor once; reuse for all subsequent inferences."""
+    global _MODEL_CACHE
+    if _MODEL_CACHE is not None:
+        return _MODEL_CACHE
+    model_motion = slowfast()
+    model_motion = model_motion.to(device)
+    model = UGC_BVQA_model.resnet50(pretrained=False)
+    model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.load_state_dict(torch.load('ckpts/UGC_BVQA_model.pth'))
+    model.eval()
+    _MODEL_CACHE = (model_motion, model, device)
+    return _MODEL_CACHE
+
+
+def infer_from_tensors(spatial_cpu, motion_clips, device=None):
+    """FP32 inference from CPU spatial tensor and motion clip tensors (parity with main())."""
+    if device is None:
+        device = torch.device('cuda')
+    model_motion, model, _ = load_models_once(device)
+    with torch.no_grad():
+        model.eval()
+        video_dist_spatial = spatial_cpu.to(device)
+        video_dist_spatial = video_dist_spatial.unsqueeze(dim=0)
+        n_clip = len(motion_clips)
+        feature_motion = torch.zeros([n_clip, 2048 + 256])
+        for idx, ele in enumerate(motion_clips):
+            ele = ele.unsqueeze(dim=0)
+            ele = ele.permute(0, 2, 1, 3, 4)
+            ele = pack_pathway_output(ele, device)
+            ele_slow_feature, ele_fast_feature = model_motion(ele)
+            ele_slow_feature = ele_slow_feature.squeeze()
+            ele_fast_feature = ele_fast_feature.squeeze()
+            ele_feature_motion = torch.cat([ele_slow_feature, ele_fast_feature])
+            ele_feature_motion = ele_feature_motion.unsqueeze(dim=0)
+            feature_motion[idx] = ele_feature_motion
+        feature_motion = feature_motion.unsqueeze(dim=0)
+        outputs = model(video_dist_spatial, feature_motion)
+        return outputs.item()
+
+
+def score_video_path(dist, device=None):
+    """Decode (streaming overlay) + single-model inference — used by shared GPU daemon."""
+    if device is None:
+        device = torch.device('cuda')
+    load_models_once(device)
+    video_dist_spatial, video_name = video_processing_spatial(dist)
+    video_dist_motion, _ = video_processing_motion_stream(dist)
+    score = infer_from_tensors(video_dist_spatial, video_dist_motion, device)
+    return score, video_name
+'''
+
+_MAIN_ANCHOR = "def main(config):"
+
+
 def cuda_single_decode_overlay_test_demo(src: Path) -> str:
     """Return CUDA test_demo.py with single OpenCV decode (parity-reviewed; no math change).
 
@@ -576,6 +636,19 @@ def cuda_single_decode_overlay_test_demo(src: Path) -> str:
     return text
 
 
+def cuda_shared_gpu_overlay_test_demo(src: Path) -> str:
+    """Streaming CUDA overlay plus one-time model load and tensor-level inference API."""
+    text = cuda_single_decode_overlay_test_demo(src)
+    if "def load_models_once(" in text:
+        return text
+    if _MAIN_ANCHOR not in text:
+        raise SetupError(
+            "upstream test_demo.py layout changed; main() anchor not found for shared GPU overlay"
+        )
+    text = text.replace(_MAIN_ANCHOR, _SHARED_GPU_MODEL_FN + "\n" + _MAIN_ANCHOR, 1)
+    return text
+
+
 def parse_score(text: str, expected_video: Path) -> float:
     lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
@@ -598,14 +671,37 @@ def parse_score(text: str, expected_video: Path) -> float:
 
 def run(repo: Path, checkpoint: Path, video: Path, *,
         device: str = "cpu", ffprobe: str = "ffprobe",
-        timeout: int = 3600, use_worker: bool = False) -> dict:
+        timeout: int = 3600, use_worker: bool = False,
+        use_shared_gpu_worker: bool = False) -> dict:
     if device not in ("cpu", "cuda"):
         raise SetupError("device must be cpu or cuda")
     if timeout <= 0:
         raise SetupError("timeout must be positive")
+    if use_worker and use_shared_gpu_worker:
+        raise SetupError("use_worker and use_shared_gpu_worker are mutually exclusive")
     info = validate(repo, checkpoint, video, ffprobe=ffprobe)
     repo, checkpoint, video = Path(info["repo"]), Path(info["checkpoint"]), Path(info["video"])
     video_in = str(video)
+    if use_shared_gpu_worker:
+        if device != "cuda":
+            raise SetupError("shared GPU worker backend requires device=cuda")
+        from .shared_gpu_client import run_via_shared_gpu_worker
+
+        score, worker_meta = run_via_shared_gpu_worker(
+            repo, checkpoint, video, timeout=timeout,
+        )
+        return {
+            "metric": "simplevqa", "quality_score": score, "device": device,
+            "checkpoint_sha256": digest(checkpoint),
+            "upstream_repo": str(repo), "upstream_commit": git_revision(repo),
+            "upstream_test_demo": "cuda-shared-gpu-worker",
+            "video": str(video), "video_metadata": info["input"],
+            "backend": "shared-gpu-worker",
+            "shared_gpu_worker": worker_meta,
+            "temporal_semantics": "pooled-video",
+            "slowfast_pretrained_source": "upstream PyTorchVideo pretrained cache/download",
+            "runtime_stack": info.get("runtime_stack") or runtime_stack_versions(),
+        }
     if use_worker:
         if device != "cuda":
             raise SetupError("persistent worker backend requires device=cuda")

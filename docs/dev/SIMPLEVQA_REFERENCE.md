@@ -83,6 +83,25 @@ avoid pipe deadlocks; per-request UUID correlation; startup and per-score
 timeouts bound waits; crash or protocol failure kills the child (next request
 restarts). See `scripts/test_simplevqa_worker.py` for fast mock coverage.
 
+### Shared GPU worker (opt-in prototype — milestone 1)
+
+`--use-shared-gpu-worker` attaches to a **single cross-process CUDA daemon** that
+calls `load_models_once()` once (SlowFast + ResNet). Clients send **video paths**
+over `multiprocessing.connection` (AF_UNIX); the daemon decodes and scores each
+job under a GPU lock. This is **not pipelined** and does **not** overlap client CPU
+preprocessing — only **one GPU model allocation** is shared across concurrent CLI
+jobs. Default subprocess and `--use-worker` paths are unchanged.
+
+```bash
+PYTHONPATH=python .venv/bin/python -m pixvqa_simplevqa \
+  --repo deps/SimpleVQA --checkpoint deps/SimpleVQA/ckpts/UGC_BVQA_model.pth \
+  --test /path/to/clip.mp4 --device cuda --use-shared-gpu-worker
+```
+
+Mutually exclusive with `--use-worker`. Resource guards abort when host RAM or global
+GPU headroom is exhausted. Bounded tensor streaming to a shared inferencer is future
+work. See `scripts/test_simplevqa_shared_gpu_worker.py` for mock coverage.
+
 ### Preflight (ffprobe)
 
 - `ffprobe` must succeed for stream + format queries. OSError, non-zero exit,
