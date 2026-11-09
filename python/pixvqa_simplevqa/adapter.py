@@ -58,6 +58,25 @@ _CPU_OVERLAY_NEW_BLOCK = """    model = UGC_BVQA_model.resnet50(pretrained=False
         _ckpt = {_k.replace('module.', '', 1): _v for _k, _v in _ckpt.items()}
     model.load_state_dict(_ckpt)
     model = model.to(device=device)"""
+# The official demo leaves SlowFast in training mode while calling eval() only
+# on the spatial regressor. Disable stochastic/training-time behavior in both.
+_MOTION_MODEL_TO_DEVICE = "    model_motion = model_motion.to(device)"
+_MOTION_MODEL_EVAL = "    model_motion.eval()"
+
+
+def _motion_eval_overlay(text: str) -> str:
+    """Place the SlowFast backbone in eval mode in a staged upstream demo."""
+    if text.count(_MOTION_MODEL_TO_DEVICE) != 1:
+        raise SetupError("upstream SimpleVQA motion-model initialization changed")
+    if _MOTION_MODEL_EVAL not in text:
+        text = text.replace(
+            _MOTION_MODEL_TO_DEVICE,
+            _MOTION_MODEL_TO_DEVICE + "\n" + _MOTION_MODEL_EVAL,
+            1,
+        )
+    return text
+
+
 _CPU_OVERLAY_EXTRA = (
     ("with torch.no_grad():", "with torch.inference_mode():"),
     (
@@ -547,7 +566,7 @@ def cpu_overlay_test_demo(src: Path) -> str:
                 f"upstream test_demo.py layout changed; expected snippet missing: {old!r}"
             )
         text = text.replace(old, new, 1)
-    return text
+    return _motion_eval_overlay(text)
 
 
 _SHARED_GPU_MODEL_FN = '''
@@ -561,6 +580,7 @@ def load_models_once(device):
         return _MODEL_CACHE
     model_motion = slowfast()
     model_motion = model_motion.to(device)
+    model_motion.eval()
     model = UGC_BVQA_model.resnet50(pretrained=False)
     model = torch.nn.DataParallel(model)
     model = model.to(device=device)
@@ -633,7 +653,7 @@ def cuda_single_decode_overlay_test_demo(src: Path) -> str:
         raise SetupError("upstream test_demo.py already contains video_processing_unified")
     text = text.replace(_CUDA_UNIFIED_FN_ANCHOR, _CUDA_STREAMING_MOTION_FN + "\n" + _CUDA_UNIFIED_FN + "\n" + _CUDA_UNIFIED_FN_ANCHOR, 1)
     text = text.replace(_CUDA_SINGLE_DECODE_MAIN_OLD, _CUDA_SINGLE_DECODE_MAIN_NEW, 1)
-    return text
+    return _motion_eval_overlay(text)
 
 
 def cuda_shared_gpu_overlay_test_demo(src: Path) -> str:
