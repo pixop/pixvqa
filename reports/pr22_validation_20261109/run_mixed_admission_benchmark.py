@@ -153,6 +153,7 @@ def run_cvqa(cvqa: dict, poller: Poller, out: Path, ref_score: float) -> dict:
     env = os.environ.copy()
     env["PIXVQA_SCHEDULER_ADMISSION"] = "1"
     env["PIXVQA_SCHEDULER_DIR"] = str(REPORT_DIR / ".admission_daemon")
+    env["PIXVQA_SCHEDULER_CVQA_PROFILE"] = "1080p-batch"
     env["PYTHONPATH"] = str(ROOT / "python") + (
         os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
     )

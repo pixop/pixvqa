@@ -72,9 +72,10 @@ def runtime_dir() -> Path:
     if _socket_path_len(path) > _AF_UNIX_PATH_MAX:
         raise SocketPathError(
             f"cannot place admission socket under {path}: "
-            f"path length {_socket_path_len(path)} exceeds AF_UNIX limit "
-            f"({_AF_UNIX_PATH_MAX} bytes). Set PIXVQA_SCHEDULER_DIR to a shorter "
-            f"directory or PIXVQA_SCHEDULER_DAEMON_SOCKET to a short absolute path."
+            f"socket path length {_socket_path_len(path)} bytes exceeds AF_UNIX "
+            f"limit ({_AF_UNIX_PATH_MAX} bytes for sun_path incl. NUL). Set "
+            f"PIXVQA_SCHEDULER_DIR to a shorter directory or "
+            f"PIXVQA_SCHEDULER_DAEMON_SOCKET to a short absolute path."
         )
     path.mkdir(parents=True, exist_ok=True)
     return path

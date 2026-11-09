@@ -171,6 +171,26 @@ def test_cli_status():
     print("OK   cli-daemon-status")
 
 
+def test_socket_path_error_message():
+    """Explicit overlong PIXVQA_SCHEDULER_DAEMON_SOCKET must raise a clear error."""
+    from pixvqa_scheduler.ipc import SocketPathError, _AF_UNIX_PATH_MAX  # noqa: E402
+
+    long_sock = "/tmp/" + ("y" * (_AF_UNIX_PATH_MAX + 8))
+    os.environ["PIXVQA_SCHEDULER_DAEMON_SOCKET"] = long_sock
+    try:
+        socket_address()
+    except SocketPathError as exc:
+        msg = str(exc)
+        assert "AF_UNIX limit" in msg
+        assert str(len(long_sock)) in msg
+        assert str(_AF_UNIX_PATH_MAX) in msg and ">" in msg
+    else:
+        raise AssertionError("expected SocketPathError for overlong daemon socket")
+    finally:
+        os.environ.pop("PIXVQA_SCHEDULER_DAEMON_SOCKET", None)
+    print("OK   socket-path-error")
+
+
 def test_long_scheduler_dir_socket_fallback():
     """Nested PIXVQA_SCHEDULER_DIR must fall back to a short AF_UNIX path."""
     if not admission_daemon_available():
@@ -197,6 +217,7 @@ def main() -> int:
     test_skip_env_no_double_acquire()
     test_vram_budget_five_cvqa()
     test_cli_status()
+    test_socket_path_error_message()
     test_long_scheduler_dir_socket_fallback()
     test_daemon_probe()
     test_parallel_clients()

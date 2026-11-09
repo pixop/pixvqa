@@ -69,16 +69,17 @@ _CVQA_CONSERVATIVE_VRAM_MIB = 2800.0
 
 
 def _cvqa_profile_tier() -> str:
-    return os.environ.get("PIXVQA_SCHEDULER_CVQA_PROFILE", "1080p-batch").strip().lower()
+    return os.environ.get("PIXVQA_SCHEDULER_CVQA_PROFILE", "conservative").strip().lower()
 
 
 def _cvqa_default_reserves() -> tuple[float, float]:
     """Per-job RAM/VRAM scheduler reservations (accounting only, not RSS/VRAM caps)."""
     tier = _cvqa_profile_tier()
-    if tier in ("conservative", "uhd", "unknown", "4k", "2160p"):
-        return _CVQA_CONSERVATIVE_RAM_MIB, _CVQA_CONSERVATIVE_VRAM_MIB
-    # 1080p-batch: measured safe for 5 concurrent on RTX 5080; not proven for UHD.
-    return _CVQA_1080P_BATCH_RAM_MIB, _CVQA_1080P_BATCH_VRAM_MIB
+    if tier in ("1080p-batch", "1080p"):
+        # Measured safe for 5 concurrent 1080p60 on RTX 5080; not proven for UHD.
+        return _CVQA_1080P_BATCH_RAM_MIB, _CVQA_1080P_BATCH_VRAM_MIB
+    # Default + UHD/unknown aliases: no runtime clip-resolution detection.
+    return _CVQA_CONSERVATIVE_RAM_MIB, _CVQA_CONSERVATIVE_VRAM_MIB
 
 
 _cvqa_ram_default, _cvqa_vram_default = _cvqa_default_reserves()
@@ -96,7 +97,8 @@ _CVQA_HDR_NR = MetricProfile(
         "Each job is a separate Python process (fork/exec from pixvqa C++ or direct "
         "``python -m pixvqa_cvqahdr``). PR #22 RTX 5080: 5× concurrent 1080p60 "
         "BasketballDrive 60 s succeeded (bare GPU peak 5614 MiB global). "
-        "Set PIXVQA_SCHEDULER_CVQA_PROFILE=conservative for UHD/unknown workloads."
+        "Default conservative reserves (UHD/unknown). "
+        "Set PIXVQA_SCHEDULER_CVQA_PROFILE=1080p-batch for measured 1080p60 workloads."
     ),
 )
 
