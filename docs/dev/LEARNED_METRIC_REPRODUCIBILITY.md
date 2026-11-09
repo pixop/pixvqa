@@ -134,3 +134,62 @@ in trace output. Clear these environment variables afterward.
 ```bash
 unset PIXVQA_LEARNED_DETERMINISTIC CUBLAS_WORKSPACE_CONFIG PIXVQA_SIMPLEVQA_TRACE_DIR
 ```
+
+## FFmpeg BGR24 decoder change (2026-11-10)
+
+The pinned 1920x1080 Aerial 10-bit HEVC MP4 exhibited nondeterministic
+OpenCV 4.11.0 / FFmpeg-backend BGR pixels across repeated `VideoCapture.read()`
+calls, even with one decode thread. Differences were concentrated in the
+bottom boundary rows (within the bottom 4 rows on the sampled frames).
+The bitstream remained unchanged. Five independent FFmpeg CLI invocations
+produced byte-identical BGR24 frames for the first 32 decoded frames.
+This is a **decoder-specific observation**, not proof that all FFmpeg inputs
+and platforms are deterministic.
+
+The shared `pixvqa_video.ffmpeg_bgr.FFmpegCapture` backend substitutes
+`cv2.VideoCapture` *for pixel decoding* in both learned metric preprocessors.
+It uses FFprobe for metadata, launches FFmpeg lazily on the first read,
+streams packed BGR24 pixels through a pipe, sets decoder threads to one and
+disables implicit timestamp-based frame duplication. SimpleVQA retains
+its upstream and rolling-window temporal sampling and existing PIL/torchvision
+transforms. CVQA-HDR-NR retains the official midpoint sampler for its default
+1 Hz mode and the custom-interval sampler for other configurations.
+OpenCV remains available for explicit comparisons; CVQA preflight still uses
+OpenCV only for container frame count / FPS metadata.
+
+The change is **not numerically parity-validated yet**: FFmpeg CLI and OpenCV
+may produce different 8-bit BGR values and hence learned quality scores.
+
+```bash
+cd ~/codeccomp/metrics/pixvqa
+git pull --ff-only origin main
+
+# Required if the vqa environment uses a non-editable installed package:
+python -m pip install -e python
+
+PYTHONPATH=python python scripts/test_simplevqa_motion_eval.py
+PYTHONPATH=python python scripts/test_ffmpeg_bgr_capture.py
+
+# For the repeatability benchmark, select the FFmpeg binary already tested:
+export PIXVQA_LEARNED_DECODER=ffmpeg
+export PIXVQA_FFMPEG_BIN=/home/sergio/codeccomp/encoders/nvenc/ffmpeg
+export PIXVQA_FFPROBE_BIN=ffprobe
+export PIXVQA_LEARNED_DETERMINISTIC=1
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
+
+# Repeat the exact SAME MP4 evaluation at least 5 times,
+# without re-encoding; compare raw score and intermediate tensor hashes.
+
+# For control measurements only:
+export PIXVQA_LEARNED_DECODER=opencv
+```
+
+For persistent or shared-GPU SimpleVQA workers, restart the worker/daemon after
+changing the decoding environment or updating the code. The standalone
+subprocess starts fresh each time. Keep `PIXVQA_SIMPLEVQA_TRACE_DIR` set only
+when diagnosing differences and disable it for speed measurements.
+
+Do not prematurely declare CVQA-HDR-NR fixed. The previously observed
+two-/three-state CVQA raw scores require new full-video repeated runs using
+the corrected decoder and full per-sample JSON if variation remains. Record
+decoder versions, checksum and provenance with any final RD results.
