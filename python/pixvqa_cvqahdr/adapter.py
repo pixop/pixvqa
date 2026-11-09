@@ -19,6 +19,34 @@ from pixvqa_device import (
 )
 
 
+def learned_capture_backend() -> str:
+    backend = os.environ.get("PIXVQA_LEARNED_DECODER", "ffmpeg").lower()
+    if backend not in ("ffmpeg", "opencv"):
+        raise ValueError("PIXVQA_LEARNED_DECODER must be ffmpeg or opencv")
+    return backend
+
+
+class _CaptureOverride:
+    """Scoped patch for pinned upstream CVQA preprocessing only.
+
+    The upstream function calls cv2.VideoCapture directly. Keep the original
+    transforms and schedule; substitute only its pixel decoding backend.
+    """
+    def __init__(self, cv2):
+        self.cv2 = cv2
+        self.original = cv2.VideoCapture
+        self.enabled = learned_capture_backend() == "ffmpeg"
+
+    def __enter__(self):
+        if self.enabled:
+            from pixvqa_video.ffmpeg_bgr import FFmpegCapture
+            self.cv2.VideoCapture = FFmpegCapture
+        return self
+
+    def __exit__(self, *_):
+        self.cv2.VideoCapture = self.original
+
+
 def configure_deterministic_inference() -> bool:
     """Opt-in reproducibility diagnostic; must run before CUDA initialization.
 
@@ -205,7 +233,8 @@ def count_decoded_frames(path: str, limit: int) -> int:
     """Count frames the way VQA_NR.video_processing reads them: up to limit successful reads."""
     import cv2
 
-    capture = cv2.VideoCapture(path)
+    from pixvqa_video.ffmpeg_bgr import FFmpegCapture
+    capture = (FFmpegCapture if learned_capture_backend() == "ffmpeg" else cv2.VideoCapture)(path)
     decoded = 0
     try:
         for _ in range(limit):
@@ -535,11 +564,15 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         t_loaded = time.perf_counter()
         # The official preprocessing reads the entire file; use the equivalent
         # bounded sampler when the caller requests a shorter shared interval.
-        if (sampling["sample_interval_sec_requested"] == 1.0 and
-                sampling["opencv_frame_count"] == sampling["source_frame_count"]):
-            video, video_name = VQA_NR.video_processing(test)
-        else:
-            video, video_name = preprocess_custom_interval(test, sampling, torch)
+        # The pinned upstream preprocessor uses cv2.VideoCapture directly.
+        # Preserve all frame selection and transforms, replacing decoded BGR
+        # pixels with the reproducible bounded-memory FFmpeg capture.
+        with _CaptureOverride(cv2):
+            if (sampling["sample_interval_sec_requested"] == 1.0 and
+                    sampling["opencv_frame_count"] == sampling["source_frame_count"]):
+                video, video_name = VQA_NR.video_processing(test)
+            else:
+                video, video_name = preprocess_custom_interval(test, sampling, torch)
         if int(video.shape[0]) != sampling["sampled_frames"]:
             raise AdapterError(
                 f"official NR preprocessing returned {int(video.shape[0])} frames; "
@@ -597,6 +630,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         "adapter": "pixvqa_cvqahdr",
         "deterministic_inference_requested": deterministic,
         "metric": "cvqa-hdr-nr",
+        "decoder": learned_capture_backend(),
         "upstream": {"url": PINNED_UPSTREAM, **upstream},
         "device": effective,
         "device_requested": device,
