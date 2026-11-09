@@ -23,6 +23,9 @@ def main() -> int:
     src_text = (
         "def slowfast():\n    pass\n\n"
         "def pack_pathway_output(frames, device):\n    pass\n\n"
+        "def video_processing_spatial(dist):\n"
+        "    cap = cv2.VideoCapture(dist)\n"
+        "    return cap, dist\n\n"
         "def main(config):\n"
         "    model_motion = slowfast()\n"
         "    model_motion = model_motion.to(device)\n"
@@ -60,6 +63,9 @@ def main() -> int:
             ), name
             assert "torch.use_deterministic_algorithms(True)" in staged, name
             assert "def _pixvqa_trace_tensor(stage, value):" in staged, name
+            assert "_pixvqa_video_capture(dist)" in staged, name
+            assert "_pixvqa_video_capture = (" in staged, name
+            assert "cv2.VideoCapture(dist)" not in staged, name
             assert "_pixvqa_trace_tensor('spatial_input', video_dist_spatial)" in staged, name
             assert "_pixvqa_trace_tensor('motion_features', feature_motion)" in staged, name
             compile(staged, f"<{name}-overlay>", "exec")
