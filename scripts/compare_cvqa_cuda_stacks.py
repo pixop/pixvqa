@@ -31,6 +31,17 @@ def resolve(raw: str, config: Path) -> Path:
     return (path if path.is_absolute() else config.parent / path).resolve()
 
 
+def interpreter_path(path: Path) -> str:
+    """Expand a venv interpreter path without resolving its python symlink.
+
+    Resolving .venv/bin/python to /usr/bin/python3.12 bypasses venv site-packages.
+    """
+    result = os.path.abspath(os.path.expanduser(str(path)))
+    if not os.path.isfile(result) or not os.access(result, os.X_OK):
+        raise ValueError(f"Python interpreter is missing or not executable: {result}")
+    return result
+
+
 def compare(a: dict, b: dict, tolerance: float) -> dict:
     assert a['metric'] == b['metric'] == 'cvqa-hdr-nr'
     fields = ['checkpoint', 'calibration_profile']
@@ -75,7 +86,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     for label, py in (('cu128',args.baseline_python), ('cu130',args.candidate_python)):
         out_json = (args.out / f'{label}.json').resolve()
-        command = [str(py.expanduser().resolve()), '-m', 'pixvqa_cvqahdr',
+        command = [interpreter_path(py), '-m', 'pixvqa_cvqahdr',
                    '--repo', str(assets['repository']), '--checkpoint', str(assets['checkpoint']),
                    '--profile', str(assets['profile']), '--test', str(video),
                    '--device', 'cuda', '--output-json', str(out_json)]
