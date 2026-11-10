@@ -32,6 +32,16 @@ bash scripts/install_learned_metrics.sh
 
 Alternatively, `install_pixvqa.sh` offers optional learned-metric installation during guided setup (answer **yes** when prompted).
 
+### CUDA and Python requirements
+
+PixVQA separates native GPU processing from optional AI-based quality metrics:
+
+- **Native PixVQA — CUDA Toolkit 12.8:** Required with a compatible NVIDIA driver only to build the CUDA/NVDEC-enabled `full` variant. CPU-only and software-decoding builds do not require CUDA.
+- **Learned metrics — CUDA 13.0 (PyTorch wheels):** SimpleVQA, CVQA-HDR-NR and other learned metrics share **Python 3.12** with **PyTorch 2.13.0+cu130** and **torchvision 0.28.0+cu130**. CUDA 13.0 runtime components are supplied through Python packages; **you do not need to install a second system-wide CUDA 13.0 toolkit**.
+- **HDR-ChipQA — Python 3.10 (regression only):** Feature extraction uses the shared Python 3.12 environment. Its pretrained scikit-learn regression model runs in a small isolated **Python 3.10 / scikit-learn 1.0.2** environment (`.venv-chipqa-inference`). No additional CUDA installation is needed.
+
+The guided installer configures these environments when learned metrics are enabled. **Existing Python environments are preserved rather than upgraded automatically.** If their installed versions do not match the dependency lockfile, the installer explains how to create a replacement by setting `PIXVQA_LEARNED_ENV_DIR` to a new absolute path. Reuse runs `scripts/verify_learned_env_pins.sh`, which checks every pin in `learned-env.txt` except ColorVideoVDP (commit stamp is authoritative). CUDA stack wheels (`nvidia-*`, `cuda-*`, `triton`) are required only when the installed `torch` already matches the lock; older stacks that bundle those libraries inside the `torch` wheel are rejected on the `torch` / `torchvision` pins instead of false “not installed” noise.
+
 The installer automatically:
 
 1. Creates a repository-local Python environment (`.venv`).
@@ -63,6 +73,16 @@ An internet connection is needed to obtain missing models. Normally you do **not
 ```
 
 The `sdr`, `pq`, and `hlg` groups intentionally exclude **CVVDP** (potentially high GPU memory use) and **HDR-ChipQA** (potentially high system memory use). Add either explicitly (`--metrics sdr,cvvdp` or `--metrics pq,hdr-chipqa`). The legacy `all` selection includes CVVDP; see [Metric groups](CLI_USAGE.md#metric-groups).
+
+## Concurrent jobs
+
+For multiple PixVQA processes on one GPU, `--scheduler-admission` enables opt-in global admission for **SimpleVQA** and **CVQA-HDR-NR**. It queues learned-metric inference according to shared resource reservations and concurrency limits. It does not control NVENC jobs or guarantee that memory use stays below a hard limit. The default is off; users running a single evaluation do not need this option.
+
+```bash
+./bin/pixvqa --scheduler-admission --metrics simplevqa,cvqa-hdr-nr -t distorted.mp4
+```
+
+For existing automated job scripts, `PIXVQA_SCHEDULER_ADMISSION=1` is the equivalent environment-variable option. See [CLI Usage](CLI_USAGE.md#concurrent-learned-metric-jobs) and [Advanced scheduler configuration](dev/METRIC_SCHEDULER.md).
 
 ## Performance Considerations
 

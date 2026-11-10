@@ -68,6 +68,16 @@ To use the optional Python-based metrics, run `bash scripts/install_learned_metr
 
 **Resource limits:** CVVDP can use substantial **GPU VRAM**; HDR-ChipQA can use substantial **host RAM**, especially with several jobs in parallel. See [Performance considerations](LEARNED_METRICS.md#performance-considerations).
 
+### Concurrent learned-metric jobs
+
+For multiple independent PixVQA processes (for example, GNU Parallel jobs), the optional **global admission scheduler** coordinates the learned GPU backends and queues work when its resource reservations or concurrency caps would be exceeded. It is **off by default**. Enable it with the public CLI flag:
+
+```bash
+./bin/pixvqa --scheduler-admission --metrics simplevqa,cvqa-hdr-nr -t distorted.mp4
+```
+
+For existing batch scripts that cannot easily add a CLI flag to every invocation, the equivalent environment variable is `PIXVQA_SCHEDULER_ADMISSION=1` (inherited by subprocesses). The scheduler uses a per-user daemon, which starts automatically on first use. It does not limit the number of encoders or native PixVQA processes launched by GNU Parallel: it controls **admission of learned-metric inference** only. Reservations and defaults are not hard GPU-memory guarantees. Use `--scheduler-admission` for explicit user commands and the environment variable for automation. See [Metric resource scheduler](dev/METRIC_SCHEDULER.md) for limits, implementation and advanced settings.
+
 ## Metric Groups
 
 A metric *group* selects several metrics in one command and sets the corresponding SDR/HDR interpretation. You can also select metrics individually or add one to a group (for example, `--metrics pq,cvvdp`).

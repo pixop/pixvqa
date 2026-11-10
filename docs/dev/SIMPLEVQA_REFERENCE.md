@@ -202,8 +202,9 @@ and elapsed time. It **does not** measure process-exclusive GPU VRAM.
 
 ### Reduced-precision research (not enabled)
 
-FP16/BF16 evaluation is a separate opt-in experiment only. See
-[`reports/pr22_validation_20261109/FP16_BF16_RESEARCH.md`](../../reports/pr22_validation_20261109/FP16_BF16_RESEARCH.md)
-for benchmark design, risks, and acceptance gates. Default inference stays FP32;
-do not enable reduced precision in production CLI until measured deviation,
-ranking stability, and memory gains are approved.
+FP16/BF16 evaluation is a separate opt-in experiment only. A dedicated
+`reports/pr22_validation_20261109/FP16_BF16_RESEARCH.md` file was **not committed**
+to the repository (only `ADMISSION_VALIDATION.md`, `STEP2_RESULTS.md`, and helper
+scripts exist under that directory). Default inference stays FP32; do not enable
+reduced precision in production CLI until measured deviation, ranking stability,
+and memory gains are approved from a future checked-in report.

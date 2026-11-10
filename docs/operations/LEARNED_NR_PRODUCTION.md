@@ -38,6 +38,8 @@ bash scripts/install_learned_metrics.sh   # or answer yes in install_pixvqa.sh
 .venv/bin/ffprobe -version
 ```
 
+Native `make full` still depends on **CUDA toolkit 12.8**; the learned `.venv` uses **CPython 3.12** with **torch 2.13.0+cu130** / **torchvision 0.28.0+cu130** wheels. HDR-ChipQA inference remains on **Python 3.10 / scikit-learn 1.0.2**. **Do not expect in-place pip upgrades** on an old cu128 or mixed environment — pin mismatches fail closed; set `PIXVQA_LEARNED_ENV_DIR` to a new path and rerun the installer.
+
 For a fresh installation follow `docs/LEARNED_METRICS.md` and `scripts/install_learned_metrics.sh` to install/check the pinned upstream repositories, pretrained checkpoints and Python environment. Editable installation is useful for an existing environment; use the project's managed installer when required packages or assets are absent. The PixVQA native C++ binary does not require rebuilding for these Python adapter changes.
 
 ## Processing contract
@@ -52,11 +54,11 @@ For a fresh installation follow `docs/LEARNED_METRICS.md` and `scripts/install_l
 
 1. Run `python -m compileall -q python/pixvqa_video python/pixvqa_simplevqa python/pixvqa_cvqahdr`.
 2. Run `PYTHONPATH=python python scripts/test_ffmpeg_bgr_capture.py`, `scripts/test_simplevqa_motion_eval.py`, and `scripts/test_cvqa_decoder_override.py`.
-3. On original i9-9900K/RTX 4070, run the unchanged Aerial MP4 **three times with no diagnostic exports** (preserve SHA-256 `60437fd57bcee4fa7e87a1c2e39c084afee178d340bda5fe50cbfa5d744524de`). Expect SimpleVQA `3.524660348892212` and CVQA raw `0.7270195484161377` on every run; 19 CVQA samples. Compare exact JSON and protocol score values.
+3. On original i9-9900K/RTX 4070, run the unchanged Aerial MP4 **three times with no diagnostic exports** (preserve SHA-256 `60437fd57bcee4fa7e87a1c2e39c084afee178d340bda5fe50cbfa5d744524de`). Expect SimpleVQA `3.524660348892212` on every run (validated again on **torch 2.13.0+cu130**, 2026-11-10). CVQA raw `0.7270195484161377` on the historical cu128 stack; controlled cu130 reruns reported **exact per-sample parity** with cu128 on the same asset (2026-11-10). Use 19 CVQA samples. Compare exact JSON and protocol score values.
 4. Run an 8–10 s SDR smoke and the Aerial sequence in both SimpleVQA persistent-worker and shared-GPU worker modes, verifying exact score parity with standalone. Test multiple concurrent jobs, service teardown/restart, decode errors, exit status and bounded RSS/VRAM.
 5. Evaluate additional SDR/sports motion and HDR10 (CVQA only) for stability, checking range/matrix metadata and whether unsupported transfer characteristics are rejected correctly.
 6. Record/checkpoint the production PixVQA commit, FFmpeg/FFprobe version, torch/torchvision/PyTorchVideo versions, CUDA driver/toolkit, CPU/GPU identifier, upstream model pin and checkpoint digest.
 
-**Current validated baseline (pre-cleanup FFmpeg integration):** three sequential Aerial evaluations on the i9 yielded bit-identical 79-stage SimpleVQA traces and identical scores for both learned metrics; independent FFmpeg on `Workstation` reproduced native YUV10 and BGR24 for all 1,199 frames, and matched explicit BT.709 limited-range conversion.
+**Current validated baseline (pre-cleanup FFmpeg integration, historical 2026-11-10):** three sequential Aerial evaluations on the i9 yielded bit-identical 79-stage SimpleVQA traces and identical scores for both learned metrics on cu128; independent FFmpeg on `Workstation` reproduced native YUV10 and BGR24 for all 1,199 frames, and matched explicit BT.709 limited-range conversion. **CUDA 13.0 stack follow-up (same date):** SimpleVQA Aerial score unchanged at `3.524660348892212`; CVQA asset-matched cu128/cu130 comparison reported zero deltas — see `reports/security_dependency_validation_20261110/CUDA13_DUAL_GPU_RELEASE_GATE.md`.
 
 For incident history, exact hashes, scores and root-cause evidence, see [bug-fix report](../dev/LEARNED_METRIC_DECODER_BUGFIX_REPORT_2026-11-10.md) and [issue #24](https://github.com/pixop/pixvqa/issues/24).

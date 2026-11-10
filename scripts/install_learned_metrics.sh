@@ -81,9 +81,14 @@ warn_config_python_mismatch() {
   fi
 }
 
+lock="$root/python/requirements/learned-env.txt"
+
 # --- Shared learned .venv (CVVDP + NR + SimpleVQA deps) ---
 if [[ -x "$env_dir/bin/python" && -f "$env_dir/COLORVIDEOVDP_COMMIT" ]] &&
    [[ "$(cat "$env_dir/COLORVIDEOVDP_COMMIT")" == "$commit" ]]; then
+  selected_python="$(cd -- "$env_dir" && pwd -P)/bin/python"
+  assert_learned_venv_isolated "$env_dir" || exit 2
+  bash "$root/scripts/verify_learned_env_pins.sh" "$selected_python" "$lock" || exit 2
   printf 'Learned setup: reusing existing environment: %s\n' "$env_dir"
 elif [[ -e "$env_dir" ]]; then
   if [[ "${PIXVQA_LEARNED_RESUME_INCOMPLETE:-}" != 1 ]]; then

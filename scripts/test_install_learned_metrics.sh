@@ -11,6 +11,9 @@ bash -n scripts/install_learned_metrics.sh
 bash -n scripts/setup_learned_env.sh
 bash -n scripts/setup_hdr_chipqa_envs.sh
 bash -n scripts/ensure_chipqa_inference_python.sh
+bash -n scripts/verify_learned_env_pins.sh
+grep -q 'verify_learned_env_pins' scripts/install_learned_metrics.sh ||
+  fail 'install_learned_metrics.sh must verify lock pins before reusing .venv'
 
 grep -Eq 'PIXVQA_LEARNED_ENV_DIR.*\$\{[^}]*root[^}]*\}/\.venv|env_dir=.*\.venv' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh missing default repo-local .venv'
@@ -39,6 +42,7 @@ grep -q 'refusing to create a virtualenv under NTFS' scripts/install_learned_met
   fail 'install_learned_metrics.sh must not blanket-refuse NTFS; use venv --copies instead'
 
 python3 scripts/test_install_learned_assets.py
+python3 scripts/test_learned_env_pins.py
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -107,6 +111,11 @@ EOF
 exit 0
 EOF
   chmod +x "$fake_root/scripts/ensure_simplevqa_dependencies.sh"
+  cat > "$fake_root/scripts/verify_learned_env_pins.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$fake_root/scripts/verify_learned_env_pins.sh"
   cat > "$fake_root/scripts/ensure_chipqa_inference_python.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '/usr/bin/true\n'

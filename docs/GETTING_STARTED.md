@@ -13,7 +13,9 @@ bash install_pixvqa.sh
 
 The installer offers FFmpeg software decoding and optional CUDA/NVDEC support. NVIDIA requires a compatible driver and CUDA 12.8 already installed. To isolate downloaded dependencies inside the checkout, use `PIXVQA_DEPS_ROOT="$PWD/deps" bash install_pixvqa.sh`.
 
-For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1`, `PIXVQA_ENABLE_NVIDIA=0|1`, and optionally `PIXVQA_ENABLE_LEARNED=1` (the guided prompt for learned metrics defaults to **no**). When learned metrics are selected, the installer provisions a private Python 3.12 interpreter if needed, creates the checkout-local `.venv`, and installs pinned Python dependencies. Upstream model checkpoints are supplied separately; see [Learned Metrics](LEARNED_METRICS.md).
+For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1`, `PIXVQA_ENABLE_NVIDIA=0|1`, and optionally `PIXVQA_ENABLE_LEARNED=1` (the guided prompt for learned metrics defaults to **no**). When learned metrics are selected, the installer provisions a private Python 3.12 interpreter if needed, creates the checkout-local `.venv`, and installs pinned Python dependencies (PyTorch **2.13.0+cu130** / torchvision **0.28.0+cu130** from the CUDA 13.0 wheel index — not the native CUDA 12.8 toolkit used for `make full`). **Reused environments must match the lockfile exactly**; mismatches fail closed — set `PIXVQA_LEARNED_ENV_DIR` to a new directory rather than upgrading in place. Upstream model checkpoints are supplied separately; see [Learned Metrics](LEARNED_METRICS.md).
+
+The **native guided install still requires CUDA toolkit 12.8** when you enable the NVIDIA build; that requirement is independent of the learned Python wheel stack.
 
 ## Build Variants
 
@@ -64,3 +66,7 @@ or rebuild third-party dependencies solely to recompile PixVQA.
 ```
 
 For raw YUV, color/HDR options, and metric groups, see [CLI Usage](CLI_USAGE.md). Check installed capabilities with `./bin/pixvqa --version`.
+
+## Release qualification (maintainers)
+
+Full release checks rebuild binaries, run the complete QA profile, and (for `full`) GPU qualification. See [Manual Installation](INSTALL.md#release-qualification) for prerequisites (`PIXVQA_TEST_FFMPEG`, VVC fixtures, Valgrind, ASan, interpreter choice). **`reports/release/` is overwritten** on each run.

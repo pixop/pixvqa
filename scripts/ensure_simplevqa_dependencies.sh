@@ -6,6 +6,16 @@ set -euo pipefail
 py="$1"
 lock="$2"
 [[ -x "$py" && -f "$lock" ]] || { echo 'SimpleVQA setup: missing Python interpreter or dependency lock' >&2; exit 2; }
+pin_from_lock() {
+  local dist="$1"
+  local line
+  line="$(grep -E "^${dist}==" "$lock" | head -1)" || true
+  [[ -n "$line" ]] || {
+    echo "SimpleVQA setup: pin for ${dist} missing from ${lock}" >&2
+    return 1
+  }
+  printf '%s\n' "$line"
+}
 # Standard import preflight matches the adapter's REQUIRED_IMPORTS.
 missing="$("$py" - <<'PY'
 import importlib.util
@@ -20,10 +30,10 @@ if [[ -n "$missing" ]]; then
   packages=()
   for module in $missing; do
     case "$module" in
-      pytorchvideo) packages+=('pytorchvideo==0.1.5') ;;
-      cv2) packages+=('opencv-python==4.11.0.86') ;;
-      PIL) packages+=('pillow==11.3.0') ;;
-      numpy) packages+=('numpy==2.5.2') ;;
+      pytorchvideo) packages+=("$(pin_from_lock pytorchvideo)") ;;
+      cv2) packages+=("$(pin_from_lock opencv-python)") ;;
+      PIL) packages+=("$(pin_from_lock pillow)") ;;
+      numpy) packages+=("$(pin_from_lock numpy)") ;;
       torch|torchvision)
         echo "SimpleVQA setup: missing $module in established .venv; cannot safely replace CUDA torch automatically." >&2
         exit 1 ;;
