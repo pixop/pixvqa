@@ -74,7 +74,11 @@ def main() -> int:
             assert "torch.use_deterministic_algorithms(True)" in staged, name
             assert "def _pixvqa_trace_tensor(stage, value):" in staged, name
             assert "_pixvqa_video_capture(dist)" in staged, name
-            assert "_pixvqa_video_capture = (" in staged, name
+            assert "from pixvqa_video.ffmpeg_bgr import FFmpegCapture as _pixvqa_video_capture" in staged, name
+            assert "PIXVQA_LEARNED_DECODER" not in staged, name
+            assert "PIXVQA_SIMPLEVQA_LEGACY_BOUNDED" not in staged, name
+            assert "video_processing_unified" not in staged, name
+            assert 'get("PIXVQA_LEARNED_DETERMINISTIC", "1")' in staged, name
             assert "cv2.VideoCapture(dist)" not in staged, name
             assert "_pixvqa_trace_tensor('spatial_input', video_dist_spatial)" in staged, name
             assert "_pixvqa_trace_tensor('motion_features', feature_motion)" in staged, name
