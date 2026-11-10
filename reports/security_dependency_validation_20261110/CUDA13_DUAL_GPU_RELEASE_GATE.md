@@ -57,6 +57,18 @@ print('CUDA 12.8 JOD',a['jod']); print('CUDA 13.0 JOD',b['jod']); print('delta',
 PYCODE
 ```
 
+## RTX 4070: nonsaturated CVVDP PQ dual-stack confirmation
+
+The i9-9900K / RTX 4070 workstation independently regenerated the 16-frame synthetic PQ fixture from `scripts/make_cvvdp_pq_nonsaturated_fixture.py` at branch commit `4901661`. Fixture SHA-256 verification passed (the terminal explicitly reported `pq_distorted_420p10.yuv: OK`; no generator mismatch was reported). Both runs exited 0:
+
+| Runtime | CVVDP JOD |
+|---|---:|
+| torch 2.11.0+cu128 | 6.9395551681518555 |
+| torch 2.13.0+cu130 | 6.9395551681518555 |
+| Delta | **0.0** |
+
+The RTX 4070 scores equal the independently recorded RTX 5080 scores for this fixture. This closes the nonsaturated CVVDP PQ cross-stack validation on both GPUs. The quality score remains a synthetic regression value, not a subjective MOS calibration.
+
 ## Packaging and provenance
 
 - Lower-level `scripts/setup_learned_env.sh` intentionally installs the shared learned runtime only; the full `scripts/install_learned_metrics.sh` calls `scripts/setup_hdr_chipqa_envs.sh` for missing HDR-ChipQA feature dependencies and the separate pinned scikit-learn inferencer. Do not describe lower-level setup alone as full HDR-ChipQA provisioning.
@@ -67,4 +79,4 @@ PYCODE
 
 An earlier GitHub push reported four default-branch alerts (one high, one moderate, two low); the latest push response at commit `6117399` reports **one low-severity alert**, linking to `https://github.com/pixop/pixvqa/security/dependabot/8`. The intervening alert-state changes were not independently investigated, and push notices are not a substitute for an alert inventory. Attempted unauthenticated GitHub Dependabot alerts API access from RTX 5080 returned **HTTP 401 Requires authentication**; affected manifests, vulnerable dependency ranges, fixes, exploitability, and alert #8 details **have not been inspected**. An authenticated reviewer must inspect the remaining alert and confirm the present alert inventory before security approval.
 
-Remaining: run the nonsaturated PQ A/B on RTX 4070 if cross-device coverage is required; confirm approved CVQA tolerance; authenticate and triage alerts; review the complete branch diff/CI; only then consider merging. Keep `main` unchanged until authorized.
+Remaining: confirm approved CVQA tolerance; authenticate and triage alerts; review the complete branch diff/CI; only then consider merging. Keep `main` unchanged until authorized.
