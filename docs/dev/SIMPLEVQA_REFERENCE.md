@@ -1,11 +1,11 @@
-# SimpleVQA reference runner
+# SimpleVQA Reference Runner
 
 **Status:** standalone upstream reference runner (`python -m pixvqa_simplevqa`) and
 **public CLI dispatch** via `pixvqa --metrics simplevqa` (SDR-only NR; pooled score
 semantics; QCS integrates the pooled score only). Numerical parity is verified on the
 official upstream clip below; no speedup claims.
 
-## Upstream and dependencies
+## Upstream and Dependencies
 
 - Official source: https://github.com/sunwei925/SimpleVQA
 - Source commit inspected: `017edda50e8cdbeb48113a001dbb9af0dbd2030b`.
@@ -26,7 +26,7 @@ official upstream clip below; no speedup claims.
   as for cvvdp/cvqa-hdr-nr ([Learned Metrics](../LEARNED_METRICS.md)); do not claim
   validated inference until you run your own checks with real checkpoints.
 
-## Running the unmodified upstream reference
+## Running the Unmodified Upstream Reference
 
 All paths are expanded and resolved before validation and before passing `--dist`
 to upstream, so the demo sees a single deterministic absolute input path.
@@ -61,7 +61,7 @@ the pooled quality score, model SHA-256, upstream revision, **runtime stack**
 exits: 2 for setup, 1 for runtime/inference. At present it runs the upstream
 processing without a frame cap, optimizer, temporal score trace or QCS.
 
-### Persistent CUDA worker (opt-in)
+### Persistent CUDA Worker (Opt-In)
 
 For batch scoring on CUDA, `--use-worker` keeps one child process alive and
 reuses the loaded PyTorch/SlowFast stack across clips. Both the worker and default
@@ -121,7 +121,7 @@ work. See `scripts/test_simplevqa_shared_gpu_worker.py` for mock coverage.
 If the upstream Python process exits non-zero, stderr (or a short stdout tail
 when stderr is empty) is included in the error text for diagnosis.
 
-## Known upstream limitations to address before integration
+## Known Upstream Limitations to Address before Integration
 
 - The CPU reference path still allocates buffers proportional to the *entire decoded video*. The CUDA streaming overlay keeps at most 32 transformed motion frames in a deque while yielding each SlowFast window; spatial samples still scale with duration.
 - It uses approximately one spatial sample and one SlowFast temporal clip
@@ -140,7 +140,7 @@ when stderr is empty) is included in the error text for diagnosis.
   result parsing, not numerical validation. Actual parity needs authentic
   checkpoints, inputs, and verified reference scores.
 
-## Validation gates for promotion to public CLI
+## Validation Gates for Promotion to Public CLI
 
 1. Resolve upstream source revision, model checkpoint hash, SlowFast weight
    artifact hash, and **pinned pip versions** (see `runtime_stack` in JSON and

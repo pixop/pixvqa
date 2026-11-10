@@ -27,7 +27,7 @@ Use `./bin/pixvqa` from the repository (or `pixvqa` if it is on your `PATH`). Ch
 
 For raw XPSNR and automatic VMAF selection, specify `--fps` when rate is not available from compressed metadata. Raw YUV has no embedded color metadata: supply `--hdr-transfer` for HDR and for VMAF auto-selection.
 
-### VMAF models
+### VMAF Models
 
 **PixVQA automatically selects the bundled VMAF JSON model** (default `--model auto`); you do not normally need `--model`. This is PixVQA's model-resolution layer; libvmaf itself still loads a specific model file. The choice uses:
 
@@ -46,7 +46,7 @@ Auto-selection does not support HLG, other resolutions, ambiguous transfer, or u
   -r reference.yuv -t distorted.yuv -s 1920x1080 -f 420p:8
 ```
 
-### Optional learned metrics
+### Optional Learned Metrics
 
 To use the optional Python-based metrics, run `bash scripts/install_learned_metrics.sh` once. It sets up the Python environments and obtains the model assets automatically when downloads are available. Native metrics do **not** require this step. See [Learned Metrics](LEARNED_METRICS.md).
 
@@ -68,7 +68,7 @@ To use the optional Python-based metrics, run `bash scripts/install_learned_metr
 
 **Resource limits:** CVVDP can use substantial **GPU VRAM**; HDR-ChipQA can use substantial **host RAM**, especially with several jobs in parallel. See [Performance considerations](LEARNED_METRICS.md#performance-considerations).
 
-## Metric groups
+## Metric Groups
 
 A metric *group* selects several metrics in one command and sets the corresponding SDR/HDR interpretation. You can also select metrics individually or add one to a group (for example, `--metrics pq,cvvdp`).
 
@@ -86,7 +86,7 @@ When CVVDP is added to an SDR, PQ, or HLG group, the group supplies its correspo
 
 Groups interpret samples; they do not convert video pixel values. With `--qcs`, eligible frame-based metrics produce QCS results; pooled-video metrics such as HDR-ChipQA and SimpleVQA do not. See [QCS](QCS.md) and [Metrics & Formats](METRICS_AND_FORMATS.md).
 
-## Compatible inputs
+## Compatible Inputs
 
 | Metric | Raw YUV | Compressed video | `--frames` |
 |---|---|---|---|
@@ -98,7 +98,7 @@ Groups interpret samples; they do not convert video pixel values. With `--qcs`, 
 
 Full-reference metrics compare matching frames in presentation order, stopping at the **shorter** input with a warning. Decode/I/O errors, truncated raw frames, and incompatible geometry remain errors. An NR-only invocation ignores `-r`.
 
-## Command-line options
+## Command-Line Options
 
 Common options are listed below. For less frequently used backend, HDR, and compatibility settings, use `./bin/pixvqa --help-advanced` or `./bin/pixvqa --help-hdr`.
 

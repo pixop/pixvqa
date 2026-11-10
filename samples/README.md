@@ -1,4 +1,4 @@
-# Demonstration clips
+# Demonstration Clips
 
 These files are encoded derivatives of *Big Buck Bunny*.
 

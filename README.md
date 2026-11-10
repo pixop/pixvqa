@@ -2,7 +2,7 @@
   <img src="docs/brand/pixop-vqa-logo-crop.png" alt="Pixop VQA" width="640">
 </p>
 
-# PixVQA — Video Quality Assessment by Pixop
+# PixVQA — A Unified Video Quality Assessment Toolkit by Pixop
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![FFmpeg](https://img.shields.io/badge/FFmpeg-n8.1.3-blue)](https://ffmpeg.org/) [![libvmaf](https://img.shields.io/badge/libvmaf-74f930d-blue)](https://github.com/Netflix/vmaf/commit/74f930d17de8c58e7c2ce55e2b897b0030ebd8ef) [![zimg](https://img.shields.io/badge/zimg-3.0.6-blue)](https://github.com/sekrit-twc/zimg) [![CUDA optional](https://img.shields.io/badge/CUDA-12.8%20optional-blue)](https://developer.nvidia.com/cuda-toolkit) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -10,33 +10,33 @@ PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM
 
 PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build. CPU, optional CUDA metric acceleration, and NVDEC are available depending on the build.
 
-## Metrics at a glance
+## Metrics at a Glance
 
-**Full-reference (FR)** metrics need a reference and a distorted video; **no-reference (NR)** metrics score the distorted video alone. The tables below show **supported** metrics by transfer characteristic. Input requirements (raw YUV, compressed, tags) are stricter than model availability — see [Metrics & Formats](docs/METRICS_AND_FORMATS.md#video-format-support-by-metric) and [Learned Metrics](docs/LEARNED_METRICS.md).
+**Full-reference** metrics need a reference and a distorted video; **no-reference** metrics score the distorted video alone. The tables below show **supported** metrics by transfer characteristic. Input requirements (raw YUV, compressed, tags) are stricter than model availability — see [Metrics & Formats](docs/METRICS_AND_FORMATS.md#video-format-support-by-metric) and [Learned Metrics](docs/LEARNED_METRICS.md).
 
-### Video format support by metric
+### Video Format Support by Metric
 
 | Metric | Type | SDR – BT.709 | PQ / HDR10 – BT.2020 | HLG – BT.2020 |
 |---|:---:|:---:|:---:|:---:|
-| PSNR | FR | ✅ | ✅ | ✅ |
-| XPSNR | FR | ✅ | ✅ | ✅ |
-| SSIM | FR | ✅ | ✅ | ✅ |
-| MS-SSIM | FR | ✅ | ✅ | ✅ |
-| VMAF (SDR v1.0.16 models) | FR | ✅ | ❌ | ❌ |
-| VMAF (HDR v1.1.8 models) | FR | ❌ | ✅ | ❌ |
-| PU21-PSNR | FR | ❌ | ✅ | ✅ |
-| PU21-SSIM | FR | ❌ | ✅ | ✅ |
-| PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
-| ColorVideoVDP | FR | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR | NR | ✅ | ✅ | ❌ |
-| SimpleVQA | NR | ✅ | ❌ | ❌ |
-| HDR-ChipQA | NR | ✅ | ✅ | 🔬 |
+| PSNR | Full-reference | ✅ | ✅ | ✅ |
+| XPSNR | Full-reference | ✅ | ✅ | ✅ |
+| SSIM | Full-reference | ✅ | ✅ | ✅ |
+| MS-SSIM | Full-reference | ✅ | ✅ | ✅ |
+| VMAF (SDR v1.0.16 models) | Full-reference | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | Full-reference | ❌ | ✅ | ❌ |
+| PU21-PSNR | Full-reference | ❌ | ✅ | ✅ |
+| PU21-SSIM | Full-reference | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | Full-reference | ❌ | ✅ | ✅ |
+| ColorVideoVDP | Full-reference | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR | No-reference | ✅ | ✅ | ❌ |
+| SimpleVQA | No-reference | ✅ | ❌ | ❌ |
+| HDR-ChipQA | No-reference | ✅ | ✅ | 🔬 |
 
 **Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
 
 **PU21 metrics:** PSNR, SSIM and MS-SSIM can be computed after applying the PU21 perceptually uniform transfer function. PU21 transforms HDR luminance values to better approximate the nonlinear sensitivity of human vision. As a result, PU21 provides a perceptually motivated signal representation for conventional full-reference metrics.
 
-### Metric execution backends
+### Metric Execution Backends
 
 | Metric | CPU C/C++ | CUDA C++ | CPU Python (NumPy/SciPy) | CPU PyTorch | CUDA PyTorch |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -48,10 +48,10 @@ PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build
 | PU21-PSNR | ✅ | ✅ | — | — | — |
 | PU21-SSIM | ✅ | ✅ | — | — | — |
 | PU21-MS-SSIM | ✅ | ✅ | — | — | — |
-| ColorVideoVDP (`cvvdp`) | — | — | — | ✅ | ✅ |
-| CompressedVQA-HDR NR (`cvqa-hdr-nr`) | — | — | — | ✅ | ✅ |
-| SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
-| HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
+| ColorVideoVDP | — | — | — | ✅ | ✅ |
+| CompressedVQA-HDR | — | — | — | ✅ | ✅ |
+| SimpleVQA | — | — | — | ✅ | ✅ |
+| HDR-ChipQA | — | — | ✅ | — | — |
 
 ✅ Available primary computation backend · — Not implemented for that backend. Python-based metrics may use other libraries for decoding or preprocessing; CUDA C++ refers to native CUDA metric kernels. QCS is a temporal descriptor derived from eligible frame scores, not a separate execution backend.
 

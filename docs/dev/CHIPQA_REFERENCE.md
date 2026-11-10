@@ -1,4 +1,4 @@
-# HDR-ChipQA unified reference integration
+# HDR-ChipQA Unified Reference Integration
 
 Standalone ChipQA (`deps/ChipQA`) is **not** integrated. PixVQA uses upstream **HDR-ChipQA** (`deps/hdr_chipqa`) for SDR and PQ HDR, matching Ebenezer et al. 2024 §4.7 (BT.709 gamma-coded YUV + `color_space=BT709` for SDR; BT.2020 PQ-coded YUV for HDR). **HLG is supported only as an experimental extrapolation** (same upstream `color_space=BT2020` feature path, no EOTF); it is **not** relabeled as PQ and scores are **not** paper-validated.
 
@@ -18,7 +18,7 @@ Standalone ChipQA (`deps/ChipQA`) is **not** integrated. PixVQA uses upstream **
 
 Upstream `hdr_chipqa.py` exposes only `--color_space {BT709,BT2020}` and `--bit_depth`; there is **no per-transfer switch**. PQ and HLG both use `color_space=BT2020` with 10-bit YUV codes fed directly to the reader (no EOTF). This is a **technical extrapolation** for HLG, not published validation.
 
-### Input metadata (transfer / matrix)
+### Input Metadata (Transfer / Matrix)
 
 | Mode | ffprobe transfer | ffprobe matrix | CLI override | Adapter `color_space` |
 |------|------------------|----------------|--------------|----------------------|
@@ -28,13 +28,13 @@ Upstream `hdr_chipqa.py` exposes only `--color_space {BT709,BT2020}` and `--bit_
 
 Unknown HDR transfers (e.g. smpte428) are rejected at setup.
 
-## HLG experimental warning
+## HLG Experimental Warning
 
 Once per evaluation, stderr logs:
 
 > WARNING: HDR-ChipQA on HLG is experimental: HLG performance was not experimentally validated in the HDR-ChipQA paper; scores are uncalibrated and should not be treated as established subjective-quality predictions.
 
-## Python environments
+## Python Environments
 
 Two interpreters: feature extraction (CPython 3.12+, `hdr_chipqa.py`) and SVR inference (CPython 3.10, sklearn 1.0.2).
 
@@ -47,7 +47,7 @@ TOML `[hdr-chipqa]` section supported when running via `pixvqa`.
 
 Legacy env names `PIXVQA_CHIPQA_FEATURE_PYTHON` / `PIXVQA_CHIPQA_INFERENCE_PYTHON` are still honored as fallbacks.
 
-### Provision (do not install into system Python)
+### Provision (Do Not Install into System Python)
 
 ```bash
 # Feature env — Python 3.12 + numpy shim for upstream feature code
@@ -78,7 +78,7 @@ python3.10 -m venv ~/.venvs/pixvqa-chipqa-ref
 
 HLG raw scoring on the same PQ YUV fixture yields **identical features** (same YUV domain) but is labeled `experimental` in adapter output.
 
-### Reference parity — exact commands
+### Reference Parity — Exact Commands
 
 ```bash
 cd /mnt/d/projects/pixvqa-public
@@ -91,7 +91,7 @@ $PIXVQA_HDR_CHIPQA_FEATURE_PYTHON scripts/test_chipqa_reference.py
 
 **Skip vs pass:** tests print `SKIP …` when fixtures or env vars are missing; `OK …` when a check passes; `FAIL …` + exit 1 on regression. With both env vars set (paths above), expect **14× OK, 0× SKIP, 0× FAIL**.
 
-### pixvqa CLI examples
+### pixvqa CLI Examples
 
 ```bash
 # SDR compressed
@@ -112,7 +112,7 @@ build/cpu/pixvqa --metrics hdr-chipqa -t reports/chipqa-reference/derived_pq_dis
   --hdr-chipqa-inference-python "$PIXVQA_HDR_CHIPQA_INFERENCE_PYTHON"
 ```
 
-## Known limitations
+## Known Limitations
 
 - HDR-ChipQA training dark-MOS range (310 clips): ≈4.7–89.8; BerlinSeqs pilot scores exceeded 100 (extrapolation).
 - PQ golden fixture is **960×540 lanczos downscale in PQ-coded YUV domain** — not native 4K upstream parity.
@@ -120,7 +120,7 @@ build/cpu/pixvqa --metrics hdr-chipqa -t reports/chipqa-reference/derived_pq_dis
 - Standalone ChipQA SVR pickles are **not** interchangeable with HDR-ChipQA unified models.
 - Feature extraction needs `numpy_legacy_shim.py` on CPython 3.12+ (upstream uses deprecated `np.int` aliases).
 
-## Validation summary
+## Validation Summary
 
 Full primary-pass methodology, pristine PQ/SDR ladders, MOS-scale upstream review, and **excluded** double-compression experiments: [`HDR_CHIPQA_VALIDATION_SUMMARY.md`](HDR_CHIPQA_VALIDATION_SUMMARY.md).
 
@@ -128,7 +128,7 @@ Full primary-pass methodology, pristine PQ/SDR ladders, MOS-scale upstream revie
 
 Scores are unbounded SVR outputs in MOS **training** units (≈4.7–89.8 on dark scenes); values outside that range are extrapolation, not calibrated subjective quality.
 
-## Operational testing
+## Operational Testing
 
 ```bash
 make cpu

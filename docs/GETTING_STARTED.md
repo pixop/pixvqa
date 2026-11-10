@@ -2,7 +2,7 @@
 
 PixVQA supports Ubuntu 22.04/24.04 x86-64 (including WSL2). Native Windows builds are not validated.
 
-## Guided installation (recommended)
+## Guided Installation (Recommended)
 
 ```bash
 git clone https://github.com/pixop/pixvqa.git
@@ -15,7 +15,7 @@ The installer offers FFmpeg software decoding and optional CUDA/NVDEC support. N
 
 For noninteractive runs, set `PIXVQA_ENABLE_DAV1D=0|1`, `PIXVQA_ENABLE_NVIDIA=0|1`, and optionally `PIXVQA_ENABLE_LEARNED=1` (the guided prompt for learned metrics defaults to **no**). When learned metrics are selected, the installer provisions a private Python 3.12 interpreter if needed, creates the checkout-local `.venv`, and installs pinned Python dependencies. Upstream model checkpoints are supplied separately; see [Learned Metrics](LEARNED_METRICS.md).
 
-## Build variants
+## Build Variants
 
 If dependencies are **already installed**, use GNU Make (no downloads):
 
@@ -33,7 +33,7 @@ make install VARIANT=swdec PREFIX="$PWD"
 
 `make install` is required to update `bin/pixvqa`; building a variant alone does not. See [Manual Installation](INSTALL.md) for prerequisites and environment variables.
 
-## Rebuilding after source changes
+## Rebuilding after Source Changes
 
 The guided installer **already compiles and installs** PixVQA; there is no need
 to run Make after the first installation. When modifying the source code later,
@@ -56,7 +56,7 @@ For older installations without this file, see [Manual Installation](INSTALL.md)
 for environment variables. You do **not** need to rerun the guided installer
 or rebuild third-party dependencies solely to recompile PixVQA.
 
-## First evaluation
+## First Evaluation
 
 ```bash
 ./bin/pixvqa --metrics psnr,ssim,msssim \

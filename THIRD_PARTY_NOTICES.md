@@ -1,4 +1,4 @@
-# Third-party notices
+# Third-Party Notices
 
 This file records the dependencies PixVQA is built and validated against.
 It is an engineering inventory for legal review. It is not a certification
@@ -35,7 +35,7 @@ Version 1.5.1. BSD-2-Clause. libavcodec links it when FFmpeg is configured
 with `--enable-libdav1d`. A CPU decode build needs that shared library at
 runtime. It does not require CUDA.
 
-## libvmaf and the VMAF models
+## libvmaf and the VMAF Models
 
 Netflix libvmaf commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. This is
 not a tagged release. The previous tag is v3.2.1, commit
@@ -68,7 +68,7 @@ This package does not copy them. A recipient needs a driver and, to rebuild,
 the CUDA toolkit. `--decode gpu` without a GPU or without the full binary
 is an error. It does not switch to a software decoder.
 
-## What this tree does not add
+## What This Tree Does Not Add
 
 The validated FFmpeg build uses `--disable-gpl`. GPL-only FFmpeg components
 are not enabled. No proprietary video dataset is included.

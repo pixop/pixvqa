@@ -16,7 +16,7 @@ QCS ranges from 0% to 100% when expressed as a percentage. Scores at or below $a
 
 Each frame contributes equally (constant-frame-rate assumption). QCS describes the **distribution of quality scores**, not their temporal ordering.
 
-## Default QCS intervals
+## Default QCS Intervals
 
 | Metric | Interval |
 |---|---|
@@ -46,7 +46,7 @@ Repeating the option is equivalent: `--qcs-range psnr=40:55 --qcs-range vmaf=30:
 
 QCS is computed independently for each **QCS-eligible** selected metric. The name in `--qcs-range` is the `--metrics` name, and the bounds must satisfy lower < upper. Identical PSNR is printed `999.99`, identical XPSNR is printed `inf`, and identical PU21-PSNR is printed `999.99`. All three still count in QCS. `simplevqa` and `hdr-chipqa` are pooled-video NR metrics and emit no QCS line; they may run together with eligible metrics (including metric groups) while `--qcs` applies to the rest. `--qcs` alone with only `simplevqa` or only `hdr-chipqa` selected is rejected at setup.
 
-## Reference implementation
+## Reference Implementation
 
 The separate [Quality Consistency Score research repository](https://github.com/pixop/Quality-Consistency-Score) provides a Python reference implementation, sample score traces, and a demonstration notebook. The `--qcs` option described above is the integration in PixVQA.
 

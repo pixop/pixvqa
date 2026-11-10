@@ -48,7 +48,7 @@ make -j"$(nproc)" full
 
 If your dependencies are installed under the checkout's `deps/` folder, set `PIXVQA_DEPS_ROOT="$PWD/deps"` before running Make. The script-based alternatives are `bash build.sh`, `bash build_decode.sh`, and `bash build_cuda.sh` (in that order as applicable).
 
-## Install the selected build
+## Install the Selected Build
 
 ```bash
 make install VARIANT=swdec PREFIX="$PWD"
@@ -59,7 +59,7 @@ Replace `swdec` with `cpu` or `full` as appropriate. Building alone does not upd
 
 For Python-backed metrics, run `bash scripts/install_learned_metrics.sh` after a native installation. The script provisions a private Python 3.12 interpreter when missing, then creates the local learned-metric environment; pretrained third-party model assets still require manual configuration. See [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
 
-## Rebuilding an existing installation
+## Rebuilding an Existing Installation
 
 If the guided installer has completed successfully, the ignored
 `build/local-config.mk` records its resolved dependency paths. The incremental
@@ -77,7 +77,7 @@ If you installed a version before configuration persistence was introduced,
 provide the dependency paths as shown above, or use a matching dependency
 layout. A normal rebuild does not require running the guided installer again.
 
-## Common problems
+## Common Problems
 
 - `FFMPEG_PREFIX must point at FFmpeg n8.1.3`: provide the installed development-library prefix, not just an `ffmpeg` executable.
 - `libvmaf: disabled`: run `scripts/build_libvmaf.sh` and ensure its pinned installation is discoverable; otherwise VMAF is unavailable.

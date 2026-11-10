@@ -1,4 +1,4 @@
-# VMAF v1.0.16 model JSON (vendored)
+# VMAF v1.0.16 Model JSON (Vendored)
 
 These eight files are exact byte copies of the official Netflix VMAF models at
 commit `f85a853692a8c730d0270cd733c8bb30b5b93b7c` (tag `v3.2.1`).
@@ -20,7 +20,7 @@ License and copyright: Netflix, Inc. See `third_party/netflix-vmaf/LICENSE`
 Do not edit these JSON files in place. PixVQA identifies them by SHA-256 of the
 loaded file contents.
 
-# HDR VMAF v1.1.8 model JSON (vendored)
+# HDR VMAF v1.1.8 Model JSON (Vendored)
 
 These eight files are exact byte copies of the official Netflix HDR VMAF models
 at commit `74f930d17de8c58e7c2ce55e2b897b0030ebd8ef`. That commit is not a

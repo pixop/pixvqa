@@ -26,32 +26,31 @@ Select VQA metrics using `--metrics`; enable the QCS descriptor separately using
 
 | Metric | Type | SDR – BT.709 | PQ / HDR10 – BT.2020 | HLG – BT.2020 |
 |---|:---:|:---:|:---:|:---:|
-| PSNR | FR | ✅ | ✅ | ✅ |
-| XPSNR | FR | ✅ | ✅ | ✅ |
-| SSIM | FR | ✅ | ✅ | ✅ |
-| MS-SSIM | FR | ✅ | ✅ | ✅ |
-| VMAF (SDR v1.0.16 models) | FR | ✅ | ❌ | ❌ |
-| VMAF (HDR v1.1.8 models) | FR | ❌ | ✅ | ❌ |
-| PU21-PSNR | FR | ❌ | ✅ | ✅ |
-| PU21-SSIM | FR | ❌ | ✅ | ✅ |
-| PU21-MS-SSIM | FR | ❌ | ✅ | ✅ |
-| ColorVideoVDP | FR | ✅ | ✅ | ✅ |
-| CompressedVQA-HDR | NR | ✅ | ✅ | ❌ |
-| SimpleVQA | NR | ✅ | ❌ | ❌ |
-| HDR-ChipQA | NR | ✅ | ✅ | 🔬 |
+| PSNR | Full-reference | ✅ | ✅ | ✅ |
+| XPSNR | Full-reference | ✅ | ✅ | ✅ |
+| SSIM | Full-reference | ✅ | ✅ | ✅ |
+| MS-SSIM | Full-reference | ✅ | ✅ | ✅ |
+| VMAF (SDR v1.0.16 models) | Full-reference | ✅ | ❌ | ❌ |
+| VMAF (HDR v1.1.8 models) | Full-reference | ❌ | ✅ | ❌ |
+| PU21-PSNR | Full-reference | ❌ | ✅ | ✅ |
+| PU21-SSIM | Full-reference | ❌ | ✅ | ✅ |
+| PU21-MS-SSIM | Full-reference | ❌ | ✅ | ✅ |
+| ColorVideoVDP | Full-reference | ✅ | ✅ | ✅ |
+| CompressedVQA-HDR | No-reference | ✅ | ✅ | ❌ |
+| SimpleVQA | No-reference | ✅ | ❌ | ❌ |
+| HDR-ChipQA | No-reference | ✅ | ✅ | 🔬 |
 
 **Legend:** ✅ Supported · 🔬 Experimental support (validation incomplete) · ❌ Unsupported.
 
 **PU21 metrics:** PSNR, SSIM and MS-SSIM can be computed after applying the PU21 perceptually uniform transfer function. PU21 transforms HDR luminance values to better approximate the nonlinear sensitivity of human vision. As a result, PU21 provides a perceptually motivated signal representation for conventional full-reference metrics.
 
 **Notes:**
-- Conventional PSNR, XPSNR, SSIM, and MS-SSIM operate on encoded sample values without HDR perceptual adaptation.
-- SDR VMAF is intended for SDR; HDR VMAF v1.1.8 supports limited-range PQ/BT.2020, but not HLG.
-- PU21 metrics support PQ and HLG, but not SDR in PixVQA.
-- **SimpleVQA** (`simplevqa`): compressed **SDR** only; PQ/HLG streams and explicit PQ/HLG `--hdr-transfer` are rejected (`src/main.cpp`, Python adapter). Raw YUV is rejected. One pooled score per video; **QCS unsupported**.
-- **HDR-ChipQA** (`hdr-chipqa`): YUV **4:2:0** 8- or 10-bit, raw or compressed. SDR uses BT.709 gamma-coded YUV (`color_space=BT709`); PQ HDR uses PQ-coded 10-bit YUV with stream PQ tags or `--hdr-transfer pq` (`color_space=BT2020`). Raw PQ/HLG requires `-f 420p:10` and `--fps`. **HLG** uses the same BT2020 feature path without EOTF and is **experimental** (monotonicity sanity checks only). One pooled score; **QCS unsupported**. See [CHIPQA_REFERENCE.md](dev/CHIPQA_REFERENCE.md).
-- QCS applies to per-frame or sampled metrics only; `simplevqa` and `hdr-chipqa` are pooled-only. See [QCS](QCS.md).
-- Metric groups (`sdr`, `pq`, `hlg`) select baseline native metrics and transfer defaults; **HDR-ChipQA** is opt-in because of host-RAM demands. **SimpleVQA** is incompatible with `pq`/`hlg` groups (SDR-only). **CVVDP** is also opt-in for groups because of GPU cost (e.g. `--metrics pq,cvvdp`); `all` still includes CVVDP. Add HDR-ChipQA explicitly (e.g. `--metrics pq,hdr-chipqa`). See [CLI Usage](CLI_USAGE.md#metric-groups).
+
+- **HDR interpretation:** PSNR, XPSNR, SSIM, and MS-SSIM use encoded sample values without perceptual HDR adaptation. SDR VMAF is SDR-only; HDR VMAF supports PQ/BT.2020, not HLG. PU21 metrics support PQ and HLG, not SDR.
+- **SimpleVQA:** Compressed SDR video only (no raw YUV or PQ/HLG). Produces one score per video; no QCS.
+- **HDR-ChipQA:** Raw or compressed 8-/10-bit YUV 4:2:0, supporting SDR and PQ. HLG is experimental. Raw HDR needs 10-bit 4:2:0 input and `--fps`. Produces one score per video; no QCS. See [HDR-ChipQA details](dev/CHIPQA_REFERENCE.md).
+- **Metric groups:** `sdr`, `pq`, and `hlg` select the standard metrics. Add resource-intensive `cvvdp` or `hdr-chipqa` explicitly (e.g., `--metrics pq,cvvdp`); `all` includes CVVDP. SimpleVQA is SDR-only. See [CLI usage](CLI_USAGE.md#metric-groups).
+- **QCS:** Available only for per-frame or sampled scores, not pooled-only SimpleVQA or HDR-ChipQA. See [QCS](QCS.md).
 
 ## Metric Capabilities
 
@@ -95,10 +94,10 @@ Inputs are paired in presentation order. If lengths differ, full-reference metri
 | PU21-PSNR | ✅ | ✅ | — | — | — |
 | PU21-SSIM | ✅ | ✅ | — | — | — |
 | PU21-MS-SSIM | ✅ | ✅ | — | — | — |
-| ColorVideoVDP (`cvvdp`) | — | — | — | ✅ | ✅ |
-| CompressedVQA-HDR NR (`cvqa-hdr-nr`) | — | — | — | ✅ | ✅ |
-| SimpleVQA (`simplevqa`) | — | — | — | ✅ | ✅ |
-| HDR-ChipQA (`hdr-chipqa`) | — | — | ✅ | — | — |
+| ColorVideoVDP | — | — | — | ✅ | ✅ |
+| CompressedVQA-HDR | — | — | — | ✅ | ✅ |
+| SimpleVQA | — | — | — | ✅ | ✅ |
+| HDR-ChipQA | — | — | ✅ | — | — |
 
 A ✅ shows where each metric runs. The table refers to **metric computation**, not video decoding. VMAF runs on CPU through `libvmaf`, while HDR-ChipQA uses Python with NumPy and SciPy. ColorVideoVDP uses PyTorch but is not a neural-network model. For SimpleVQA, the persistent CUDA worker is available through its standalone Python module, not yet through the PixVQA CLI.
 

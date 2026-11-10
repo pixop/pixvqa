@@ -1,4 +1,4 @@
-# Project license
+# Project License
 
 PixVQA is licensed under the **MIT License** (SPDX identifier `MIT`). The full text is in the repository root [`LICENSE`](../LICENSE).
 
@@ -6,7 +6,7 @@ Copyright (c) 2026 Pixop ApS.
 
 The MIT license applies to the PixVQA source code and documentation that Pixop ApS contributes in this repository. It does not replace the licenses on third-party components, models, or notices listed below. It does not grant permission to use Pixop trademarks, trade names, or logos except as required to comply with the MIT notice on the Software itself. See [docs/brand/README.md](brand/README.md).
 
-## Third-party and bundled material (not relicensed as MIT)
+## Third-Party and Bundled Material (Not Relicensed as MIT)
 
 These stay under their own terms. Keep their notices when you redistribute or ship binaries:
 

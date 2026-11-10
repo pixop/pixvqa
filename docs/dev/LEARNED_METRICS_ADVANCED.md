@@ -2,7 +2,7 @@
 
 This page is for custom deployments and troubleshooting. Most users only need [Optional Learned Metrics](../LEARNED_METRICS.md).
 
-## Python environments and model assets
+## Python Environments and Model Assets
 
 The guided installer is `install_pixvqa.sh` (choose learned metrics when prompted; the default is no). For non-interactive setup, set `PIXVQA_ENABLE_LEARNED=1`. Alternatively, run `bash scripts/install_learned_metrics.sh` after building PixVQA.
 
@@ -12,7 +12,7 @@ It clones or reuses pinned upstream repositories under `deps/`, verifies existin
 
 The complete version-pinned Python requirements are in [`python/requirements/learned-env.txt`](../../python/requirements/learned-env.txt), and installer-specific dependency repair is in `scripts/setup_hdr_chipqa_envs.sh` and related scripts. These are the authoritative package lists; do not maintain a duplicate pinned list in documentation.
 
-## Custom paths and overrides
+## Custom Paths and Overrides
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -26,11 +26,11 @@ The complete version-pinned Python requirements are in [`python/requirements/lea
 
 `config/learned_metrics.local.toml` is local and Git-ignored. The installer preserves custom Python and repository paths. If `[learned].python` differs from the chosen venv, it warns: align the config with the interpreter actually used. Older `$HOME/pixvqa-learned-env` locations remain usable via `PIXVQA_LEARNED_ENV_DIR`.
 
-### WSL2 and mounted Windows drives
+### WSL2 and Mounted Windows Drives
 
 On `/mnt/c` or `/mnt/d`, Windows-backed (9p/drvfs) mounts may not handle venv symlinks normally, so the installer creates the environment with `python -m venv --copies` by default. Linux ext4 checkouts generally offer better I/O performance. Use `PIXVQA_LEARNED_VENV_USE_SYMLINKS=1` only when symlinks are supported. Environments should be recreated when moving a repository; do not commit `.venv`.
 
-### Manual installation
+### Manual Installation
 
 ```bash
 scripts/setup_learned_env.sh /absolute/path/to/.venv /absolute/path/to/ColorVideoVDP
@@ -38,6 +38,6 @@ cp config/learned_metrics.example.toml config/learned_metrics.local.toml
 # Set the repository, checkpoint and Python paths in the local config.
 ```
 
-### ColorVideoVDP upstream FFmpeg packaging issue
+### ColorVideoVDP Upstream FFmpeg Packaging Issue
 
 Pinned CVVDP v0.5.7 declares both `ffmpeg-python>=0.2.0` and the conflicting `ffmpeg>=1.4` Python distribution, although it needs the `ffmpeg-python` API. PixVQA rebuilds the identical pinned source with only the conflicting dependency declaration removed, retains `ffmpeg-python`, installs the genuine dependencies (`matplotlib`, `PyEXR`) and validates the environment with `pip check`. This does not change the scoring code or the FFmpeg executable.
