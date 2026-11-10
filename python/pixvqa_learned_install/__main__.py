@@ -34,6 +34,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip torch/joblib load probes",
     )
     parser.add_argument(
+        "--skip-ffmpeg",
+        action="store_true",
+        help="Skip pinned ffmpeg/ffprobe readiness beside learned Python",
+    )
+    parser.add_argument(
         "command",
         nargs="?",
         default="install",
@@ -58,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
             feature_python=args.feature_python,
             inference_python=args.inference_python,
             skip_load=args.skip_load,
+            check_ffmpeg=not args.skip_ffmpeg,
         )
         for issue in issues:
             print(issue, flush=True)

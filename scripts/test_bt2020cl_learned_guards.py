@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'python'))
 from pixvqa_cvvdp.adapter import AdapterError, check_pair  # noqa: E402
 from pixvqa_cvqahdr import adapter as nr  # noqa: E402
+from pixvqa_video import ffmpeg_bins  # noqa: E402
+
+_VERSION_OK = SimpleNamespace(returncode=0, stdout='ffmpeg version n8.1.3\n', stderr='')
 
 
 def expect_rejected(callback, reason: str) -> None:
@@ -36,13 +39,25 @@ def main() -> None:
     for interpretation in ('hlg', 'sdr'):
         expect_rejected(lambda: check_pair(cl, good, interpretation, 0), 'CL-to-NCL')
     for matrix, should_fail in (('bt2020c', True), ('bt2020nc', False), ('unknown', False)):
-        fake = SimpleNamespace(stdout=json.dumps({'streams':[{'color_space':matrix}]}))
-        with patch.object(nr.subprocess, 'run', return_value=fake):
+        probe = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({'streams': [{'color_space': matrix}]}),
+            stderr='',
+        )
+
+        def run_handler(cmd, **_kwargs):
+            if '-version' in cmd:
+                return _VERSION_OK
+            return probe
+
+        with patch.object(ffmpeg_bins, 'resolve_ffprobe_bin', return_value='/mock/ffprobe'), \
+             patch.object(nr.subprocess, 'run', side_effect=run_handler):
             if should_fail:
                 expect_rejected(lambda: nr.reject_unsupported_cl('mock.mp4'), 'unsupported')
             else:
                 nr.reject_unsupported_cl('mock.mp4')
-    with patch.object(nr.subprocess, 'run', side_effect=FileNotFoundError('missing')):
+    with patch.object(ffmpeg_bins, 'resolve_ffprobe_bin', return_value='/mock/ffprobe'), \
+         patch.object(nr.subprocess, 'run', side_effect=FileNotFoundError('missing')):
         expect_rejected(lambda: nr.reject_unsupported_cl('mock.mp4'), 'could not verify')
     print('PASS CVVDP PQ/HLG/SDR CL guard; CVQA-HDR-NR CL/NCL/unknown and missing ffprobe preflight')
 

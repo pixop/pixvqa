@@ -455,8 +455,25 @@ if (( PIXVQA_DEPS_ISOLATED )); then
 fi
 mv -f "$config_tmp" "$PIXVQA_SRC/build/local-config.mk"
 if (( WITH_LEARNED )); then
-    info 'Setting up optional learned metrics'
+    info 'Setting up optional learned metrics (Python venv, assets, pinned FFmpeg CLI)'
     bash "$PIXVQA_SRC/scripts/install_learned_metrics.sh"
+    # Full guided install must leave pinned ffmpeg+ffprobe in the managed learned .venv.
+    # install_learned_metrics.sh provisions them; assert post-condition here so failures
+    # are visible in the main installer log, not only inside the learned sub-script.
+    learned_env="${PIXVQA_LEARNED_ENV_DIR:-$PIXVQA_SRC/.venv}"
+    learned_ffmpeg="$learned_env/bin/ffmpeg"
+    learned_ffprobe="$learned_env/bin/ffprobe"
+    learned_stamp="$learned_env/PIXVQA_LEARNED_FFMPEG_COMMIT"
+    [[ -x "$learned_ffmpeg" && -x "$learned_ffprobe" ]] ||
+        die "Learned install did not provision executable ffmpeg/ffprobe under $learned_env/bin"
+    [[ -f "$learned_stamp" ]] || die "Learned FFmpeg stamp missing: $learned_stamp"
+    [[ "$(cat "$learned_stamp")" == 1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7 ]] ||
+        die "Learned FFmpeg stamp mismatch in $learned_stamp"
+    "$learned_ffmpeg" -hide_banner -version | grep -qF 'n8.1.3' ||
+        die "Learned ffmpeg is not FFmpeg n8.1.3: $learned_ffmpeg"
+    "$learned_ffprobe" -hide_banner -version | grep -qF 'n8.1.3' ||
+        die "Learned ffprobe is not FFmpeg n8.1.3: $learned_ffprobe"
+    printf 'Learned FFmpeg CLI verified: %s %s\n' "$learned_ffmpeg" "$learned_ffprobe"
 fi
 info 'Installation succeeded (smoke QA passed). Full and hardware QA require separate validation.'
 printf 'Installed executable: %s\n' "$PREFIX/bin/pixvqa"

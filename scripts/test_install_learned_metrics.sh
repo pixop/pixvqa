@@ -26,6 +26,10 @@ grep -q 'ensure_simplevqa_dependencies' scripts/install_learned_metrics.sh ||
   fail 'installer must verify and repair SimpleVQA modules in reused venv'
 grep -q 'setup_hdr_chipqa_envs' scripts/install_learned_metrics.sh ||
   fail 'install_learned_metrics.sh must provision HDR-ChipQA envs'
+grep -q 'ensure_learned_ffmpeg_cli' scripts/install_learned_metrics.sh ||
+  fail 'install_learned_metrics.sh must provision pinned ffmpeg/ffprobe'
+bash -n scripts/ensure_learned_ffmpeg_cli.sh
+bash -n scripts/build_learned_ffmpeg_cli.sh
 grep -q 'learned_venv_helpers.sh' scripts/setup_learned_env.sh ||
   fail 'setup_learned_env.sh must source learned_venv_helpers.sh'
 grep -q 'pytorchvideo==' python/requirements/learned-env.txt ||
@@ -43,14 +47,23 @@ mkdir -p "$fake_root/scripts" "$fake_root/config" "$fake_root/python"
 cp -r -- "$ROOT/scripts/." "$fake_root/scripts/"
 cp -r -- "$ROOT/python/." "$fake_root/python/"
 cp -- "$ROOT/config/learned_metrics.example.toml" "$fake_root/config/learned_metrics.example.toml"
+# Throwaway venvs have no torch; stub SlowFast warm-up for config-merge dry-runs only.
+cat > "$fake_root/python/pixvqa_learned_install/backbones.py" <<'EOF'
+"""Offline test stub: config-merge dry-runs must not require torch in throwaway venvs."""
+def main() -> int:
+    return 0
+if __name__ == "__main__":
+    raise SystemExit(main())
+EOF
 
 commit=166f5ae95ecbd841ae727984cd237de213875399
 
 make_pinned_venv() {
   local dir="$1"
-  mkdir -p "$dir/bin"
-  printf '#!/usr/bin/env sh\nprintf "stub\\n"\n' > "$dir/bin/python"
-  chmod +x "$dir/bin/python"
+  # Real venv required: install_learned_metrics.sh calls assert_learned_venv_isolated
+  # (rejects shell-wrapper interpreters from the pre-isolation era).
+  local py="${PIXVQA_LEARNED_CONFIG_PYTHON:-python3}"
+  "$py" -m venv "$dir"
   printf '%s\n' "$commit" > "$dir/COLORVIDEOVDP_COMMIT"
 }
 
@@ -79,6 +92,11 @@ EOF
 }
 
 stub_chipqa_stack() {
+  cat > "$fake_root/scripts/ensure_learned_ffmpeg_cli.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$fake_root/scripts/ensure_learned_ffmpeg_cli.sh"
   cat > "$fake_root/scripts/ensure_cvvdp_dependencies.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0

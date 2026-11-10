@@ -10,6 +10,14 @@ from pathlib import Path
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*=")
 
+# Stock example value before pinned-venv FFmpeg provisioning (docs era).
+_LEGACY_LEARNED_PATH_SENTINELS = frozenset({"~/bin", "~/bin/"})
+
+
+def _is_legacy_learned_path(value: str) -> bool:
+    """True for untouched example ``~/bin`` placeholders, not deliberate overrides."""
+    return value.strip() in _LEGACY_LEARNED_PATH_SENTINELS
+
 def _entries(lines: list[str]) -> dict[tuple[str, str], tuple[int, str]]:
     out: dict[tuple[str, str], tuple[int, str]] = {}
     section = ""
@@ -95,10 +103,25 @@ def merge_config(example: Path, destination: Path, defaults: dict[str, str]) -> 
                         legacy_base = result.returncode == 0 and result.stdout.strip() == "True"
                     except (OSError, subprocess.TimeoutExpired):
                         pass
-            if not ((interpreter_key and current[1] == legacy_host_path and current[1] != value) or legacy_base or legacy_checkout_python or leaked_install_log):
+            # CVVDP prepends [learned].path to PATH (no pinned-bin resolver). Upgrade
+            # installers must replace the historical ``~/bin`` example sentinel with
+            # the managed learned venv bin directory beside learned.python.
+            legacy_learned_path = (
+                name == "learned.path" and _is_legacy_learned_path(current[1])
+            )
+            if not (
+                (interpreter_key and current[1] == legacy_host_path and current[1] != value)
+                or legacy_base
+                or legacy_checkout_python
+                or leaked_install_log
+                or legacy_learned_path
+            ):
                 messages.append(f"preserved [{section}].{key}")
                 continue
-            messages.append(f"repaired legacy interpreter path [{section}].{key}")
+            if legacy_learned_path:
+                messages.append(f"repaired legacy PATH prefix [{section}].{key}")
+            else:
+                messages.append(f"repaired legacy interpreter path [{section}].{key}")
         lines = _put(lines, section, key, value)
         changed = True
         messages.append(f"configured [{section}].{key}")

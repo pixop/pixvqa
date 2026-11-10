@@ -13,6 +13,8 @@ from fractions import Fraction
 
 import numpy as np
 
+from pixvqa_video.ffmpeg_bins import FFmpegBinError, resolve_ffmpeg_bin, resolve_ffprobe_bin
+
 
 class FFmpegCapture:
     """Sequential FFmpeg BGR24 pipe with explicit subprocess lifecycle."""
@@ -36,8 +38,11 @@ class FFmpegCapture:
             raise ValueError("FFmpegCapture does not accept backend options")
         self.release()
         source = os.fspath(path)
-        ffprobe = os.environ.get("PIXVQA_FFPROBE_BIN", "ffprobe")
-        ffmpeg = os.environ.get("PIXVQA_FFMPEG_BIN", "ffmpeg")
+        try:
+            ffprobe = resolve_ffprobe_bin()
+            ffmpeg = resolve_ffmpeg_bin()
+        except FFmpegBinError as exc:
+            raise RuntimeError(str(exc)) from exc
         meta = subprocess.run(
             [ffprobe, "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=width,height,nb_frames,avg_frame_rate",

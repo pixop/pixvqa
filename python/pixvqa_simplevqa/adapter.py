@@ -23,6 +23,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from pixvqa_video.ffmpeg_bins import FFmpegBinError, resolve_ffprobe_bin
+
 
 class SetupError(RuntimeError):
     """Missing/invalid inputs or required runtime dependencies."""
@@ -298,6 +300,15 @@ def runtime_stack_versions() -> dict[str, str | None]:
     return versions
 
 
+def _resolved_ffprobe(ffprobe: str | None) -> str:
+    if ffprobe is not None:
+        return ffprobe
+    try:
+        return resolve_ffprobe_bin()
+    except FFmpegBinError as exc:
+        raise SetupError(str(exc)) from exc
+
+
 def _run_ffprobe(ffprobe: str, args: list[str]) -> subprocess.CompletedProcess[str]:
     """Invoke ffprobe; OSError and failures become SetupError."""
     cmd = [ffprobe, "-v", "error", *args]
@@ -390,7 +401,8 @@ def _format_duration_seconds(format_block: dict) -> float | None:
     return None
 
 
-def inspect_video(path: Path, ffprobe: str = "ffprobe") -> dict:
+def inspect_video(path: Path, ffprobe: str | None = None) -> dict:
+    ffprobe = _resolved_ffprobe(ffprobe)
     path = path.expanduser().resolve()
     if not path.is_file():
         raise SetupError(f"video not found: {path}")
@@ -506,7 +518,7 @@ def inspect_video(path: Path, ffprobe: str = "ffprobe") -> dict:
 
 def validate(repo: Path, checkpoint: Path, video: Path, *,
              check_imports: bool = True, probe_video: bool = True,
-             ffprobe: str = "ffprobe") -> dict:
+             ffprobe: str | None = None) -> dict:
     repo, checkpoint, video = (p.expanduser().resolve() for p in (repo, checkpoint, video))
     if not repo.is_dir():
         raise SetupError(f"upstream SimpleVQA checkout not found: {repo}")
@@ -677,7 +689,7 @@ def parse_score(text: str, expected_video: Path) -> float:
 
 
 def run(repo: Path, checkpoint: Path, video: Path, *,
-        device: str = "cpu", ffprobe: str = "ffprobe",
+        device: str = "cpu", ffprobe: str | None = None,
         timeout: int = 3600, use_worker: bool = False,
         use_shared_gpu_worker: bool = False) -> dict:
     if device not in ("cpu", "cuda"):

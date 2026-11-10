@@ -81,7 +81,7 @@ elif [[ -x "$infer_dir/bin/python" ]]; then
   printf 'Learned setup: completing HDR-ChipQA inference env at %s\n' "$infer_dir" >&2
   pip_infer=("$infer_dir/bin/python" -m pip --disable-pip-version-check)
   "${pip_infer[@]}" install --no-cache-dir \
-    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
+    'numpy==1.22.4' 'scipy==1.10.1' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
   printf '%s\n' "$sklearn_pin" > "$stamp"
 else
   if [[ -e "$infer_dir" ]]; then
@@ -97,7 +97,7 @@ else
   "$host_py310" -m venv $venv_flags "$infer_dir"
   pip_infer=("$infer_dir/bin/python" -m pip --disable-pip-version-check)
   "${pip_infer[@]}" install --no-cache-dir \
-    'numpy==1.22.4' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
+    'numpy==1.22.4' 'scipy==1.10.1' "scikit-learn==${sklearn_pin}" 'joblib==1.1.1' >&2
   printf '%s\n' "$sklearn_pin" > "$stamp"
   printf 'Learned setup: created HDR-ChipQA inference env at %s (sklearn %s)\n' "$infer_dir" "$sklearn_pin" >&2
 fi

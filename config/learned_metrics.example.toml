@@ -24,8 +24,9 @@ python = "../.venv/bin/python"
 # Directory holding the pixvqa_cvvdp and pixvqa_cvqahdr adapter packages.
 # Appended to PYTHONPATH, so an explicit PYTHONPATH still wins.
 adapter_path = "../python"
-# Prepended to PATH for the backends. CVVDP decodes with ffmpeg and ffprobe.
-path = "~/bin"
+# Prepended to PATH for the backends. The installer provisions pinned ffmpeg/ffprobe
+# into the learned .venv/bin directory and sets this to that bin directory.
+path = "../.venv/bin"
 
 [cvvdp]
 # Optional. Default: the cvvdp entry point beside the interpreter, then PATH.

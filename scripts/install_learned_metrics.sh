@@ -9,6 +9,8 @@
 set -Eeuo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# shellcheck source=learned_venv_helpers.sh
+source "$root/scripts/learned_venv_helpers.sh"
 default_env_dir="$root/.venv"
 default_cvvdp_src="$root/deps/ColorVideoVDP"
 default_chipqa_infer="$root/.venv-chipqa-inference"
@@ -84,9 +86,15 @@ if [[ -x "$env_dir/bin/python" && -f "$env_dir/COLORVIDEOVDP_COMMIT" ]] &&
    [[ "$(cat "$env_dir/COLORVIDEOVDP_COMMIT")" == "$commit" ]]; then
   printf 'Learned setup: reusing existing environment: %s\n' "$env_dir"
 elif [[ -e "$env_dir" ]]; then
-  echo "Learned setup: $env_dir already exists but is not a recognized pinned environment." >&2
-  echo 'Set PIXVQA_LEARNED_ENV_DIR to a new directory or manage this environment manually.' >&2
-  exit 2
+  if [[ "${PIXVQA_LEARNED_RESUME_INCOMPLETE:-}" != 1 ]]; then
+    echo "Learned setup: $env_dir already exists but is not a recognized pinned environment." >&2
+    echo 'Set PIXVQA_LEARNED_ENV_DIR to a new directory or set PIXVQA_LEARNED_RESUME_INCOMPLETE=1 to resume an isolated, interrupted bootstrap.' >&2
+    exit 2
+  fi
+  assert_learned_venv_isolated "$env_dir" || exit 2
+  [[ -d "$cvvdp_src/.git" ]] || { echo "Learned setup: pinned CVVDP checkout missing at $cvvdp_src" >&2; exit 2; }
+  printf 'Learned setup: resuming interrupted pinned environment: %s\n' "$env_dir"
+  PYTHON="$env_dir/bin/python" bash "$root/scripts/setup_learned_env.sh" --resume "$env_dir" "$cvvdp_src"
 else
   python="$(bash "$root/scripts/ensure_learned_python.sh")"
   if [[ ! -d "$cvvdp_src/.git" ]]; then
@@ -132,6 +140,10 @@ fi
 
 # Resolve the directory only, never the Python symlink inside the venv.
 selected_python="$(cd -- "$env_dir" && pwd -P)/bin/python"
+assert_learned_venv_isolated "$env_dir" || exit 2
+
+# Pinned ffmpeg+ffprobe for learned decoding (out-of-tree CLI build; idempotent).
+bash "$root/scripts/ensure_learned_ffmpeg_cli.sh" "$env_dir" "$root"
 
 # Reconcile CVVDP dependencies in both fresh and reused learned environments.
 bash "$root/scripts/ensure_cvvdp_dependencies.sh" \

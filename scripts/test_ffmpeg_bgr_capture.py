@@ -38,19 +38,36 @@ def decode(path: Path) -> tuple[list[str], float]:
 
 
 def main() -> int:
-    ffmpeg = os.environ.get("PIXVQA_FFMPEG_BIN", "ffmpeg")
-    ffprobe = os.environ.get("PIXVQA_FFPROBE_BIN", "ffprobe")
-    if not shutil.which(ffmpeg) or not shutil.which(ffprobe):
-        print("SKIP: ffmpeg/ffprobe unavailable")
+    from pixvqa_video.ffmpeg_bins import FFmpegBinError, resolve_ffmpeg_bin, resolve_ffprobe_bin
+
+    try:
+        ffmpeg = resolve_ffmpeg_bin()
+        ffprobe = resolve_ffprobe_bin()
+    except FFmpegBinError as exc:
+        print(f"SKIP: {exc}")
+        return 0
+    # Fixture encoding uses a host encoder (lavfi); FFmpegCapture decode stays on pinned bins.
+    fixture_ffmpeg = os.environ.get("PIXVQA_TEST_FIXTURE_FFMPEG", "").strip()
+    if not fixture_ffmpeg:
+        learned_bin = os.environ.get("PIXVQA_LEARNED_ENV_DIR", "").strip()
+        learned_bin = str(Path(learned_bin).expanduser() / "bin") if learned_bin else None
+        search_path = os.pathsep.join(
+            entry for entry in os.environ.get("PATH", "").split(os.pathsep)
+            if entry and entry != learned_bin
+        )
+        fixture_ffmpeg = shutil.which("ffmpeg", path=search_path or None)
+    if not fixture_ffmpeg:
+        print("SKIP: host ffmpeg unavailable for lavfi test fixture")
         return 0
     with tempfile.TemporaryDirectory(prefix="pixvqa_ffmpeg_capture_test_") as root:
         path = Path(root) / "test.mp4"
         subprocess.run(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+            [fixture_ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
              "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=6:duration=2",
              "-frames:v", "12", "-c:v", "mpeg4", str(path)],
             check=True,
         )
+        _ = ffprobe  # resolved above; FFmpegCapture uses the same pinned pair internally
         first, _ = decode(path)
         second, _ = decode(path)
         assert first == second, "FFmpegCapture decoded different pixels"

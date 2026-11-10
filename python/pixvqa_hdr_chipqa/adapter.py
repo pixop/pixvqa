@@ -18,6 +18,11 @@ from pixvqa_hdr_chipqa.inference import (
     resolve_python,
     validate_repo,
 )
+from pixvqa_video.ffmpeg_bins import (
+    FFmpegBinError,
+    resolve_ffmpeg_bin,
+    resolve_ffprobe_legacy,
+)
 
 _HLG_TRANSFER_OK = frozenset({"arib-std-b67", "hlg", "std-b67", "bt2020-hlg"})
 _PQ_TRANSFER_OK = frozenset({"smpte2084", "pq", "st2084"})
@@ -163,7 +168,24 @@ def _reject_compressed_hdr_unknown(meta: dict) -> None:
         raise SetupError(f"hdr-chipqa rejects unrecognized transfer {meta.get('transfer')!r}")
 
 
-def inspect_compressed(path: Path, ffprobe: str = "ffprobe") -> dict:
+def _resolved_ffprobe(ffprobe: str | None) -> str:
+    if ffprobe is not None:
+        return ffprobe
+    try:
+        return resolve_ffprobe_legacy("PIXVQA_HDR_CHIPQA_FFPROBE")
+    except FFmpegBinError as exc:
+        raise SetupError(str(exc)) from exc
+
+
+def _resolved_ffmpeg() -> str:
+    try:
+        return resolve_ffmpeg_bin()
+    except FFmpegBinError as exc:
+        raise SetupError(str(exc)) from exc
+
+
+def inspect_compressed(path: Path, ffprobe: str | None = None) -> dict:
+    ffprobe = _resolved_ffprobe(ffprobe)
     path = path.expanduser().resolve()
     if not path.is_file():
         raise SetupError(f"video not found: {path}")
@@ -225,7 +247,7 @@ def resolve_pipeline_mode(
     width: int | None = None,
     height: int | None = None,
     bit_depth: int | None = None,
-    ffprobe: str = "ffprobe",
+    ffprobe: str | None = None,
 ) -> dict:
     path = path.expanduser().resolve()
     is_raw = path.suffix.lower() in (".yuv", ".raw")
@@ -308,14 +330,14 @@ def resolve_pipeline_mode(
     raise SetupError(f"hdr-chipqa could not classify compressed transfer {vmeta.get('transfer')!r}")
 
 
-def decode_sdr_to_yuv(video: Path, dest: Path, ffprobe: str = "ffprobe") -> tuple[int, int]:
+def decode_sdr_to_yuv(video: Path, dest: Path, ffprobe: str | None = None) -> tuple[int, int]:
     video = video.expanduser().resolve()
     meta = inspect_compressed(video, ffprobe=ffprobe)
     w, h = meta.get("width"), meta.get("height")
     if not w or not h:
         raise SetupError("could not read compressed SDR dimensions via ffprobe")
     cmd = [
-        "ffmpeg",
+        _resolved_ffmpeg(),
         "-y",
         "-v",
         "error",
@@ -340,7 +362,7 @@ def decode_sdr_to_yuv(video: Path, dest: Path, ffprobe: str = "ffprobe") -> tupl
     return int(w), int(h)
 
 
-def decode_hlg_to_yuv10(video: Path, dest: Path, ffprobe: str = "ffprobe") -> tuple[int, int]:
+def decode_hlg_to_yuv10(video: Path, dest: Path, ffprobe: str | None = None) -> tuple[int, int]:
     video = video.expanduser().resolve()
     meta = inspect_compressed(video, ffprobe=ffprobe)
     detected = transfer_norm_to_mode(meta["transfer_norm"])
@@ -351,7 +373,7 @@ def decode_hlg_to_yuv10(video: Path, dest: Path, ffprobe: str = "ffprobe") -> tu
     if not w or not h:
         raise SetupError("could not read compressed HLG dimensions via ffprobe")
     cmd = [
-        "ffmpeg",
+        _resolved_ffmpeg(),
         "-y",
         "-v",
         "error",
@@ -543,7 +565,7 @@ def validate(
     fps_den: int | None = None,
     feature_python: str | None = None,
     inference_python: str | None = None,
-    ffprobe: str = "ffprobe",
+    ffprobe: str | None = None,
     check_input: bool = True,
 ) -> dict:
     meta = validate_repo(repo)
@@ -597,7 +619,7 @@ def run(
     fps_den: int | None = None,
     feature_python: str | None = None,
     inference_python: str | None = None,
-    ffprobe: str = "ffprobe",
+    ffprobe: str | None = None,
     timeout: int = 3600,
 ) -> dict:
     info = validate(

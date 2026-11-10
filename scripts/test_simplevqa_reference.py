@@ -12,14 +12,13 @@ from subprocess import CompletedProcess
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+MOCK_FFPROBE = "mock-ffprobe"
 sys.path.insert(0, str(ROOT / "python"))
 from pixvqa_simplevqa.adapter import (
     InferenceError,
     SetupError,
     _CPU_OVERLAY_OLD_BLOCK,
     _CUDA_SINGLE_DECODE_MAIN_OLD,
-    _CUDA_UNIFIED_FN_ANCHOR,
-    _CUDA_UNIFIED_FN,
     _CUDA_STREAMING_MOTION_FN,
     cpu_overlay_test_demo,
     cuda_single_decode_overlay_test_demo,
@@ -43,7 +42,7 @@ def _ffprobe_json_pair(stream_obj: dict, fmt_obj: dict) -> list[CompletedProcess
 
 
 
-# Exercise the generated CUDA preprocessing overlay without PyTorch or GPU.
+# Exercise the generated CUDA streaming-motion overlay without PyTorch or GPU.
 # Integer frame IDs stand in for identically transformed RGB tensors.
 def test_bounded_motion_window_equivalence():
     from types import SimpleNamespace
@@ -125,28 +124,8 @@ def test_bounded_motion_window_equivalence():
                     def release(self):
                         self.released = True
 
-                capture = FakeCapture()
-                cv2 = SimpleNamespace(
-                    VideoCapture=lambda *args: capture,
-                    CAP_PROP_FRAME_COUNT=1,
-                    CAP_PROP_FPS=2,
-                    COLOR_BGR2RGB=3,
-                    cvtColor=lambda frame, conversion: frame,
-                )
-                scope = {
-                    "cv2": cv2, "Image": FakeImage, "torch": FakeTorch,
-                    "transforms": FakeTransforms,
-                }
-                exec(_CUDA_UNIFIED_FN, scope)
-                spatial, motion, _ = scope["video_processing_unified"]("mock.mp4")
-                assert capture.released
                 length = total // fps
                 expected = source + ([source[-1]] * (total - len(source)) if source else [None] * total)
-                expected_spatial = [source[i * fps] for i in range(length) if i * fps < len(source)]
-                if len(expected_spatial) < length:
-                    fill = expected_spatial[-1] if expected_spatial else None
-                    expected_spatial += [fill] * (length - len(expected_spatial))
-                assert spatial.data == expected_spatial, (fps, seconds, dropped, "spatial")
                 expected_motion = []
                 for idx in range(length):
                     start = idx * fps
@@ -156,10 +135,9 @@ def test_bounded_motion_window_equivalence():
                     expected_motion.append(window)
                 while len(expected_motion) < 8:
                     expected_motion.append(expected_motion[-1])
-                assert [m.data for m in motion] == expected_motion, (fps, seconds, dropped, "motion")
 
-                # Test opt-in streaming windows independently, including clip
-                # overlap, unsampled gaps, decode truncation and 8-clip padding.
+                # Streaming motion windows: clip overlap, unsampled gaps,
+                # decode truncation and 8-clip padding.
                 capture_stream = FakeCapture()
                 cv2_stream = SimpleNamespace(
                     VideoCapture=lambda *args: capture_stream,
@@ -193,12 +171,12 @@ def test_bounded_motion_window_equivalence():
     # Regression: invalid metadata should fail before allocating or dividing.
     capture = SimpleNamespace(open=lambda path: True, get=lambda prop: 0, release=lambda: None)
     cv2 = SimpleNamespace(
-        VideoCapture=lambda: capture, CAP_PROP_FRAME_COUNT=1, CAP_PROP_FPS=2,
+        VideoCapture=lambda *args: capture, CAP_PROP_FRAME_COUNT=1, CAP_PROP_FPS=2,
     )
     scope = {"cv2": cv2, "Image": FakeImage, "torch": FakeTorch, "transforms": FakeTransforms}
-    exec(_CUDA_UNIFIED_FN, scope)
+    exec(_CUDA_STREAMING_MOTION_FN, scope)
     try:
-        scope["video_processing_unified"]("bad-fps.mp4")
+        scope["video_processing_motion_stream"]("bad-fps.mp4")
     except ValueError as exc:
         assert "frame rate" in str(exc)
     else:
@@ -320,6 +298,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         raise AssertionError("raw YUV was accepted by upstream demo")
 
     # --- inspect_video / ffprobe mocks (deterministic preflight) ---
+    # Pass an explicit ffprobe path so CI stdlib runs skip pinned-venv resolution.
     stream_base = {
         "avg_frame_rate": "60/1",
         "codec_name": "h264",
@@ -338,7 +317,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     bad_nb = {**stream_base, "nb_frames": "not-an-int"}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(bad_nb, {"duration": "2.0"})):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "nb_frames" in str(e).lower() or "malformed" in str(e).lower()
         else:
@@ -348,7 +327,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     no_len = {**stream_base}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(no_len, {})):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "nb_frames" in str(e).lower() or "duration" in str(e).lower()
         else:
@@ -358,7 +337,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     short = {**stream_base, "nb_frames": 30}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(short, {"duration": "0.5"})):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "second" in str(e).lower()
         else:
@@ -368,7 +347,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     two_sec = {**stream_base, "nb_frames": 120}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(two_sec, {"duration": "2.0"})):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "8" in str(e)
         else:
@@ -378,7 +357,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     low_fc = {**stream_base, "nb_frames": 20}
     with _patch_ffprobe_sequence(_ffprobe_json_pair(low_fc, {"duration": "5.0"})):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "frame count" in str(e).lower() or "full second" in str(e).lower()
         else:
@@ -393,7 +372,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ],
     ):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "json" in str(e).lower()
         else:
@@ -408,7 +387,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ],
     ):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "root" in str(e).lower() or "object" in str(e).lower()
         else:
@@ -423,7 +402,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ],
     ):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "stream" in str(e).lower() and "object" in str(e).lower()
         else:
@@ -438,7 +417,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ],
     ):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "format" in str(e).lower() and "object" in str(e).lower()
         else:
@@ -453,7 +432,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ],
     ):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "format" in str(e).lower() and "object" in str(e).lower()
         else:
@@ -465,7 +444,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
 
     with patch("pixvqa_simplevqa.adapter.subprocess.run", side_effect=_boom):
         try:
-            inspect_video(video)
+            inspect_video(video, ffprobe=MOCK_FFPROBE)
         except SetupError as e:
             assert "ffprobe" in str(e).lower()
         else:
@@ -482,7 +461,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ffprobe_calls = {"n": 0}
 
         def _dual_run(cmd, *args, **kwargs):
-            if cmd and cmd[0] == "ffprobe":
+            if cmd and cmd[0] == MOCK_FFPROBE:
                 ffprobe_calls["n"] += 1
                 if ffprobe_calls["n"] == 1:
                     return _completed(0, json.dumps({"streams": [ok_stream]}))
@@ -491,7 +470,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
 
         mock_run.side_effect = _dual_run
         try:
-            run(repo, checkpoint, video, device="cpu")
+            run(repo, checkpoint, video, device="cpu", ffprobe=MOCK_FFPROBE)
         except InferenceError as e:
             assert "upstream" in str(e).lower()
             assert "stderr" in str(e).lower() or "failed" in str(e).lower()
@@ -506,7 +485,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
         ffprobe_calls2 = {"n": 0}
 
         def _dual_run2(cmd, *args, **kwargs):
-            if cmd and cmd[0] == "ffprobe":
+            if cmd and cmd[0] == MOCK_FFPROBE:
                 ffprobe_calls2["n"] += 1
                 if ffprobe_calls2["n"] == 1:
                     return _completed(0, json.dumps({"streams": [ok_stream]}))
@@ -515,7 +494,7 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
 
         mock_run2.side_effect = _dual_run2
         try:
-            run(repo, checkpoint, video, device="cpu")
+            run(repo, checkpoint, video, device="cpu", ffprobe=MOCK_FFPROBE)
         except InferenceError as e:
             assert "stdout" in str(e).lower() or "fail" in str(e).lower()
         else:
@@ -534,21 +513,19 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     assert meta.get("python_version")
     assert meta.get("python_implementation")
 
-    # --- CUDA single-decode overlay (no PyTorch) ---
+    # --- CUDA streaming-motion overlay (no PyTorch) ---
     real_upstream = ROOT / "deps/SimpleVQA/test_demo.py"
     if real_upstream.is_file():
         patched_cuda = cuda_single_decode_overlay_test_demo(real_upstream)
-        assert "video_processing_unified" in patched_cuda
-        assert "transformed_frame_all = torch.zeros" not in patched_cuda.split("def video_processing_unified")[1].split("def pack_pathway_output")[0]
-        assert "motion_clips = [" in patched_cuda
+        assert "def video_processing_motion_stream(dist):" in patched_cuda
+        assert "video_processing_unified" not in patched_cuda
         assert _CUDA_SINGLE_DECODE_MAIN_OLD not in patched_cuda
         main_body = patched_cuda.split("def main")[1]
         assert "video_processing_motion_stream(config.dist)" in main_body
         assert "video_processing_motion(config.dist)" not in main_body
-        # Default streaming keeps upstream spatial decode; legacy bounded is unified.
         assert main_body.count("video_processing_spatial(config.dist)") == 1
-        assert "PIXVQA_SIMPLEVQA_LEGACY_BOUNDED" in main_body
-        assert _CUDA_UNIFIED_FN_ANCHOR in patched_cuda
+        assert "PIXVQA_SIMPLEVQA_LEGACY_BOUNDED" not in patched_cuda
+        assert "def pack_pathway_output(frames, device):" in patched_cuda
         bad_cuda = d / "bad_cuda_upstream"
         bad_cuda.mkdir()
         (bad_cuda / "test_demo.py").write_text("# no main block\n", encoding="utf-8")
@@ -563,8 +540,19 @@ with tempfile.TemporaryDirectory(prefix="pixvqa_svqa_test_") as tmp:
     overlay_src = d / "overlay_upstream"
     overlay_src.mkdir()
     (overlay_src / "test_demo.py").write_text(
-        "# header\n" + _CPU_OVERLAY_OLD_BLOCK + "\nwith torch.no_grad():\n"
-        "    feature_motion = torch.zeros([n_clip, 2048+256])\n",
+        "def slowfast():\n    pass\n\n"
+        "def main(config):\n"
+        "    model_motion = slowfast()\n"
+        "    model_motion = model_motion.to(device)\n"
+        + _CPU_OVERLAY_OLD_BLOCK + "\n"
+        "    with torch.no_grad():\n"
+        "        feature_motion = torch.zeros([n_clip, 2048+256])\n"
+        "        if True:\n"
+        "            video_dist_spatial = video_dist_spatial.to(device)\n"
+        "            for idx, ele in enumerate(video_dist_motion):\n"
+        "                ele = pack_pathway_output(ele, device)\n"
+        "                ele_slow_feature, ele_fast_feature = model_motion(ele)\n"
+        "            outputs = model(video_dist_spatial, feature_motion)\n",
         encoding="utf-8",
     )
     patched = cpu_overlay_test_demo(overlay_src / "test_demo.py")
