@@ -65,6 +65,6 @@ PYCODE
 
 ## Security and merge gates
 
-GitHub push output reports four default-branch security alerts (one high, one moderate, two low). Attempted unauthenticated GitHub Dependabot alerts API access from RTX 5080 returned **HTTP 401 Requires authentication**; the alert identities, manifests, affected dependency ranges, fixes and exploitability **have not been inspected**. A security approval cannot be claimed. An authenticated reviewer must inspect the alerts in GitHub Security / Dependabot before approval.
+An earlier GitHub push reported four default-branch alerts (one high, one moderate, two low); the latest push response at commit `6117399` reports **one low-severity alert**, linking to `https://github.com/pixop/pixvqa/security/dependabot/8`. The intervening alert-state changes were not independently investigated, and push notices are not a substitute for an alert inventory. Attempted unauthenticated GitHub Dependabot alerts API access from RTX 5080 returned **HTTP 401 Requires authentication**; affected manifests, vulnerable dependency ranges, fixes, exploitability, and alert #8 details **have not been inspected**. An authenticated reviewer must inspect the remaining alert and confirm the present alert inventory before security approval.
 
 Remaining: run the nonsaturated PQ A/B on RTX 4070 if cross-device coverage is required; confirm approved CVQA tolerance; authenticate and triage alerts; review the complete branch diff/CI; only then consider merging. Keep `main` unchanged until authorized.
