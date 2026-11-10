@@ -6,9 +6,9 @@
 
 [![CPU CI](https://github.com/pixop/pixvqa/actions/workflows/qa.yml/badge.svg?branch=main)](https://github.com/pixop/pixvqa/actions/workflows/qa.yml) [![FFmpeg](https://img.shields.io/badge/FFmpeg-n8.1.3-blue)](https://ffmpeg.org/) [![libvmaf](https://img.shields.io/badge/libvmaf-74f930d-blue)](https://github.com/Netflix/vmaf/commit/74f930d17de8c58e7c2ce55e2b897b0030ebd8ef) [![zimg](https://img.shields.io/badge/zimg-3.0.6-blue)](https://github.com/sekrit-twc/zimg) [![CUDA optional](https://img.shields.io/badge/CUDA-12.8%20optional-blue)](https://developer.nvidia.com/cuda-toolkit) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PixVQA compares reference and distorted video using **PSNR, XPSNR, SSIM, MS-SSIM and VMAF**, plus HDR **PU21** metrics. Optional Python-backed models add full-reference **ColorVideoVDP**; no-reference **CompressedVQA-HDR NR**, **SimpleVQA**, and **HDR-ChipQA** (`pixvqa --metrics simplevqa` or `hdr-chipqa`). The same optional **repository-local** `.venv` can also satisfy the standalone **SimpleVQA reference runner** (`python -m pixvqa_simplevqa`) — see [Learned Metrics](docs/LEARNED_METRICS.md). [Quality Consistency Score (QCS)](docs/QCS.md) reports temporal quality reliability.
+PixVQA is a **performance-oriented video quality assessment toolkit** for evaluating compression and processing quality across SDR and HDR workflows. It combines established full-reference metrics—**PSNR, XPSNR, SSIM, MS-SSIM and VMAF**—with **PU21-based HDR metrics** and optional learned models, including **ColorVideoVDP, CompressedVQA-HDR NR, SimpleVQA and HDR-ChipQA**. Optimized native CPU processing, optional CUDA acceleration and NVIDIA hardware decoding support efficient evaluation of high-resolution video, with support for both raw YUV and compressed video.
 
-PixVQA accepts planar raw YUV; compressed inputs require an FFmpeg-enabled build. CPU, optional CUDA metric acceleration, and NVDEC are available depending on the build.
+Beyond average quality scores, PixVQA integrates [**Quality Consistency Score (QCS)**](docs/QCS.md), a temporal reliability descriptor that uses frame-level or sampled quality scores to quantify how consistently video quality meets defined thresholds. QCS complements conventional metrics by exposing quality drops that an average score can obscure; it is available for metrics that provide suitable per-frame or sampled scores.
 
 ## Metrics at a Glance
 
@@ -66,7 +66,15 @@ bash install_pixvqa.sh
 ./bin/pixvqa --version
 ```
 
-The guided installer offers software decoding and optional CUDA/NVDEC support (**CUDA toolkit 12.8** and a compatible NVIDIA driver must already be installed for the native `full` build). Optional learned Python metrics are **off by default** (prompt defaults to no; use `PIXVQA_ENABLE_LEARNED=1` to enable non-interactively). Learned metrics use a **separate CPython 3.12 environment** with **PyTorch 2.13.0+cu130** wheels (CUDA **13.0** index), not the native CUDA 12.8 toolchain; HDR-ChipQA adds **Python 3.10 / scikit-learn 1.0.2**. Existing `.venv` trees are **not upgraded in place** — pin mismatches fail closed. Python-backed metrics always need [separate environment and asset setup](docs/LEARNED_METRICS.md); the guided step only runs the helper script when you opt in.
+The guided installer lets you choose the features you need:
+
+- **Standard installation:** Native CPU metrics and software video decoding.
+- **GPU acceleration (optional):** CUDA-accelerated metrics and NVIDIA hardware decoding (NVDEC). Requires **CUDA Toolkit 12.8** and a compatible NVIDIA driver.
+- **AI-based metrics (optional):** ColorVideoVDP, CVQA-HDR-NR, SimpleVQA and HDR-ChipQA. These are disabled by default; enable them when prompted, or set `PIXVQA_ENABLE_LEARNED=1` for unattended installation.
+
+AI-based metrics use a separate **Python 3.12** environment with **PyTorch 2.13.0 (CUDA 13.0)**. HDR-ChipQA also needs a small **Python 3.10** environment for its pretrained regression model. You do **not** need a system-wide CUDA 13 toolkit for the Python metrics, and the installer will not overwrite an existing incompatible Python environment.
+
+See [Learned Metrics](docs/LEARNED_METRICS.md) for detailed requirements and setup.
 
 ## Use
 
