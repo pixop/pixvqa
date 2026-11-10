@@ -75,7 +75,7 @@ def test_validate_provenance_accepts_cvvdp_version() -> None:
 
 def test_snapshot_includes_torchvision_and_open_clip() -> None:
     versions = {
-        "torchvision": "0.26.0+cu128",
+        "torchvision": "0.28.0+cu130",
         "open_clip_torch": "3.1.0",
     }
 
@@ -84,7 +84,7 @@ def test_snapshot_includes_torchvision_and_open_clip() -> None:
 
     with patch("numerical_conformance.provenance._python_package_version", side_effect=fake_version):
         block = collect_learned_provenance(learned_python="/env/bin/python", learned_config=None)
-    assert block["python_packages"]["torchvision"] == "0.26.0+cu128"
+    assert block["python_packages"]["torchvision"] == "0.28.0+cu130"
     assert block["python_packages"]["open_clip_torch"] == "3.1.0"
 
 
@@ -97,7 +97,7 @@ def test_package_version_queries_learned_interpreter_only() -> None:
         assert args[1] == "-c"
         assert "importlib.metadata" in args[2]
         assert "m.version(" in args[2] and "torch" in args[2]
-        return subprocess.CompletedProcess(args, 0, "2.11.0+cu128", "")
+        return subprocess.CompletedProcess(args, 0, "2.13.0+cu130", "")
 
     import importlib.metadata as harness_metadata
 
@@ -108,7 +108,7 @@ def test_package_version_queries_learned_interpreter_only() -> None:
             side_effect=AssertionError("harness interpreter must not be queried"),
         ):
             got = _python_package_version(learned, "torch")
-    assert got == "2.11.0+cu128"
+    assert got == "2.13.0+cu130"
     assert got != harness_version
 
 

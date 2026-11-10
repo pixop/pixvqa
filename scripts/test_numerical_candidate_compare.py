@@ -41,7 +41,7 @@ def _meta(**overrides) -> dict:
                 "compressed_vqa_hdr_commit": "c" * 40,
             },
             "cvvdp": {"cvvdp_version": "0.5.7"},
-            "python_packages": {"torch": "2.11.0+cu128", "numpy": "2.5.2"},
+            "python_packages": {"torch": "2.13.0+cu130", "numpy": "2.5.2"},
         },
     }
     base.update(overrides)

@@ -3,8 +3,8 @@
 PINNED_UPSTREAM = "https://github.com/gfxdisp/ColorVideoVDP.git"
 PINNED_COMMIT = "166f5ae95ecbd841ae727984cd237de213875399"
 PINNED_VERSION = "0.5.7"
-PINNED_TORCH_VERSION = "2.11.0+cu128"
-PINNED_TORCHVISION_VERSION = "0.26.0+cu128"
+PINNED_TORCH_VERSION = "2.13.0+cu130"
+PINNED_TORCHVISION_VERSION = "0.28.0+cu130"
 
 # Fields copied from pycvvdp/vvdp_data/display_models.json at PINNED_COMMIT.
 DISPLAY_MODELS = {

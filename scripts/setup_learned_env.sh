@@ -57,9 +57,11 @@ fi
 assert_learned_venv_isolated "$env_dir" || exit 2
 pip_cache="$(learned_pip_cache_flag)"
 pip=("$env_dir/bin/python" -m pip --disable-pip-version-check)
-# Only the PyTorch wheels come from the cu128 index; everything else from PyPI.
+# PyTorch wheels from the cu130 index; PyPI extra-index supplies setuptools and other pins.
 # shellcheck disable=SC2086
-"${pip[@]}" install $pip_cache --index-url https://download.pytorch.org/whl/cu128 \
+"${pip[@]}" install $pip_cache \
+  --index-url https://download.pytorch.org/whl/cu130 \
+  --extra-index-url https://pypi.org/simple \
   -c "$lock" torch torchvision
 # shellcheck disable=SC2086
 "${pip[@]}" install $pip_cache -r "$lock"
@@ -71,14 +73,11 @@ git -C "$cvvdp_src" archive --format=tar "$cvvdp_commit" | tar -x -C "$export_di
 # shellcheck disable=SC2086
 "${pip[@]}" install $pip_cache --no-deps "$export_dir"
 printf '%s\n' "$cvvdp_commit" > "$env_dir/COLORVIDEOVDP_COMMIT"
-# cvvdp declares ffmpeg (a PyPI placeholder), matplotlib (plots), and pyexr (EXR
-# images); none is used to score video. Any other unmet requirement fails.
-check=$("${pip[@]}" check 2>&1 || true)
-unexpected=$(printf '%s\n' "$check" | grep -vE '^(No broken requirements found\.|cvvdp [0-9.]+ requires (ffmpeg|matplotlib|pyexr), which is not installed\.)$' || true)
-if [ -n "$unexpected" ]; then
-  printf '%s\n' "$unexpected" >&2
-  exit 1
-fi
+# Pinned CVVDP v0.5.7 (--no-deps above) declares a conflicting `ffmpeg` PyPI
+# distribution and optional plot/EXR packages. Reconcile metadata and install
+# matplotlib + PyEXR so `pip check` exits 0 before any import smoke test.
+bash "$_script_dir/ensure_cvvdp_dependencies.sh" \
+  "$env_dir/bin/python" "$cvvdp_src" "$cvvdp_commit"
 "$env_dir/bin/python" - <<'EOF'
 import torch, pycvvdp, open_clip, timm, cv2
 import pytorchvideo  # SimpleVQA SlowFast hub
