@@ -2,6 +2,7 @@
 """Check SimpleVQA staged inference code keeps both learned models in eval mode."""
 from __future__ import annotations
 
+import ast
 import sys
 import tempfile
 from pathlib import Path
@@ -19,6 +20,15 @@ from pixvqa_simplevqa.adapter import (  # noqa: E402
 
 
 def main() -> int:
+    # The score record uses os.environ for decoder provenance. Ensure the
+    # runtime adapter imports os (a previous regression raised NameError).
+    adapter_file = Path(__file__).resolve().parents[1] / "python" / "pixvqa_simplevqa" / "adapter.py"
+    module = ast.parse(adapter_file.read_text(encoding="utf-8"))
+    imports_os = any(
+        isinstance(node, ast.Import) and any(alias.name == "os" for alias in node.names)
+        for node in module.body
+    )
+    assert imports_os, "SimpleVQA adapter references os.environ but does not import os"
     # Synthetic upstream fixture contains precisely the pinned textual anchors.
     src_text = (
         "def slowfast():\n    pass\n\n"
