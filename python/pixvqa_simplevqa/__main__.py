@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pixvqa_scheduler.admission import AdmissionError, optional_admission
 
+from pixvqa_video.ffmpeg_bins import FFmpegBinError, resolve_ffprobe_bin
+
 from .adapter import InferenceError, SetupError, run, validate
 
 
@@ -46,7 +48,8 @@ def main(argv=None) -> int:
     ap.add_argument("--checkpoint", required=True, type=Path)
     ap.add_argument("--test", required=True, type=Path)
     ap.add_argument("--device", choices=("cpu", "cuda", "auto"), default="cpu")
-    ap.add_argument("--ffprobe", default="ffprobe")
+    ap.add_argument("--ffprobe", default=None,
+                    help="Override ffprobe path (default: pinned binary beside learned Python)")
     ap.add_argument("--timeout", type=int, default=3600)
     ap.add_argument("--max-frames", type=int, default=-1,
                     help="Accepted for CLI parity; upstream demo scores the full clip.")
@@ -72,12 +75,19 @@ def main(argv=None) -> int:
         ),
     )
     args = ap.parse_args(argv)
+    ffprobe = args.ffprobe
+    if ffprobe is None:
+        try:
+            ffprobe = resolve_ffprobe_bin()
+        except FFmpegBinError as exc:
+            print(f"pixvqa-simplevqa: {exc}", file=sys.stderr)
+            return 2
     if args.max_frames not in (-1, 0):
         print("pixvqa-simplevqa: --max-frames is not enforced by the upstream demo (full-clip score)",
               file=sys.stderr)
     try:
         if args.check:
-            result = validate(args.repo, args.checkpoint, args.test, ffprobe=args.ffprobe)
+            result = validate(args.repo, args.checkpoint, args.test, ffprobe=ffprobe)
             result["status"] = "assets_and_imports_present"
             result["note"] = "SlowFast pretrained cache and successful inference not checked."
         else:
@@ -96,7 +106,7 @@ def main(argv=None) -> int:
                     args.checkpoint,
                     args.test,
                     device=dev,
-                    ffprobe=args.ffprobe,
+                    ffprobe=ffprobe,
                     timeout=args.timeout,
                     use_worker=args.use_worker,
                     use_shared_gpu_worker=args.use_shared_gpu_worker,

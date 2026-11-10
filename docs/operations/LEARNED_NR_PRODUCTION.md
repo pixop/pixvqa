@@ -20,7 +20,12 @@ This evaluates both NR learned metrics with FFmpeg decoding, deterministic infer
 - `PIXVQA_SIMPLEVQA_TRACE_DIR` — diagnostic tracing only, off by default; not a production requirement.
 - `PIXVQA_CVQA_NR_PROFILE` — optional performance profiling, off by default.
 
-`PIXVQA_FFMPEG_BIN` and `PIXVQA_FFPROBE_BIN` remain **optional runtime binary-path overrides** for nonstandard installations; on a standard `PATH` these are unnecessary. `PIXVQA_CVQAHDR_FFPROBE` remains a legacy metadata-only override; do not use it to select a separate pixel decoder.
+The learned installer provisions pinned FFmpeg n8.1.3 `ffmpeg` and `ffprobe` into
+the managed `.venv/bin`. Learned adapters resolve those binaries directly
+(stamp file `PIXVQA_LEARNED_FFMPEG_COMMIT` plus version check). System `PATH` is
+not searched. `PIXVQA_FFMPEG_BIN` and `PIXVQA_FFPROBE_BIN` remain explicit
+overrides; they must still report FFmpeg n8.1.3. `PIXVQA_CVVDP_FFPROBE` and
+`PIXVQA_CVQAHDR_FFPROBE` remain legacy metadata-only overrides.
 
 ## Install / update
 
@@ -28,10 +33,9 @@ This evaluates both NR learned metrics with FFmpeg decoding, deterministic infer
 cd /path/to/pixvqa
 git pull --ff-only origin main
 python -m pip install -e python --no-deps
-command -v ffmpeg
-command -v ffprobe
-ffmpeg -version
-ffprobe -version
+bash scripts/install_learned_metrics.sh   # or answer yes in install_pixvqa.sh
+.venv/bin/ffmpeg -version
+.venv/bin/ffprobe -version
 ```
 
 For a fresh installation follow `docs/LEARNED_METRICS.md` and `scripts/install_learned_metrics.sh` to install/check the pinned upstream repositories, pretrained checkpoints and Python environment. Editable installation is useful for an existing environment; use the project's managed installer when required packages or assets are absent. The PixVQA native C++ binary does not require rebuilding for these Python adapter changes.

@@ -77,12 +77,14 @@ def test_config_merge_preserves_user() -> None:
         dest = work / "learned_metrics.local.toml"
         custom = "/custom/nr.pth"
         dest.write_text(
-            '[learned]\npython = "../.venv/bin/python"\n\n'
+            '[learned]\npython = "../.venv/bin/python"\npath = "~/bin"\n\n'
             f'[cvqa-hdr-nr]\ncheckpoint = "{custom}"\n',
             encoding="utf-8",
         )
+        managed_bin = "/abs/.venv/bin"
         defaults = {
-            "learned.python": "/abs/.venv/bin/python",
+            "learned.python": f"{managed_bin}/python",
+            "learned.path": managed_bin,
             "cvqa-hdr-nr.checkpoint": "/should/not/overwrite",
             "cvqa-hdr-nr.repository": "/fresh/nr/repo",
         }
@@ -92,8 +94,12 @@ def test_config_merge_preserves_user() -> None:
             fail("config merge overwrote user checkpoint path")
         if "/fresh/nr/repo" not in text:
             fail("config merge did not add missing repository path")
-        if "/abs/.venv/bin/python" not in text:
+        if f"{managed_bin}/python" not in text:
             fail("config merge did not migrate stock learned.python placeholder")
+        if managed_bin not in text:
+            fail("config merge did not migrate legacy learned.path ~/bin sentinel")
+        if "~/bin" in text:
+            fail("config merge left legacy learned.path ~/bin in place")
     finally:
         shutil.rmtree(work)
 

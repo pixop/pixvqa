@@ -146,8 +146,10 @@ def default_config_paths(root: Path, learned_python: str, feature_python: str, i
     """Absolute paths for generated learned_metrics.local.toml entries."""
     cfg_dir = root / "config"
     rel = lambda p: str((root / p).resolve())  # noqa: E731
+    learned_bin = str(Path(learned_python).resolve().parent)
     return {
         "learned.python": learned_python,
+        "learned.path": learned_bin,
         "cvqa-hdr-nr.repository": rel("deps/CompressedVQA-HDR"),
         "cvqa-hdr-nr.checkpoint": rel("deps/CompressedVQA-HDR/NR_HDR_VQA.pth"),
         "cvqa-hdr-nr.profile": rel("deps/CompressedVQA-HDR/NR_HDR_VQA.npy"),

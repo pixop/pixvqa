@@ -15,6 +15,7 @@ from pixvqa_learned_install.registry import (
     SIMPLEVQA_CHECKPOINT_SHA256,
     SIMPLEVQA_GDRIVE_ID,
 )
+from pixvqa_video.ffmpeg_bins import FFmpegBinError, validate_pinned_bins
 
 
 class ValidationError(RuntimeError):
@@ -149,6 +150,17 @@ def probe_cvvdp_import(python: str) -> str | None:
     return None
 
 
+def probe_ffmpeg_bins(learned_python: str) -> str | None:
+    """Verify stamped ffmpeg/ffprobe beside the managed learned interpreter."""
+    if not learned_python or not Path(learned_python).is_file():
+        return None
+    try:
+        validate_pinned_bins(learned_python=learned_python)
+    except FFmpegBinError as exc:
+        return str(exc)
+    return None
+
+
 def validate_readiness(
     root: Path,
     *,
@@ -156,6 +168,7 @@ def validate_readiness(
     feature_python: str,
     inference_python: str,
     skip_load: bool = False,
+    check_ffmpeg: bool = True,
 ) -> tuple[bool, list[str]]:
     issues = validate_assets(root)
     repo_issues = []
@@ -172,6 +185,11 @@ def validate_readiness(
             "SimpleVQA checkpoint not verified: download from Google Drive "
             f"(id {SIMPLEVQA_GDRIVE_ID}) or rerun installer with network access."
         )
+
+    if check_ffmpeg and learned_python:
+        err = probe_ffmpeg_bins(learned_python)
+        if err:
+            issues.append(err)
 
     if skip_load:
         return not issues, issues + gdrive_note

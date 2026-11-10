@@ -17,6 +17,7 @@ from pixvqa_cvqahdr import PINNED_COMMIT, PINNED_UPSTREAM
 from pixvqa_device import (
     DEVICE_CHOICES, DeviceError, auto_notice, device_record, peak_rss_bytes, resolve_device,
 )
+from pixvqa_video.ffmpeg_bins import resolve_ffprobe_legacy
 
 
 def configure_deterministic_inference() -> bool:
@@ -159,7 +160,7 @@ def sample_schedule(sampling: dict) -> list[dict]:
 
 def reject_unsupported_cl(path: str) -> None:
     """The upstream NR preprocessing has no BT.2020 CL color conversion."""
-    ffprobe = os.environ.get("PIXVQA_CVQAHDR_FFPROBE", "ffprobe")
+    ffprobe = resolve_ffprobe_legacy("PIXVQA_CVQAHDR_FFPROBE")
     try:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",

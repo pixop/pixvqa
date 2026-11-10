@@ -15,8 +15,10 @@ For complete format details, see [Metrics & Formats](METRICS_AND_FORMATS.md).
 decode video exclusively through a bounded-memory FFmpeg BGR24 pipe;
 OpenCV remains used for pixel resizing/color conversion only. Deterministic
 PyTorch inference is enabled by default. No decoder-selection macro or
-development environment variables are required; `ffmpeg` and `ffprobe` must
-be available on `PATH`. See [Production operations](operations/LEARNED_NR_PRODUCTION.md)
+development environment variables are required. The installer provisions pinned
+FFmpeg n8.1.3 `ffmpeg` and `ffprobe` into the learned `.venv/bin` directory;
+learned decoding resolves those binaries directly (system `PATH` is not used).
+See [Production operations](operations/LEARNED_NR_PRODUCTION.md)
 and [decoder bug-fix report](dev/LEARNED_METRIC_DECODER_BUGFIX_REPORT_2026-11-10.md).
 
 
@@ -35,7 +37,8 @@ The installer automatically:
 1. Creates a repository-local Python environment (`.venv`).
 2. Installs the Python dependencies.
 3. Downloads or reuses the upstream metric implementations and pretrained model checkpoints, verifying the downloaded assets.
-4. Configures the metrics for use with `pixvqa`.
+4. Builds and installs pinned FFmpeg n8.1.3 `ffmpeg` and `ffprobe` into `.venv/bin`.
+5. Configures the metrics for use with `pixvqa`.
 
 HDR-ChipQA also uses a separate `.venv-chipqa-inference` environment, created automatically. Re-running the installer reuses verified assets.
 

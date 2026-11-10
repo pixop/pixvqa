@@ -18,6 +18,7 @@ from pathlib import Path
 from pixvqa_device import (
     DEVICE_CHOICES, DeviceError, auto_notice, device_record, peak_rss_bytes, resolve_device,
 )
+from pixvqa_video.ffmpeg_bins import resolve_ffprobe_legacy
 from pixvqa_cvvdp import (
     DISPLAY_MODELS,
     PINNED_COMMIT,
@@ -30,7 +31,8 @@ from pixvqa_cvvdp import (
     SDR_DISPLAYS,
 )
 
-FFPROBE = os.environ.get("PIXVQA_CVVDP_FFPROBE", "ffprobe")
+def _ffprobe_bin() -> str:
+    return resolve_ffprobe_legacy("PIXVQA_CVVDP_FFPROBE")
 
 
 class AdapterError(RuntimeError):
@@ -164,15 +166,16 @@ def runtime_metadata() -> dict:
 
 
 def probe_video(path: str) -> dict:
+    ffprobe = _ffprobe_bin()
     cmd = [
-        FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+        ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
         "stream=codec_name,profile,width,height,pix_fmt,color_transfer,color_primaries,"
         "color_space,color_range,nb_frames,duration,r_frame_rate", "-of", "json", path,
     ]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except OSError as exc:
-        raise AdapterError(f"could not execute ffprobe ({FFPROBE}): {exc}") from exc
+        raise AdapterError(f"could not execute ffprobe ({ffprobe}): {exc}") from exc
     if proc.returncode != 0:
         raise AdapterError(f"ffprobe failed for {path}: {proc.stderr.strip()}")
     try:
