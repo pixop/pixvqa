@@ -48,6 +48,18 @@ Repeated evaluation of a bit-identical HEVC Main 10 Aerial video produced incons
 - The CVQA-HDR-NR **final score** is stable across three runs; unlike SimpleVQA, a per-layer CVQA trace was not run.
 - The post-cleanup production-default refactor still needs acceptance on i9-9900K, especially standalone/worker/shared GPU execution and parallel jobs.
 
+## Post-cleanup local regression evidence
+
+The refactored `main` tree was fetched into a **detached temporary Git worktree** on the connected `Workstation`, leaving the user's active checkout and untracked experiment outputs untouched. On the available Python 3.12.3, torch 2.11.0+cu128, torchvision 0.26.0+cu128 environment:
+
+- Python bytecode compilation of all three Python adapter packages: **PASS**.
+- `scripts/test_simplevqa_motion_eval.py`: CPU, CUDA and shared-GPU synthetic overlay compilation and eval-state regression: **PASS**.
+- `scripts/test_cvqa_decoder_override.py`: local FFmpeg-only sampler contract, no process-wide monkeypatch, expected 19 midpoints: **PASS**.
+- `scripts/test_ffmpeg_bgr_capture.py`: synthetic MP4 frame-count, geometry, decoder lifecycle and repeated pixel hashes: **PASS**.
+- `scripts/test_cvqa_ffmpeg_sampling_parity.py` on **the exact 1,199-frame Aerial MP4**: all **19 sampled tensor values** were **exactly equal** to an independent, explicit implementation of the pinned upstream CVQA-HDR-NR midpoint sampling and resizing/color conversion/normalization. Midpoints: `30,90,150,210,270,330,390,450,510,570,630,690,750,810,870,930,990,1050,1110`. This verifies that replacing the upstream `VQA_NR.video_processing()` call with the production local sampler did not change the full-video input tensor for this clip.
+
+These checks establish code and preprocessing parity, not GPU score parity on the original i9/RTX 4070. The release gate below is still required.
+
 ## Regression and release gates
 
 1. Run `python -m compileall -q python/pixvqa_video python/pixvqa_simplevqa python/pixvqa_cvqahdr`.
