@@ -69,14 +69,20 @@ The i9-9900K / RTX 4070 workstation independently regenerated the 16-frame synth
 
 The RTX 4070 scores equal the independently recorded RTX 5080 scores for this fixture. This closes the nonsaturated CVVDP PQ cross-stack validation on both GPUs. The quality score remains a synthetic regression value, not a subjective MOS calibration.
 
+## RTX 4070: controlled CVQA-HDR-NR per-sample A/B follow-up
+
+After fixing the diagnostic launcher to retain the virtualenv interpreter symlink (`6e12d0b`), the i9 terminal ran `scripts/compare_cvqa_cuda_stacks.py` with torch/cu128 and torch/cu130 on the same Aerial video, model checkpoint, calibration profile and sampling schedule. Both processes exited 0. Reported comparisons: **raw score delta 0.0**, **calibrated quality score delta 0.0**, **maximum per-sample raw delta 0.0**; `assets_match=True`, `schedule_matches=True`, PASS at an exploratory `0.0001` absolute calibrated-score tolerance.
+
+This controlled rerun supersedes the earlier *numerical concern* but does not erase the historical small-delta observations in the table above: those results remain valid observations from earlier runs, with the discrepancy's cause undetermined. Do not describe `0.0001` as an independently approved formal tolerance. Since the follow-up exhibited exact reported parity and aligned assets/sampling, further numerical root-cause investigation is not warranted for this release candidate absent recurrence. The detailed comparison JSON and per-sample results are stored on the i9 at `~/pixvqa-cuda13-validation/results/cvqa_cuda_stack_comparison/` and were not directly inspected through the RTX 5080 tunnel; the logged console summary is the available evidence.
+
 ## Packaging and provenance
 
 - Lower-level `scripts/setup_learned_env.sh` intentionally installs the shared learned runtime only; the full `scripts/install_learned_metrics.sh` calls `scripts/setup_hdr_chipqa_envs.sh` for missing HDR-ChipQA feature dependencies and the separate pinned scikit-learn inferencer. Do not describe lower-level setup alone as full HDR-ChipQA provisioning.
 - The original repository main branch still expects cu128 stack in its CVVDP provenance metadata; its candidate-run `version_matches_expected=false` was not a score failure. The experimental branch matches torch2.13/cu130. CVVDP package `direct_url.json` did not expose the pinned Git commit, so verify the preserved source/export stamp `COLORVIDEOVDP_COMMIT` and the pinned exported source tree rather than claiming the wheel metadata proves the commit.
-- The CVQA-HDR-NR RTX 4070 delta is small but not zero; acceptance requires the agreed numerical tolerance and repeatability policy.
+- The earlier CVQA-HDR-NR RTX 4070 small delta was not reproduced in the controlled, asset-matched per-sample follow-up. The migration numerical compatibility gate can be treated as passed based on that comparison; the original observation remains documented.
 
 ## Security and merge gates
 
 An earlier GitHub push reported four default-branch alerts (one high, one moderate, two low); the latest push response at commit `6117399` reports **one low-severity alert**, linking to `https://github.com/pixop/pixvqa/security/dependabot/8`. The intervening alert-state changes were not independently investigated, and push notices are not a substitute for an alert inventory. Attempted unauthenticated GitHub Dependabot alerts API access from RTX 5080 returned **HTTP 401 Requires authentication**; affected manifests, vulnerable dependency ranges, fixes, exploitability, and alert #8 details **have not been inspected**. An authenticated reviewer must inspect the remaining alert and confirm the present alert inventory before security approval.
 
-Remaining: confirm approved CVQA tolerance; authenticate and triage alerts; review the complete branch diff/CI; only then consider merging. Keep `main` unchanged until authorized.
+Remaining: authenticate and triage alerts; review the complete branch diff/CI; only then consider merging. Keep `main` unchanged until authorized.
