@@ -57,7 +57,7 @@ make install VARIANT=swdec PREFIX="$PWD"
 
 Replace `swdec` with `cpu` or `full` as appropriate. Building alone does not update `bin/pixvqa`. Bundled model JSON files are installed with the program; VMAF chooses an appropriate model automatically when it can.
 
-For Python-backed metrics, run `bash scripts/install_learned_metrics.sh` after a native installation. The script provisions a private Python 3.12 interpreter when missing, then creates the local learned-metric environment; pretrained third-party model assets still require manual configuration. See [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
+For Python-backed metrics, run `bash scripts/install_learned_metrics.sh` after a native installation. The script provisions a private Python 3.12 interpreter when missing, then creates the local learned-metric environment with **PyTorch 2.13.0+cu130** CUDA 13.0 wheels (separate from the **CUDA toolkit 12.8** used for `make full`). HDR-ChipQA uses an additional **Python 3.10 / scikit-learn 1.0.2** inference venv. **Existing learned environments are not upgraded in place** — version mismatches refuse reuse; point `PIXVQA_LEARNED_ENV_DIR` at a new absolute path. Pretrained third-party model assets still require manual configuration. See [Learned Metrics](LEARNED_METRICS.md). For usage, see [CLI Usage](CLI_USAGE.md).
 
 ## Rebuilding an Existing Installation
 
@@ -85,3 +85,27 @@ layout. A normal rebuild does not require running the guided installer again.
 - A CPU-only build cannot decode MP4; choose `swdec` or `full`.
 
 See [Installation & Builds](GETTING_STARTED.md) for the recommended guided workflow.
+
+## Release qualification
+
+Maintainers can run the consolidated qualification driver (overwrites `reports/release/`):
+
+```bash
+# Same Python interpreter that provides NumPy for fixture/QA scripts (not only system python3):
+python3 scripts/release_check.py --profile cpu    # cpu + swdec builds, full QA profile
+python3 scripts/release_check.py --profile full   # adds full/CUDA build and GPU stages
+```
+
+Equivalent Make targets invoke the same script. Use the **interpreter you intend for QA** (for example a checkout venv with NumPy installed), not an arbitrary system `python3` without dependencies.
+
+### Prerequisites beyond a minimal `.venv`
+
+| Requirement | Purpose |
+|---|---|
+| **FFmpeg with encoders** | QA and fixture scripts may *encode* synthetic media. The minimal FFmpeg CLI inside `.venv` (learned decode only) is **not** sufficient. Set `PIXVQA_TEST_FFMPEG` to an encoder-capable `ffmpeg` (or export `FFMPEG` — `release_check.py` copies it to `PIXVQA_TEST_FFMPEG` when unset). |
+| **Synthetic VVC fixture** | Some full-profile codec tests need VVC. Run `bash scripts/ci/prepare_vvc_fixture.sh`, then export `PIXVQA_VVC_FIXTURE`, `PIXVQA_VVC_REFERENCE`, and `PIXVQA_VVC_SIZE` from the generated `reports/qa/vvc-fixture/fixture.env` (or set them in CI). |
+| **Valgrind** | Optional stability case in the full QA profile (`scripts/qa/cases_media.py`); skipped when absent. |
+| **ASan software-decoder binary** | Build with `PIXVQA_DECODE_ASAN=1` and a valid `FFMPEG_PREFIX` pointing at FFmpeg **n8.1.3** dev libraries (`bash build_decode.sh` / `make swdec`). Produces `build/swdec-asan/pixvqa` for the optional ASan QA case. |
+| **GPU / CUDA** | `--profile full` expects a working `full` build and runs `scripts/qualify_gpu_release.py` and CUDA numeric tests. |
+
+**Warning:** each `release_check.py` run recreates log and summary files under `reports/release/`; archive prior results if needed.

@@ -17,6 +17,9 @@ bash -n install_pixvqa.sh
 bash -n scripts/install_learned_metrics.sh
 bash -n scripts/setup_learned_env.sh
 bash -n scripts/learned_venv_helpers.sh
+bash -n scripts/verify_learned_env_pins.sh
+bash -n scripts/ensure_simplevqa_dependencies.sh
+python3 scripts/test_release_check_preflight.py
 # shellcheck disable=SC1091
 source "$ROOT/scripts/install_prefix.sh"
 # shellcheck disable=SC1091

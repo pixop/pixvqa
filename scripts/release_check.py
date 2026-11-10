@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -138,6 +139,29 @@ def read_gpu_results() -> dict:
         "skipped_checks": skipped,
     }
 
+def preflight_environment(env: dict[str, str], python: str) -> list[str]:
+    """Non-destructive consistency checks before release stages run."""
+    notes: list[str] = []
+    if not env.get("PIXVQA_TEST_FFMPEG"):
+        ffmpeg = env.get("FFMPEG", "").strip() or shutil.which("ffmpeg") or ""
+        if ffmpeg:
+            env["PIXVQA_TEST_FFMPEG"] = ffmpeg
+            notes.append(f"PIXVQA_TEST_FFMPEG set from FFMPEG/PATH: {ffmpeg}")
+    try:
+        subprocess.run(
+            [python, "-c", "import numpy"],
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        notes.append(
+            f"warning: {python} cannot import numpy; QA may use the wrong interpreter"
+        )
+    return notes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="PixVQA release qualification"
@@ -151,6 +175,9 @@ def main() -> int:
 
     env = os.environ.copy()
     python = sys.executable
+    preflight_notes = preflight_environment(env, python)
+    for note in preflight_notes:
+        print(f"PREFLIGHT {note}", flush=True)
 
     report = {
         "profile": args.profile,

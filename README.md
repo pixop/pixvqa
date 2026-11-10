@@ -66,7 +66,7 @@ bash install_pixvqa.sh
 ./bin/pixvqa --version
 ```
 
-The guided installer offers software decoding and optional CUDA/NVDEC support (CUDA 12.8 and a compatible NVIDIA driver must already be installed). Optional learned Python metrics are **off by default** (prompt defaults to no; use `PIXVQA_ENABLE_LEARNED=1` to enable non-interactively). Python-backed metrics always need [separate environment and asset setup](docs/LEARNED_METRICS.md); the guided step only runs the helper script when you opt in.
+The guided installer offers software decoding and optional CUDA/NVDEC support (**CUDA toolkit 12.8** and a compatible NVIDIA driver must already be installed for the native `full` build). Optional learned Python metrics are **off by default** (prompt defaults to no; use `PIXVQA_ENABLE_LEARNED=1` to enable non-interactively). Learned metrics use a **separate CPython 3.12 environment** with **PyTorch 2.13.0+cu130** wheels (CUDA **13.0** index), not the native CUDA 12.8 toolchain; HDR-ChipQA adds **Python 3.10 / scikit-learn 1.0.2**. Existing `.venv` trees are **not upgraded in place** — pin mismatches fail closed. Python-backed metrics always need [separate environment and asset setup](docs/LEARNED_METRICS.md); the guided step only runs the helper script when you opt in.
 
 ## Use
 
