@@ -80,7 +80,8 @@ class _WorkerSession:
         self._stop.clear()
         self._stdout_queue = queue.Queue()
         self._stderr_tail.clear()
-        env = os.environ.copy()
+        from .adapter import staged_demo_env
+        env = staged_demo_env()
         env["PIXVQA_SVQA_WORKER_ROOT"] = str(self._root)
         self._proc = Popen(
             [sys.executable, "-u", str(self._child_script)],

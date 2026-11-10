@@ -309,6 +309,20 @@ def _resolved_ffprobe(ffprobe: str | None) -> str:
         raise SetupError(str(exc)) from exc
 
 
+def staged_demo_env() -> dict[str, str]:
+    """Make PixVQA's decoder importable by an upstream demo staged outside the repo.
+
+    The Python adapter itself is importable via the caller's module search path,
+    which is not inherited as sys.path by a separate script in /tmp.
+    """
+    env = os.environ.copy()
+    root = str(Path(__file__).resolve().parents[1])
+    existing = env.get("PYTHONPATH", "")
+    paths = [part for part in existing.split(os.pathsep) if part and part != root]
+    env["PYTHONPATH"] = os.pathsep.join([root, *paths])
+    return env
+
+
 def _run_ffprobe(ffprobe: str, args: list[str]) -> subprocess.CompletedProcess[str]:
     """Invoke ffprobe; OSError and failures become SetupError."""
     cmd = [ffprobe, "-v", "error", *args]
@@ -780,7 +794,10 @@ def run(repo: Path, checkpoint: Path, video: Path, *,
         if device == "cuda":
             argv.append("--is_gpu")
         try:
-            proc = subprocess.run(argv, cwd=root, text=True, capture_output=True, timeout=timeout)
+            proc = subprocess.run(
+                argv, cwd=root, text=True, capture_output=True, timeout=timeout,
+                env=staged_demo_env(),
+            )
         except subprocess.TimeoutExpired as exc:
             err = (exc.stderr or "").strip()
             if len(err) > 800:
