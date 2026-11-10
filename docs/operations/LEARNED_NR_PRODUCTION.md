@@ -50,6 +50,12 @@ For a fresh installation follow `docs/LEARNED_METRICS.md` and `scripts/install_l
 - Both metrics: deterministic PyTorch operations are the default. A GPU operator lacking deterministic implementation must fail rather than silently execute nondeterministically. This may reduce throughput compared with non-deterministic kernels.
 - Scores from historical OpenCV-decoded experiments are **not automatically numerically comparable** to new FFmpeg-decoded scores. Recompute RD evaluation results consistently where needed.
 
+## Known SimpleVQA interpretation limitation
+
+A controlled five-point 1080p HEVC BarScene ladder on RTX 5080 showed non-monotonic SimpleVQA predictions from 10 to 30 Mb/s. The 10 and 30 Mb/s scores were exactly stable over five fresh CUDA processes each, while the original upstream reference independently reproduced the same lower-at-30-Mb/s ranking on the identical bitstreams. An upstream-only `model_motion.eval()` correction also retained that ranking. BasketballDrive exhibits an increasing trend instead. This supports a **content-dependent learned-model limitation**, not a demonstrated PixVQA numerical reproducibility error. A UGC training-domain mismatch is a plausible, unconfirmed explanation; no training bitrate distribution was established. Avoid treating SimpleVQA as the sole optimization target or imposing artificial monotonicity.
+
+The reproducibility/worker gates below remain independent of this metric-validity observation. Raw experimental outputs reside under `reports/bar_scene_simplevqa_5080_20261110/` in the local checkout and are intentionally not committed.
+
 ## Acceptance checklist before release tag
 
 1. Run `python -m compileall -q python/pixvqa_video python/pixvqa_simplevqa python/pixvqa_cvqahdr`.
