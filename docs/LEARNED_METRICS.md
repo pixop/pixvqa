@@ -84,6 +84,12 @@ For multiple PixVQA processes on one GPU, `--scheduler-admission` enables opt-in
 
 For existing automated job scripts, `PIXVQA_SCHEDULER_ADMISSION=1` is the equivalent environment-variable option. See [CLI Usage](CLI_USAGE.md#concurrent-learned-metric-jobs) and [Advanced scheduler configuration](dev/METRIC_SCHEDULER.md).
 
+## SimpleVQA rate–quality limitations
+
+SimpleVQA is a **no-reference UGC-trained prediction model**, not a distortion measure against a pristine reference. **Higher encoding bitrate is not guaranteed to produce a higher SimpleVQA score.** In a controlled RTX 5080 HEVC BarScene 1080p test at 10/15/20/25/30 Mb/s, its scores were non-monotonic. The 10 Mb/s and 30 Mb/s endpoint scores were each **bit-identical across five independent CUDA evaluations**, and the original upstream implementation reproduced the inverse 10-versus-30 Mb/s ranking on the same encoded files. Other test content, including BasketballDrive, showed increasing scores with bitrate.
+
+This is consistent with content-dependent model sensitivity and possibly out-of-distribution generalization for high-quality, contribution-like encoding; **the training-bitrate distribution has not been verified**, so that causal hypothesis is not established. Do not use SimpleVQA as the only RD/BD-rate optimization criterion or assume score monotonicity. Numerical reproducibility and subjective-validity/monotonicity are separate evaluation questions. See [production acceptance](operations/LEARNED_NR_PRODUCTION.md) and the local experiment report `reports/bar_scene_simplevqa_5080_20261110/REPORT.md` (benchmark artifacts are not distributed).
+
 ## Performance Considerations
 
 **CVVDP uses GPU memory (VRAM).** High resolutions and concurrent jobs may need substantial VRAM. Monitor usage with `nvidia-smi`; `--cvvdp-gpu-mem GB` supplies an optional budget but cannot guarantee that a workload fits.
