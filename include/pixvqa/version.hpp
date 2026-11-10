@@ -5,7 +5,8 @@
 #define PIXVQA_PRODUCT_NAME "pixvqa"
 #endif
 
-// Development identifier. Not a public release number.
+// Fallback for direct compilation without the PixVQA build scripts.
+// Make and the legacy build scripts override this with the Git-derived version.
 #ifndef PIXVQA_VERSION
 #define PIXVQA_VERSION "0.3.0-dev"
 #endif

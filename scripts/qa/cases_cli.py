@@ -111,7 +111,7 @@ def cases() -> list:
                 return Result("FAIL", f"advanced help missing {needle}", f"{path} --help-advanced")
         if "NVIDIA" in help_run.stdout or "GeForce" in help_run.stdout:
             return Result("FAIL", "help printed a device name", command)
-        if version.returncode != 0 or "pixvqa version 0.3.0-dev" not in version.stdout:
+        if version.returncode != 0 or not re.search(r"(?m)^pixvqa version [0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.+-]+)?$", version.stdout):
             return Result("FAIL", version.stdout, f"{path} --version")
         profile = installation_profile(version.stdout)
         if profile not in SUPPORTED_INSTALLATIONS:

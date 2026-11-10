@@ -6,6 +6,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+PIXVQA_BUILD_VERSION="$(bash "$ROOT/scripts/version.sh")"
 
 if [[ -z "${FFMPEG_PREFIX:-}" ]]; then
   echo "Set FFMPEG_PREFIX to an FFmpeg n8.1.3 LGPL shared-library prefix." >&2
@@ -78,7 +79,7 @@ echo "CXX src/msssim_avx2.cpp (AVX2, no FMA contract)"
 $CXX $CXXFLAGS -mavx2 -ffp-contract=off -fno-fast-math -c src/msssim_avx2.cpp -o "$OUT/msssim_avx2.o"
 objs+=("$OUT/msssim_avx2.o")
 echo "LINK $OUT/pixvqa"
-$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cpu\" src/main.cpp "${objs[@]}" -o "$OUT/pixvqa" $LDFLAGS
+$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cpu\" -DPIXVQA_VERSION=\"${PIXVQA_BUILD_VERSION}\" src/main.cpp "${objs[@]}" -o "$OUT/pixvqa" $LDFLAGS
 echo "Software decode build OK: $OUT/pixvqa"
 
 ASAN_REQ="${PIXVQA_DECODE_ASAN:-${PIXVQA_DECODE_ASAN:-}}"
@@ -99,7 +100,7 @@ if [[ "$ASAN_REQ" == "1" ]]; then
     $CXX $CXXFLAGS $ASAN $extra -c "$src" -o "$obj"
     asan_objs+=("$obj")
   done
-  $CXX $CXXFLAGS $ASAN -DPIXVQA_BUILD_KIND=\"cpu\" src/main.cpp "${asan_objs[@]}" -o "$ASAN_DIR/pixvqa" $LDFLAGS
+  $CXX $CXXFLAGS $ASAN -DPIXVQA_BUILD_KIND=\"cpu\" -DPIXVQA_VERSION=\"${PIXVQA_BUILD_VERSION}\" src/main.cpp "${asan_objs[@]}" -o "$ASAN_DIR/pixvqa" $LDFLAGS
   echo "ASan decode build OK: $ASAN_DIR/pixvqa"
 fi
 
@@ -170,7 +171,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
   # After libvmaf's -lstdc++, so the GCC 13 host runtime resolves __cxa_call_terminate.
   FULL_LIBS+=(-L"$GCC13/lib" -lstdc++)
   echo "Final link compiler: $FULL_LINK_CXX (system glibc)"
-  "$FULL_LINK_CXX" $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${FULL_OBJS[@]}" \
+  "$FULL_LINK_CXX" $FULL_CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" -DPIXVQA_VERSION=\"${PIXVQA_BUILD_VERSION}\" src/main.cpp "${FULL_OBJS[@]}" \
     -o "$FULL/pixvqa" "${FULL_LIBS[@]}"
   echo "Full build OK: $FULL/pixvqa"
 fi

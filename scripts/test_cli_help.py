@@ -133,7 +133,7 @@ def check_version(bin_path: Path, kind: str) -> None:
     if done.returncode != 0:
         fail(f"{kind} version rc {done.returncode} {done.stderr}")
         return
-    if "pixvqa version 0.3.0-dev" not in done.stdout or f"build: {kind}" not in done.stdout:
+    if not re.search(r"(?m)^pixvqa version [0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.+-]+)?$", done.stdout) or f"build: {kind}" not in done.stdout:
         fail(f"{kind} version text {done.stdout!r}")
         return
     if "decode: none" not in done.stdout:

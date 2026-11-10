@@ -5,6 +5,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+PIXVQA_BUILD_VERSION="$(bash "$ROOT/scripts/version.sh")"
 if [[ -n "${GCC_ENV:-}" ]]; then
   export PATH="${GCC_ENV}/bin:${PATH}"
 fi
@@ -45,7 +46,7 @@ $CXX $CXXFLAGS -mavx2 -ffp-contract=off -fno-fast-math -c src/msssim_avx2.cpp -o
 objs+=("$OUT/msssim_avx2.o")
 
 echo "LINK $OUT/pixvqa"
-$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cpu\" src/main.cpp "${objs[@]}" -o "$OUT/pixvqa" $LINK_LIBS
+$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cpu\" -DPIXVQA_VERSION=\"${PIXVQA_BUILD_VERSION}\" src/main.cpp "${objs[@]}" -o "$OUT/pixvqa" $LINK_LIBS
 echo "LINK $OUT/selftest"
 $CXX $CXXFLAGS src/selftest.cpp "${objs[@]}" -o "$OUT/selftest" $LINK_LIBS
 echo "RUN selftest"

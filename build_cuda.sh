@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+PIXVQA_BUILD_VERSION="$(bash "$ROOT/scripts/version.sh")"
 GCC13="${GCC13:-}"
 if [[ -z "$GCC13" || ! -x "$GCC13/bin/x86_64-conda-linux-gnu-g++" ]]; then
   echo "Set GCC13 to a GCC 13 prefix. nvcc 12.8 needs that host compiler." >&2
@@ -100,7 +101,7 @@ if [[ ! -f "${CUDART_LIBDIR:-}/libcudart.so" ]]; then
   echo "CUDA runtime library libcudart.so was not found under $CUDA_HOME." >&2
   exit 1
 fi
-$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" src/main.cpp "${objs[@]}" "$OUT/cuda_metrics.o" "$OUT/cuda_pu21.o" \
+$CXX $CXXFLAGS -DPIXVQA_BUILD_KIND=\"cuda\" -DPIXVQA_VERSION=\"${PIXVQA_BUILD_VERSION}\" src/main.cpp "${objs[@]}" "$OUT/cuda_metrics.o" "$OUT/cuda_pu21.o" \
   -o "$OUT/pixvqa" \
   -L"$CUDART_LIBDIR" -lcudart -L"$PIXVQA_LIBCUDA_DIR" -lcuda \
   -Wl,--disable-new-dtags,-rpath,"$CUDART_LIBDIR:$GCC13/lib:$PIXVQA_LIBCUDA_DIR" \

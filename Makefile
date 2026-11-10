@@ -30,6 +30,11 @@ test: test-cpu
 
 config-force:
 
+# The generated header is refreshed when make parses the requested variant.
+# An unchanged version does not alter its timestamp or rebuild main.o.
+build/%/version_generated.hpp: scripts/version.sh scripts/write_version_header.sh
+	@bash scripts/write_version_header.sh $@
+
 help:
 	@echo "PixVQA incremental Make targets"
 	@echo "  make cpu              CPU-only -> build/cpu/pixvqa"
@@ -62,6 +67,7 @@ build/cpu/config.mk: config-force scripts/make_config.sh scripts/deps_layout.sh 
 	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
 ifneq ($(filter all cpu test test-cpu,$(GOALS)),)
+VERSION_HEADER_CPU := $(shell bash scripts/write_version_header.sh build/cpu/version_generated.hpp && echo ok)
 include build/cpu/config.mk
 endif
 CPU_LIB_OBJS := $(patsubst $(ROOT)/src/%.cpp,build/cpu/%.o,$(CPU_LIB_SRCS))
@@ -77,8 +83,8 @@ build/cpu/ssim_simd.o: $(ROOT)/src/ssim_simd.cpp build/cpu/config.mk | build/cpu
 build/cpu/msssim_avx2.o: $(ROOT)/src/msssim_avx2.cpp build/cpu/config.mk | build/cpu
 	$(CPU_CXX) $(CPU_CXXFLAGS) $(DEPFLAGS) -mavx2 -ffp-contract=off -fno-fast-math -c $< -o $@
 
-build/cpu/main.o: $(ROOT)/src/main.cpp build/cpu/config.mk | build/cpu
-	$(CPU_CXX) $(CPU_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"$(CPU_BUILD_KIND)\" -c $< -o $@
+build/cpu/main.o: $(ROOT)/src/main.cpp build/cpu/config.mk build/cpu/version_generated.hpp | build/cpu
+	$(CPU_CXX) $(CPU_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"$(CPU_BUILD_KIND)\" -include build/cpu/version_generated.hpp -c $< -o $@
 
 build/cpu/selftest_main.o: $(ROOT)/src/selftest.cpp build/cpu/config.mk | build/cpu
 	$(CPU_CXX) $(CPU_CXXFLAGS) $(DEPFLAGS) -c $< -o $@
@@ -96,6 +102,7 @@ build/cpu/selftest: build/cpu/config.mk build/cpu/selftest_main.o $(CPU_LIB_OBJS
 
 test-cpu: build/cpu/selftest
 	build/cpu/selftest
+	python3 scripts/test_version_resolution.py
 
 # --- swdec ---
 
@@ -105,6 +112,7 @@ build/swdec/config.mk: config-force scripts/make_config.sh scripts/deps_layout.s
 	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
 ifneq ($(filter swdec,$(GOALS)),)
+VERSION_HEADER_SWDEC := $(shell bash scripts/write_version_header.sh build/swdec/version_generated.hpp && echo ok)
 include build/swdec/config.mk
 endif
 SWDEC_LIB_OBJS := $(patsubst $(ROOT)/src/%.cpp,build/swdec/%.o,$(SWDEC_LIB_SRCS))
@@ -120,8 +128,8 @@ build/swdec/ssim_simd.o: $(ROOT)/src/ssim_simd.cpp build/swdec/config.mk | build
 build/swdec/msssim_avx2.o: $(ROOT)/src/msssim_avx2.cpp build/swdec/config.mk | build/swdec
 	$(SWDEC_CXX) $(SWDEC_CXXFLAGS) $(DEPFLAGS) -mavx2 -ffp-contract=off -fno-fast-math -c $< -o $@
 
-build/swdec/main.o: $(ROOT)/src/main.cpp build/swdec/config.mk | build/swdec
-	$(SWDEC_CXX) $(SWDEC_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"$(SWDEC_BUILD_KIND)\" -c $< -o $@
+build/swdec/main.o: $(ROOT)/src/main.cpp build/swdec/config.mk build/swdec/version_generated.hpp | build/swdec
+	$(SWDEC_CXX) $(SWDEC_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"$(SWDEC_BUILD_KIND)\" -include build/swdec/version_generated.hpp -c $< -o $@
 
 -include $(SWDEC_LIB_OBJS:.o=.d)
 -include build/swdec/ssim_simd.d build/swdec/msssim_avx2.d build/swdec/main.d
@@ -139,6 +147,7 @@ build/cuda/config.mk: config-force scripts/make_config.sh scripts/deps_layout.sh
 	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
 ifneq ($(filter cuda full,$(GOALS)),)
+VERSION_HEADER_CUDA := $(shell bash scripts/write_version_header.sh build/cuda/version_generated.hpp && echo ok)
 include build/cuda/config.mk
 endif
 CUDA_LIB_OBJS := $(patsubst $(ROOT)/src/%.cpp,build/cuda/%.o,$(CUDA_LIB_SRCS))
@@ -183,8 +192,8 @@ build/cuda/cuda_pu21.o: $(ROOT)/src/cuda_pu21.cu build/cuda/config.mk build/cuda
 -include build/cuda/ssim_simd.d build/cuda/msssim_avx2.d
 -include build/cuda/cuda_metrics.d build/cuda/cuda_pu21.d
 
-build/cuda/main.o: $(ROOT)/src/main.cpp build/cuda/config.mk | build/cuda
-	$(CUDA_CXX) $(CUDA_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"cuda\" -c $< -o $@
+build/cuda/main.o: $(ROOT)/src/main.cpp build/cuda/config.mk build/cuda/version_generated.hpp | build/cuda
+	$(CUDA_CXX) $(CUDA_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"cuda\" -include build/cuda/version_generated.hpp -c $< -o $@
 
 cuda: build/cuda/pixvqa
 
@@ -199,11 +208,12 @@ build/full/config.mk: config-force scripts/make_config.sh scripts/deps_layout.sh
 	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
 ifneq ($(filter full,$(GOALS)),)
+VERSION_HEADER_FULL := $(shell bash scripts/write_version_header.sh build/full/version_generated.hpp && echo ok)
 include build/full/config.mk
 endif
 
-build/full/main.o: $(ROOT)/src/main.cpp build/full/config.mk | build/full
-	$(FULL_CXX) $(FULL_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"cuda\" -c $< -o $@
+build/full/main.o: $(ROOT)/src/main.cpp build/full/config.mk build/full/version_generated.hpp | build/full
+	$(FULL_CXX) $(FULL_CXXFLAGS) $(DEPFLAGS) -DPIXVQA_BUILD_KIND=\"cuda\" -include build/full/version_generated.hpp -c $< -o $@
 
 build/full/decode.o: $(ROOT)/src/decode.cpp build/full/config.mk | build/full
 	$(FULL_CXX) $(FULL_CXXFLAGS) $(DEPFLAGS) -c $< -o $@
