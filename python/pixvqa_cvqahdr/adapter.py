@@ -19,40 +19,12 @@ from pixvqa_device import (
 )
 
 
-def learned_capture_backend() -> str:
-    backend = os.environ.get("PIXVQA_LEARNED_DECODER", "ffmpeg").lower()
-    if backend not in ("ffmpeg", "opencv"):
-        raise ValueError("PIXVQA_LEARNED_DECODER must be ffmpeg or opencv")
-    return backend
-
-
-class _CaptureOverride:
-    """Scoped patch for pinned upstream CVQA preprocessing only.
-
-    The upstream function calls cv2.VideoCapture directly. Keep the original
-    transforms and schedule; substitute only its pixel decoding backend.
-    """
-    def __init__(self, cv2):
-        self.cv2 = cv2
-        self.original = cv2.VideoCapture
-        self.enabled = learned_capture_backend() == "ffmpeg"
-
-    def __enter__(self):
-        if self.enabled:
-            from pixvqa_video.ffmpeg_bgr import FFmpegCapture
-            self.cv2.VideoCapture = FFmpegCapture
-        return self
-
-    def __exit__(self, *_):
-        self.cv2.VideoCapture = self.original
-
-
 def configure_deterministic_inference() -> bool:
-    """Opt-in reproducibility diagnostic; must run before CUDA initialization.
+    """Production-default deterministic execution; configure before CUDA initialization.
 
-    May raise at inference time when an operator has no deterministic CUDA path.
+    May raise if a GPU operator has no deterministic implementation.
     """
-    if os.environ.get("PIXVQA_LEARNED_DETERMINISTIC", "").lower() not in ("1", "true", "yes"):
+    if os.environ.get("PIXVQA_LEARNED_DETERMINISTIC", "1").lower() in ("0", "false", "no"):
         return False
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     import random
@@ -205,11 +177,9 @@ def reject_unsupported_cl(path: str) -> None:
 
 def preflight_video(path: str, max_frames: int = -1) -> dict:
     reject_unsupported_cl(path)
-    try:
-        import cv2
-    except ImportError as exc:
-        raise PreflightError("opencv-python is required by the CompressedVQA-HDR NR adapter") from exc
-    capture = cv2.VideoCapture(path)
+    import cv2
+    from pixvqa_video.ffmpeg_bgr import FFmpegCapture
+    capture = FFmpegCapture(path)
     try:
         if not capture.isOpened():
             raise PreflightError(f"OpenCV could not open {path}")
@@ -234,7 +204,7 @@ def count_decoded_frames(path: str, limit: int) -> int:
     import cv2
 
     from pixvqa_video.ffmpeg_bgr import FFmpegCapture
-    capture = (FFmpegCapture if learned_capture_backend() == "ffmpeg" else cv2.VideoCapture)(path)
+    capture = FFmpegCapture(path)
     decoded = 0
     try:
         for _ in range(limit):
@@ -348,9 +318,10 @@ def preprocess_custom_interval(test: str, sampling: dict, torch):
     from PIL import Image
     from torchvision import transforms
 
-    capture = cv2.VideoCapture(test)
+    from pixvqa_video.ffmpeg_bgr import FFmpegCapture
+    capture = FFmpegCapture(test)
     if not capture.isOpened():
-        raise AdapterError(f"OpenCV could not open {test}")
+        raise AdapterError(f"FFmpeg could not open {test}")
     size = 384
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -562,17 +533,10 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         model.load_state_dict(state_dict, strict=True)
         model.eval()
         t_loaded = time.perf_counter()
-        # The official preprocessing reads the entire file; use the equivalent
-        # bounded sampler when the caller requests a shorter shared interval.
-        # The pinned upstream preprocessor uses cv2.VideoCapture directly.
-        # Preserve all frame selection and transforms, replacing decoded BGR
-        # pixels with the reproducible bounded-memory FFmpeg capture.
-        with _CaptureOverride(cv2):
-            if (sampling["sample_interval_sec_requested"] == 1.0 and
-                    sampling["opencv_frame_count"] == sampling["source_frame_count"]):
-                video, video_name = VQA_NR.video_processing(test)
-            else:
-                video, video_name = preprocess_custom_interval(test, sampling, torch)
+        # Preserve the pinned upstream midpoint selection and image transforms
+        # without mutating cv2.VideoCapture process-wide. The default 1 Hz
+        # schedule uses the exact same integer FPS and midpoint indices.
+        video, video_name = preprocess_custom_interval(test, sampling, torch)
         if int(video.shape[0]) != sampling["sampled_frames"]:
             raise AdapterError(
                 f"official NR preprocessing returned {int(video.shape[0])} frames; "
@@ -630,7 +594,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         "adapter": "pixvqa_cvqahdr",
         "deterministic_inference_requested": deterministic,
         "metric": "cvqa-hdr-nr",
-        "decoder": learned_capture_backend(),
+        "decoder": "ffmpeg-bgr24",
         "upstream": {"url": PINNED_UPSTREAM, **upstream},
         "device": effective,
         "device_requested": device,
