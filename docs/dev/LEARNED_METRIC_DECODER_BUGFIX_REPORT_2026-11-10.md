@@ -58,7 +58,9 @@ The refactored `main` tree was fetched into a **detached temporary Git worktree*
 - `scripts/test_ffmpeg_bgr_capture.py`: synthetic MP4 frame-count, geometry, decoder lifecycle and repeated pixel hashes: **PASS**.
 - `scripts/test_cvqa_ffmpeg_sampling_parity.py` on **the exact 1,199-frame Aerial MP4**: all **19 sampled tensor values** were **exactly equal** to an independent, explicit implementation of the pinned upstream CVQA-HDR-NR midpoint sampling and resizing/color conversion/normalization. Midpoints: `30,90,150,210,270,330,390,450,510,570,630,690,750,810,870,930,990,1050,1110`. This verifies that replacing the upstream `VQA_NR.video_processing()` call with the production local sampler did not change the full-video input tensor for this clip.
 
-These checks establish code and preprocessing parity, not GPU score parity on the original i9/RTX 4070. The release gate below is still required.
+The connected workstation also executed **two complete CUDA SimpleVQA runs** after hardening, without `PIXVQA_LEARNED_DETERMINISTIC`, `CUBLAS_WORKSPACE_CONFIG`, `PIXVQA_LEARNED_DECODER`, or binary-path overrides. Both runs returned exactly `3.524564266204834` with decoder `ffmpeg-bgr24`, PyTorch `2.11.0+cu128`, torchvision `0.26.0+cu128`, Python `3.12.3`. This is **2/2 identical on that stack**. Its score differs by approximately `9.6e-5` from the original i9 score (`3.524660348892212`), which uses a different PyTorch/CUDA configuration. Cross-stack bitwise parity was not asserted.
+
+These checks establish reproducibility and preprocessing parity on `Workstation`, **not** post-refactor GPU score parity or worker/concurrency acceptance on the original i9/RTX 4070. The release gate below is still required.
 
 ## Regression and release gates
 
