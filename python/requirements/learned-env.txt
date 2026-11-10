@@ -60,7 +60,7 @@ tzdata==2026.5
 open_clip_torch==3.1.0
 timm==1.0.19
 opencv-python==4.11.0.86
-pillow==11.3.0
+pillow==13.0.0
 huggingface_hub==2.4.0
 hf-xet==1.8.0
 safetensors==0.8.0
