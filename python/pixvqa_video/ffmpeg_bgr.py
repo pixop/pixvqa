@@ -1,8 +1,8 @@
 """Bounded-memory, FFmpeg-backed BGR24 capture for learned VQA adapters.
 
-Implements only the cv2.VideoCapture API used by the pinned upstream models.
-It intentionally does not expose seek or arbitrary capture properties.
-Use PIXVQA_LEARNED_DECODER=opencv to compare against the original decoder.
+Implements the sequential cv2.VideoCapture subset used by the pinned
+SimpleVQA upstream functions and CVQA-HDR-NR's local preprocessor.
+No OpenCV video decoder fallback, seeks, or frame-rate conversion.
 """
 from __future__ import annotations
 
@@ -30,10 +30,10 @@ class FFmpegCapture:
                 raise RuntimeError(f"FFmpegCapture failed to open {path!r}")
 
     def open(self, path, *args):
-        import cv2
-
-        if args and args[0] != cv2.CAP_FFMPEG:
-            raise ValueError("FFmpegCapture accepts only the FFmpeg backend")
+        # Preserve the upstream no-arg constructor + open(path) pattern.
+        # Backend options are not accepted; FFmpeg is the only decoder.
+        if args:
+            raise ValueError("FFmpegCapture does not accept backend options")
         self.release()
         source = os.fspath(path)
         ffprobe = os.environ.get("PIXVQA_FFPROBE_BIN", "ffprobe")
@@ -68,7 +68,7 @@ class FFmpegCapture:
         self._command = [
             ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
             "-threads", "1", "-i", source, "-map", "0:v:0",
-            "-an", "-sn", "-dn", "-vsync", "0",
+            "-an", "-sn", "-dn", "-fps_mode", "passthrough",
             "-pix_fmt", "bgr24", "-f", "rawvideo", "-",
         ]
         self._read_frames = 0
