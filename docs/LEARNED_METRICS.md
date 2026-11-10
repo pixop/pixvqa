@@ -11,6 +11,15 @@ PixVQA supports four optional Python-based video quality metrics. They are **not
 
 For complete format details, see [Metrics & Formats](METRICS_AND_FORMATS.md).
 
+**Learned NR production defaults (2026-11-10):** SimpleVQA and CVQA-HDR-NR
+decode video exclusively through a bounded-memory FFmpeg BGR24 pipe;
+OpenCV remains used for pixel resizing/color conversion only. Deterministic
+PyTorch inference is enabled by default. No decoder-selection macro or
+development environment variables are required; `ffmpeg` and `ffprobe` must
+be available on `PATH`. See [Production operations](operations/LEARNED_NR_PRODUCTION.md)
+and [decoder bug-fix report](dev/LEARNED_METRIC_DECODER_BUGFIX_REPORT_2026-11-10.md).
+
+
 ## Install
 
 From the PixVQA checkout, after building the native executable:
