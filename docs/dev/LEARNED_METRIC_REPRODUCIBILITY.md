@@ -193,3 +193,22 @@ Do not prematurely declare CVQA-HDR-NR fixed. The previously observed
 two-/three-state CVQA raw scores require new full-video repeated runs using
 the corrected decoder and full per-sample JSON if variation remains. Record
 decoder versions, checksum and provenance with any final RD results.
+
+## Production decoder resolution (2026-11-10; supersedes the earlier diagnostic instructions)
+
+The earlier `PIXVQA_LEARNED_DECODER=opencv` A/B switch has been **removed**.
+Both learned NR metrics always decode pixels through the FFmpeg BGR24
+streaming adapter. Deterministic inference is now **enabled by default**,
+including automatic cuBLAS workspace configuration; no diagnostic exports
+are required for normal PixVQA invocations. The earlier commands in this
+historical investigation document are preserved only to reconstruct the
+original incident.
+
+The CVQA-HDR-NR production implementation now uses its local sampler for
+all intervals rather than process-wide monkeypatching `cv2.VideoCapture`.
+On the full 1,199-frame Aerial file the production sampler's 19 selected
+tensors matched an independent implementation of the pinned upstream
+midpoint frame schedule and spatial transforms **exactly**.
+
+See [production operations](../operations/LEARNED_NR_PRODUCTION.md) and
+[full bug-fix report](LEARNED_METRIC_DECODER_BUGFIX_REPORT_2026-11-10.md).
