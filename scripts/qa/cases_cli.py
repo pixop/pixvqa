@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import random
+import re
 from pathlib import Path
 
 from qa.harness import Case, Result, World, run_cmd, scored, write_yuv
