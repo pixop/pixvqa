@@ -1828,6 +1828,16 @@ bool parse_full_double(const std::string& text, double& out) {
 // Line protocol: "pixvqa-protocol 1", then "pixvqa-value KEY VALUE" and
 // "pixvqa-sample INDEX FRAME TIME RAW CALIBRATED" lines, then "pixvqa-end".
 // Floats are Python repr, the shortest text that round-trips to the same double.
+std::string normalize_protocol_scalar(const std::string& value) {
+  if (value.size() >= 2) {
+    const char quote = value.front();
+    if ((quote == '\'' || quote == '"') && value.back() == quote) {
+      return value.substr(1, value.size() - 2);
+    }
+  }
+  return value;
+}
+
 bool parse_backend_report(const std::string& text, BackendReport& report, std::string& err) {
   std::vector<std::string> lines;
   size_t begin = 0;
@@ -1855,7 +1865,8 @@ bool parse_backend_report(const std::string& text, BackendReport& report, std::s
         err = "malformed protocol line: " + line;
         return false;
       }
-      report.values.emplace_back(line.substr(13, space - 13), line.substr(space + 1));
+      report.values.emplace_back(line.substr(13, space - 13),
+                                 normalize_protocol_scalar(line.substr(space + 1)));
     } else if (line.compare(0, 14, "pixvqa-sample ") == 0) {
       std::vector<std::string> fields;
       size_t pos = 14;
@@ -2277,14 +2288,36 @@ void print_learned_summary(const LearnedPlan& plan) {
       if (parse_full_double(density_text, density)) {
         std::snprintf(density_buf, sizeof(density_buf), "%.3f/s", density);
       }
-      std::printf(
-          "[ CVQA-HDR-NR quality_score:%s raw_model_score:%s samples:%s frames:%s density:%s "
-          "device:%s ]\n",
-          report_value(r.report, "quality_score").c_str(),
-          report_value(r.report, "raw_model_score").c_str(),
-          report_value(r.report, "sampled_frames").c_str(),
-          report_value(r.report, "opencv_frame_count").c_str(), density_buf,
-          report_value(r.report, "device").c_str());
+      const std::string mos_status = report_value(r.report, "mos_calibration_status");
+      const std::string mos_value = report_value(r.report, "mos_calibrated_cvqa");
+      if (mos_status == "available" && mos_value != "unknown" && mos_value != "unavailable") {
+        std::printf(
+            "[ CVQA-HDR-NR quality_score:%s raw_model_score:%s samples:%s frames:%s density:%s "
+            "device:%s MOS-calibrated CVQA:%s ]\n",
+            report_value(r.report, "quality_score").c_str(),
+            report_value(r.report, "raw_model_score").c_str(),
+            report_value(r.report, "sampled_frames").c_str(),
+            report_value(r.report, "opencv_frame_count").c_str(), density_buf,
+            report_value(r.report, "device").c_str(), mos_value.c_str());
+      } else if (mos_status == "unavailable") {
+        std::printf(
+            "[ CVQA-HDR-NR quality_score:%s raw_model_score:%s samples:%s frames:%s density:%s "
+            "device:%s MOS-calibrated CVQA:unavailable ]\n",
+            report_value(r.report, "quality_score").c_str(),
+            report_value(r.report, "raw_model_score").c_str(),
+            report_value(r.report, "sampled_frames").c_str(),
+            report_value(r.report, "opencv_frame_count").c_str(), density_buf,
+            report_value(r.report, "device").c_str());
+      } else {
+        std::printf(
+            "[ CVQA-HDR-NR quality_score:%s raw_model_score:%s samples:%s frames:%s density:%s "
+            "device:%s ]\n",
+            report_value(r.report, "quality_score").c_str(),
+            report_value(r.report, "raw_model_score").c_str(),
+            report_value(r.report, "sampled_frames").c_str(),
+            report_value(r.report, "opencv_frame_count").c_str(), density_buf,
+            report_value(r.report, "device").c_str());
+      }
     } else {
       std::printf("[ CVQA-HDR-NR status:failed ]\n");
     }

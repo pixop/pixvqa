@@ -5,7 +5,7 @@ PixVQA supports four optional Python-based video quality metrics. They are **not
 | Metric | Type | Supported video |
 |---|---|---|
 | `cvvdp` (ColorVideoVDP) | Full-reference, perceptual JOD | SDR, PQ and HLG; compressed and supported raw 10-bit YUV420 |
-| `cvqa-hdr-nr` (CompressedVQA-HDR NR) | No-reference | Compressed SDR and HDR10 |
+| `cvqa-hdr-nr` (CompressedVQA-HDR NR) | No-reference | Compressed SDR and HDR10; automatic provisional MOS 1–5 for supported metadata |
 | `simplevqa` (SimpleVQA) | No-reference | Compressed SDR only |
 | `hdr-chipqa` (HDR-ChipQA) | No-reference, one score per video | SDR and PQ; experimental HLG; compressed or supported raw YUV420 |
 
@@ -97,3 +97,44 @@ This is consistent with content-dependent model sensitivity and possibly out-of-
 **HDR-ChipQA can use substantial system RAM**, particularly with parallel jobs. Start with one job on memory-constrained systems and monitor RAM before increasing concurrency. Detailed benchmark observations belong in [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md).
 
 For environment customization, offline installation, WSL-specific details, and upstream packaging notes, see [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md). For algorithm-specific behavior, see [HDR-ChipQA Reference](dev/CHIPQA_REFERENCE.md) and [SimpleVQA Reference](dev/SIMPLEVQA_REFERENCE.md).
+
+## CVQA-HDR-NR estimated perceptual quality (provisional research)
+
+CVQA-HDR-NR continues to report the canonical **0–10** `quality_score` from the official NR logistic calibration. On every successful NR run, when ffprobe stream metadata **trustworthily** identifies **SDR** (`bt709` and related SDR tags) or **HDR PQ** (`smpte2084` / `st2084`) at **1080** or **2160** encoded height, PixVQA also emits a separate **estimated perceptual quality 1–5** field (`mos_calibrated_cvqa` in protocol/JSON for compatibility). ffprobe failures, metadata errors, or unsupported domains only suppress that field; the canonical score is always unchanged. Unexpected calibration errors are caught at a narrow boundary and likewise suppress MOS output without affecting the canonical score.
+
+### Calibration policy (select one)
+
+| Policy | Env `PIXVQA_CVQA_MOS_POLICY` | HDR PQ | SDR |
+|---|---|---|---|
+| **Legacy (default)** | unset or `legacy_target_lambda1_both` | Original_U target λ=1.0 | U_v2 target λ=1.0 |
+| **Reviewed S1 (opt-in)** | `reviewed_s1_hdr0_sdr1` | Original_U baseline λ=0.0 | U_v2 target λ=1.0 |
+| **Selected composite (opt-in)** | `selected_s1_sdr_p1_hdr_c0` | Reviewed S1 C0 (no post-offset) | Reviewed S1 + **+0.4105018** MOS offset; **unclamped input** |
+
+```bash
+# Reviewed S1 F1-392 pair (independently selected; HDR differs, SDR identical to legacy SDR):
+export PIXVQA_CVQA_MOS_POLICY=reviewed_s1_hdr0_sdr1
+./bin/pixvqa --metrics cvqa-hdr-nr -t distorted.mp4
+
+# User-selected research composite (shadow-not-prod; not default):
+export PIXVQA_CVQA_MOS_POLICY=selected_s1_sdr_p1_hdr_c0
+./bin/pixvqa --metrics cvqa-hdr-nr -t distorted.mp4
+```
+
+Invalid policy values **fail closed** (`mos_calibration_status=unavailable`, reason `invalid_policy:…`); the default is **not** substituted silently.
+
+**Reviewed and selected upstream gate:** when `PIXVQA_CVQA_MOS_POLICY` is `reviewed_s1_hdr0_sdr1` or `selected_s1_sdr_p1_hdr_c0`, estimated perceptual quality is emitted only if git commit, checkpoint SHA-256, and profile SHA-256 all match pinned values in `pixvqa_cvqahdr.__init__` (explicit SHA comparison; `commit_verified` alone is insufficient). Otherwise `reason=cvqa_upstream_incompatible`. Legacy default is not gated. Preflight still checks git commit only for canonical CVQA scoring.
+
+See [reviewed S1 integration notes](dev/CVQA_MOS_REVIEWED_S1_INTEGRATION.md) and [selected composite implementation](dev/CVQA_MOS_FINAL_SELECTED_IMPLEMENTATION.md).
+
+**Legacy coefficients (default, 2026-11-14):** full-392 cohort, **target-MOS reweighting λ=1.0** (+100%) on both routes — human label *domain-aware logistic MOS calibration*, `weight_kind=target_mos`. Serialized from `mos_target_reweight_20261113/artifacts/endpoints.csv` (`original_ids`, not the prior baseline `final_fitted_models.json`).
+
+- **PQ content** → `U0_M7_Bias` (research arm Original_U, M1 backbone + M7 gamma); **SDR** → `U_v2_M7_Bias` (U-v2 arm).
+- Ridge **0.03**, cohort **`full-392-20261113`**; four-parameter M1 logistic with `b_eff=max(0,b)`; legacy and reviewed retain training-support input clamping; **selected** allows unbounded extrapolation with OOD warnings; final MOS **[1, 5]** output bounding on all policies.
+- **HLG**, bare `bt2020`, missing/unknown transfer, unsupported heights, or untrusted tags → `MOS-calibrated CVQA: unavailable` (canonical score unchanged). **No filename heuristics.**
+- U-domain target remapping is **training-only** and **not** applied at inference.
+
+**Research caveats (see `evidence_caveat` in run JSON):** exploratory native AVT ratings previously informed U-v2 routing and are not blind confirmation; HDR target weighting worsens HDR AVT error vs baseline — HDR λ=1.0 is a **user policy choice**, not empirically superior global accuracy (SDR AVT error improves). NightTraffic alias-merged CV (55 source groups) is a research sensitivity only — **not** proof of identical stimuli; PixVQA runtime grouping is unchanged. Scale-bridge pseudo-pairs (120, three families) are not verified stimulus-identical. M7-Bias was a later challenger; initial validation selected plain M7, not M7-Bias — calibrator names are stable identifiers only.
+
+**Selected v2 (2026-11-14):** bilateral input clamp removed for `selected_s1_sdr_p1_hdr_c0` only (`input_support_policy=unbounded_extrapolation`). Historical support bounds are observational; CVQA may exceed 10. Legacy/reviewed retain input clamp. MOS 4.5 output cap remains unimplemented.
+
+The detailed JSON run record includes `mos_calibration` metadata (`calibration_version`, `coefficients_digest_sha256`, `weight_kind`, `weight_lambda`, `m1_params`, provenance) and, when available, `mos_calibrated_cvqa`.

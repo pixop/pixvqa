@@ -47,6 +47,9 @@ jobs:
       - name: SimpleVQA reference contract tests (no PyTorch)
         run: python3 scripts/test_simplevqa_reference.py
 
+      - name: CVQA-HDR-NR MOS calibration regression (stdlib; fixture-backed)
+        run: PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py
+
       - name: QA smoke profile (17 cases)
         run: python3 scripts/run_qa.py --profile smoke
 
@@ -63,6 +66,7 @@ jobs:
             echo "| \`scripts/test_io_regressions.py\` | see step above |"
             echo "| \`scripts/test_qcs.py\` (needs NumPy; \`python3-numpy\` on Ubuntu) | see step above |"
             echo "| \`scripts/test_simplevqa_reference.py\` (stdlib + mocks; no learned deps) | see step above |"
+            echo "| \`scripts/test_cvqahdr_mos_calibration.py\` (MOS fixture golden; stdlib) | see step above |"
             echo "| \`scripts/run_qa.py --profile smoke\` (17 cases) | see step above |"
             echo ""
             echo "## Separate workflows"

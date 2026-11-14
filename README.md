@@ -100,6 +100,10 @@ Full-reference comparisons stop at the shorter input and warn if frame counts di
 
 Run `./bin/pixvqa --help`, `--help-advanced` or `--help-hdr` for the authoritative option reference.
 
+### CVQA-HDR-NR reviewed perceptual-quality staging blockers
+
+Optional MOS calibration policies (`reviewed_s1_hdr0_sdr1`, `selected_s1_sdr_p1_hdr_c0`) are integrated with fail-closed upstream pin gating but are **not production subjective-quality certified**. Default remains `legacy_target_lambda1_both`. Release blockers include: no ≥14d traffic shadow, no independent prospective subjective study, thin HDR evidence (n=8), SDR display/encode geometry mismatches, and temporal aggregation policy unsigned. Details: [CVQA MOS reviewed S1 integration](docs/dev/CVQA_MOS_REVIEWED_S1_INTEGRATION.md), [selected composite implementation](docs/dev/CVQA_MOS_FINAL_SELECTED_IMPLEMENTATION.md).
+
 ## License
 
 MIT © 2026 Pixop ApS. See [Licensing](docs/LICENSING.md) for third-party and trademark notices.
