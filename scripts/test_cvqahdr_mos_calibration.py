@@ -17,53 +17,60 @@ sys.path.insert(0, str(ROOT / "python"))
 from pixvqa_cvqahdr import PINNED_CHECKPOINT_SHA256, PINNED_COMMIT, PINNED_PROFILE_SHA256
 from pixvqa_cvqahdr import mos_calibration as mc  # noqa: E402
 
-SELECTED_FIXTURE = ROOT / "tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json"
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = (
-    "463b641347d68585ea9f99fc6d8c58b3ea274896458f6b1e58cbf58592b43cd3"
+SELECTED_FIXTURE = ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_selected.json"
+FROZEN_V7_RESEARCH_COEFFICIENTS = (
+    ROOT / "tests/fixtures/mos_calibration/cvqa_mos_v7_source_coefficients.json"
 )
+SELECTED_NATIVE_CASES = (
+    ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_selected_per_clip.csv"
+)
+SELECTED_VD6_CASES = (
+    ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_vd6_per_clip.csv"
+)
+HISTORICAL_V5_FIXTURE = (
+    ROOT / "tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json"
+)
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3d47020b54518cdcfe56bc5420eb9a579eeb1c4dc92d8eeb5ad593da30fbf206"
 EMBEDDED_COEFFICIENTS_SHA256 = mc.EMBEDDED_COEFFICIENTS_SHA256
-SDR_POST_MOS_OFFSET = 0.4105017796126768
-SDR_SELECTION_LOCK_SHA256 = (
-    "15dbde98a70c3a4ac7e2f7036a084d589e4154f320ebf4dba657f9bb4c894581"
-)
-HDR_SELECTION_LOCK_SHA256 = (
-    "5a4749f6fae7d3a7a9c6736910d83c02d41e4d7630e09bba4476ebfed0ee68cd"
-)
-SOURCE_JSON_SHA256 = (
-    "ba60d7c0d6154c7d66f16e2e453b69a936e7b96e3053c3b54747377537557718"
-)
+SDR_POST_MOS_OFFSET = 0.5107732905216783
+SDR_SELECTION_LOCK_SHA256 = "f65a19498735f0ce17257079a913f2ece25e9692b56c8392e27ce7d29ae079ee"
+HDR_SELECTION_LOCK_SHA256 = "7882d79f68f62fc06e034c3ed9f518cbdd0940f957b83df344b46858273b3f8c"
+SOURCE_JSON_SHA256 = "e817ed479079c0e208e8ec0d84aad3b5836606eeb329585d27e2c461c24b8e73"
 SCRIPT_PATH = Path(__file__).resolve()
 
-MEAN = 8.382293636852387
-STD = 1.1647912353499874
-SUPPORT_LO = 4.1344840888613135
-SUPPORT_HI = 10.051497077192835
+TRANSFER_NORMALIZATION = {
+    "sdr": {'mean': 8.010332079849347, 'std': 1.241145006178454},
+    "pq": {'mean': 8.769753592063894, 'std': 0.9333470039280067},
+}
+TRANSFER_SUPPORT = {
+    "sdr": [4.1344840888613135, 10.038337481465987],
+    "pq": [6.268450107554486, 10.051497077192835],
+}
 
-# Independent oracle (deliverable SECTION3 / validation_values.json; table-rounded where noted).
+# Standalone full-precision v7 oracle values computed from the research four-tuple.
 DELIVERABLE_ORACLE: tuple[tuple[str, int, float, float], ...] = (
-    ("sdr", 1080, 8.0, 2.9647388003),
-    ("sdr", 2160, 8.0, 3.1327206989),
-    ("pq", 1080, 8.0, 2.2849802349),
-    ("pq", 2160, 8.0, 2.4219267746),
-    ("sdr", 1080, 9.0, 3.8580272198),
-    ("sdr", 2160, 9.0, 4.0260091184),
-    ("pq", 1080, 9.0, 3.1003591206),
-    ("pq", 2160, 9.0, 3.2373056603),
-    ("sdr", 1080, 9.5, 4.262115),
-    ("sdr", 2160, 9.5, 4.430097),
-    ("pq", 1080, 9.5, 3.500030),
-    ("pq", 2160, 9.5, 3.636977),
-    ("sdr", 1080, 10.0, 4.596026),
-    ("sdr", 2160, 10.0, 4.764008),
-    ("pq", 1080, 10.0, 3.853006),
-    ("pq", 2160, 10.0, 3.989952),
-    ("sdr", 1080, 11.0, 5.0),
-    ("sdr", 2160, 11.0, 5.0),
-    ("pq", 1080, 11.0, 4.366572),
-    ("pq", 2160, 11.0, 4.503518),
+    ('sdr', 1080, 8.0, 3.0206399295656867),
+    ('sdr', 2160, 8.0, 3.106075097628496),
+    ('pq', 1080, 8.0, 2.275651960915209),
+    ('pq', 2160, 8.0, 2.5045523449082725),
+    ('sdr', 1080, 9.0, 3.890294761627456),
+    ('sdr', 2160, 9.0, 3.9757299296902655),
+    ('pq', 1080, 9.0, 3.1440665780738164),
+    ('pq', 2160, 9.0, 3.37296696206688),
+    ('sdr', 1080, 9.5, 4.2931666670467274),
+    ('sdr', 2160, 9.5, 4.378601835109537),
+    ('pq', 1080, 9.5, 3.5603917444826365),
+    ('pq', 2160, 9.5, 3.7892921284757),
+    ('sdr', 1080, 10.0, 4.6328337676073605),
+    ('sdr', 2160, 10.0, 4.71826893567017),
+    ('pq', 1080, 10.0, 3.9182233198793646),
+    ('pq', 2160, 10.0, 4.147123703872428),
+    ('sdr', 1080, 11.0, 5),
+    ('sdr', 2160, 11.0, 5),
+    ('pq', 1080, 11.0, 4.414355471571109),
+    ('pq', 2160, 11.0, 4.643255855564172),
 )
-
-BOUNDARY_SCORES = (0.0, SUPPORT_LO, 4.1345, 8.5, 10.0, 9.903605146801397, 11.0, 12.0)
+BOUNDARY_SCORES = (0.0, 4.1344840888613135, 4.1345, 6.268450107554486, 8.5, 10.0, 10.051497077192835, 11.0, 12.0)
 COMBO_CASES = (
     ("pq", 1080, "U0_M7_Bias"),
     ("pq", 2160, "U0_M7_Bias"),
@@ -119,17 +126,26 @@ def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x))
 
 
+def _research_models() -> dict:
+    return json.loads(FROZEN_V7_RESEARCH_COEFFICIENTS.read_text(encoding="utf-8"))["selected"]
+
+
 def independent_oracle_predict(
     canonical_score: float,
     *,
     transfer: str,
     encoded_height: int,
 ) -> float:
-    """Stdlib-only oracle: clip(1+4·σ(a+b·z)+d, 1, 5) from frozen effective params."""
-    params = mc.route_params(transfer, encoded_height)
-    z = (float(canonical_score) - MEAN) / STD
-    raw = 1.0 + 4.0 * _sigmoid(params["a"] + params["b"] * z) + params["d"]
-    return min(max(raw, 1.0), 5.0)
+    """Independent full four-tuple M1+M7 oracle; never reads runtime coefficients."""
+    model = _research_models()["PQ" if transfer == "pq" else "SDR"]
+    a, b, c, ls = model["M1_four_parameter_tuple"]
+    norm = model["normalization"]
+    z = (float(canonical_score) - norm["mean"]) / norm["std"]
+    u = a + max(0.0, b) * (z - c) / max(0.001, math.exp(ls))
+    base = 1 + 4 * _sigmoid(u)
+    mid = min(max(base + (model["M7_PQ_correction"] if transfer == "pq" else 0.0)
+                  + (model["M7_2160_correction"] if encoded_height == 2160 else 0.0), 1.0), 5.0)
+    return min(max(mid + model["native_MOS_offset"], 1.0), 5.0)
 
 
 def setUpModule() -> None:
@@ -139,13 +155,13 @@ def setUpModule() -> None:
 class MosFormulaTests(unittest.TestCase):
     def test_route_params_match_deliverable(self) -> None:
         sdr = mc.route_params("sdr", 1080)
-        self.assertAlmostEqual(sdr["a"], -0.10602048052744088, places=12)
-        self.assertAlmostEqual(sdr["b"], 1.0583289781579686, places=12)
+        self.assertAlmostEqual(sdr["a"], -0.49117628849094824, places=12)
+        self.assertAlmostEqual(sdr["b"], 1.0977838841771388, places=12)
         self.assertAlmostEqual(sdr["d"], SDR_POST_MOS_OFFSET, places=12)
         pq = mc.route_params("pq", 1080)
-        self.assertAlmostEqual(pq["a"], -0.3136256719154792, places=12)
-        self.assertAlmostEqual(pq["b"], 0.9742692529668485, places=12)
-        self.assertAlmostEqual(pq["d"], -0.10199018084158194, places=12)
+        self.assertAlmostEqual(pq["a"], 0.07227163628268213, places=12)
+        self.assertAlmostEqual(pq["b"], 0.8293304839931255, places=12)
+        self.assertAlmostEqual(pq["d"], -0.131036744556774, places=12)
 
     def test_deliverable_oracle_all_routes(self) -> None:
         max_err = 0.0
@@ -157,8 +173,8 @@ class MosFormulaTests(unittest.TestCase):
             self.assertAlmostEqual(independent, runtime, delta=1e-12)
             err = abs(runtime - expected)
             max_err = max(max_err, err)
-            self.assertLessEqual(err, 5e-7, msg=f"{transfer}/{height} x={score}")
-        self.assertLessEqual(max_err, 5e-7)
+            self.assertLessEqual(err, 5e-12, msg=f"{transfer}/{height} x={score}")
+        self.assertLessEqual(max_err, 5e-12)
 
     def test_independent_oracle_all_boundaries(self) -> None:
         for transfer, height, calibrator in COMBO_CASES:
@@ -184,7 +200,7 @@ class MosFormulaTests(unittest.TestCase):
 
     def test_no_input_clamp_below_support(self) -> None:
         x = 3.0
-        at_floor = mc.predict_mos(SUPPORT_LO, transfer="sdr", encoded_height=1080)
+        at_floor = mc.predict_mos(TRANSFER_SUPPORT["sdr"][0], transfer="sdr", encoded_height=1080)
         below = mc.predict_mos(x, transfer="sdr", encoded_height=1080)
         detail = mc.predict_mos_detailed(x, transfer="sdr", encoded_height=1080)
         self.assertNotAlmostEqual(below, at_floor, places=3)
@@ -194,7 +210,7 @@ class MosFormulaTests(unittest.TestCase):
         self.assertFalse(detail.input_support_clamp)
 
     def test_extrapolation_above_support(self) -> None:
-        at_support = mc.predict_mos(SUPPORT_HI, transfer="pq", encoded_height=1080)
+        at_support = mc.predict_mos(TRANSFER_SUPPORT["pq"][1], transfer="pq", encoded_height=1080)
         above = mc.predict_mos(11.0, transfer="pq", encoded_height=1080)
         self.assertGreater(above, at_support)
         self.assertEqual(mc.predict_mos(11.0, transfer="sdr", encoded_height=1080), 5.0)
@@ -214,6 +230,30 @@ class MosFormulaTests(unittest.TestCase):
                     self.assertGreaterEqual(mos, 1.0)
                     self.assertLessEqual(mos, 5.0)
                     self.assertTrue(math.isfinite(mos))
+
+
+    def test_transfer_separation_normalization_and_support(self) -> None:
+        for transfer in ("sdr", "pq"):
+            self.assertEqual(mc._NORMALIZATION_BY_TRANSFER[transfer], TRANSFER_NORMALIZATION[transfer])
+            lo, hi = TRANSFER_SUPPORT[transfer]
+            self.assertEqual(mc._SUPPORT_BY_TRANSFER[transfer], {"score_min": lo, "score_max": hi})
+            detail_lo = mc.predict_mos_detailed(lo - 0.01, transfer=transfer, encoded_height=1080)
+            detail_hi = mc.predict_mos_detailed(hi + 0.01, transfer=transfer, encoded_height=2160)
+            self.assertTrue(detail_lo.ood_below_support)
+            self.assertTrue(detail_hi.ood_above_support)
+            self.assertFalse(detail_lo.input_support_clamp)
+            self.assertEqual(detail_lo.score_effective, lo - 0.01)
+
+    def test_source_coefficient_hash_matches_frozen_v7(self) -> None:
+        import hashlib
+        raw = FROZEN_V7_RESEARCH_COEFFICIENTS.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), SOURCE_JSON_SHA256)
+        data = json.loads(raw)
+        self.assertEqual(data["selected"]["SDR"]["n_fit"], 200)
+        self.assertEqual(data["selected"]["PQ"]["n_fit"], 192)
+        self.assertEqual(data["selected"]["SDR"]["lambda"], 0.0)
+        self.assertEqual(data["selected"]["PQ"]["lambda"], 0.0)
+        self.assertNotEqual(data["selected"]["SDR"]["normalization"], data["selected"]["PQ"]["normalization"])
 
 
 class MosFixtureTests(unittest.TestCase):
@@ -239,6 +279,38 @@ class MosFixtureTests(unittest.TestCase):
             max_err = max(max_err, err)
             self.assertLessEqual(err, 1e-10, msg=f"{case['dataset']}:{case['id']}")
         self.assertLessEqual(max_err, 1e-10)
+
+    def test_retrospective_native_clip_scores_reproduce_v7_core(self) -> None:
+        import csv
+        with SELECTED_NATIVE_CASES.open(newline="") as handle:
+            cases = list(csv.DictReader(handle))
+        self.assertEqual(len(cases), 89)
+        for case in cases:
+            t = "sdr" if case["route"] == "SDR" else "pq"
+            h = 2160 if case["domain_key"].startswith("2160") else 1080
+            expected = independent_oracle_predict(float(case["score"]), transfer=t, encoded_height=h)
+            got = mc.predict_mos(float(case["score"]), transfer=t, encoded_height=h)
+            self.assertAlmostEqual(got, expected, delta=1e-12)
+            if t == "pq":
+                self.assertAlmostEqual(got, float(case["core"]), delta=1e-12)
+            else:
+                self.assertAlmostEqual(got, min(5.0, float(case["core"]) + SDR_POST_MOS_OFFSET), delta=1e-12)
+
+    def test_sdr_vd6_fixed_offset_transfer(self) -> None:
+        import csv
+        with SELECTED_VD6_CASES.open(newline="") as handle:
+            cases = list(csv.DictReader(handle))
+        self.assertEqual(len(cases), 6)
+        for case in cases:
+            h = 2160 if case["domain_key"].startswith("2160") else 1080
+            got = mc.predict_mos(float(case["score"]), transfer="sdr", encoded_height=h)
+            self.assertAlmostEqual(got, float(case["new_SDR_Uv2_with_SDR54_offset"]), delta=1e-12)
+
+    def test_historical_fixture_is_preserved(self) -> None:
+        old = _require_fixture(HISTORICAL_V5_FIXTURE)
+        self.assertEqual(len(old["cases"]), 68)
+        self.assertEqual(old["calibration_version"], "selected-s1-sdr-p1-hdr-c0-unclamped-input-20261114-v2")
+        self.assertAlmostEqual(old["post_output_offset_by_transfer"]["sdr"], 0.4105017796126768)
 
     def test_fixture_missing_fails_hard(self) -> None:
         original_is_file = Path.is_file
@@ -342,6 +414,13 @@ class MosProvenanceTests(unittest.TestCase):
         self.assertIn("obsolete_env_note", record)
         self.assertFalse(record["input_support_clamp"])
         self.assertEqual(record["sdr_selection_lock_sha256"], SDR_SELECTION_LOCK_SHA256)
+        self.assertEqual(record["coefficient_cohort"], "SDR200_PQ192_separate")
+        self.assertEqual(record["route_weight_lambda"], 0.0)
+        self.assertEqual(record["normalization"], TRANSFER_NORMALIZATION["pq"])
+        self.assertEqual(record["support"], {
+            "score_min": TRANSFER_SUPPORT["pq"][0],
+            "score_max": TRANSFER_SUPPORT["pq"][1],
+        })
 
 
 class MosPolicyTests(unittest.TestCase):
@@ -456,6 +535,17 @@ class MosIntegrityTests(unittest.TestCase):
             self.assertIn("calibration_error", out.reason or "")
         finally:
             mc._ROUTE_PARAMS[("sdr", 1080)] = original
+
+    def test_tamper_transfer_normalization_yields_unavailable(self) -> None:
+        original = dict(mc._NORMALIZATION_BY_TRANSFER["sdr"])
+        try:
+            mc._NORMALIZATION_BY_TRANSFER["sdr"] = {**original, "mean": original["mean"] + 0.1}
+            with patch.object(mc, "probe_encoded_geometry", return_value=(1920, 1080, "bt709")):
+                out = mc.apply_mos_calibration(8.5, "video.mp4")
+            self.assertFalse(out.available)
+            self.assertIn("calibration_error", out.reason or "")
+        finally:
+            mc._NORMALIZATION_BY_TRANSFER["sdr"] = original
 
     def test_minimal_unavailable_skips_digest(self) -> None:
         record = mc.minimal_unavailable_mos_record(8.5, "calibration_error:ValueError")

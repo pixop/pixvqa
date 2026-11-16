@@ -1,33 +1,58 @@
-# CVQA-to-MOS — single selected formula (runtime)
+# CVQA-to-MOS — transfer-separated selected calibration (current runtime)
 
-**Status:** Automatic default since 2026-11-14 simplification. Policy ID fixed to `selected_s1_sdr_p1_hdr_c0`.
+**Updated:** 16 November 2026
+**Status:** Automatically applied when supported video metadata is available. Provisional estimated quality, **not** a production-certified subjective MOS predictor.
 
-## Formula
+The current selected calibration uses the original M1 monotone sigmoid and M7 metadata correction, but **separate SDR and HDR PQ training datasets**. Earlier fitted curves trained both routes on a mixed 392-observation dataset; that model is preserved in the historical v6 scientific report but is no longer the active coefficient set.
 
+The historical protocol policy ID `selected_s1_sdr_p1_hdr_c0` is retained for compatibility because the architecture remains S1 + SDR post-offset + HDR without post-offset. **Do not identify a coefficient set from the policy ID alone.** The runtime `calibration_version`, source SHA-256 and embedded-coefficient digest distinguish the 2026-11-16 transfer-separated calibration from the older 2026-11-14 fit.
+
+## Current formula
+
+```text
+z_T = (canonical_CVQA - mean_T) / std_T
+estimated_MOS = clip(1 + 4*sigmoid(a_T + b_T*z_T) + d_(T,height), 1, 5)
 ```
-z = (CVQA − 8.382293636852387) / 1.1647912353499874
-MOS = clip(1 + 4·σ(a_T + b_T·z) + d_{T,h}, 1, 5)
-```
 
-Effective route parameters are embedded in `python/pixvqa_cvqahdr/mos_calibration.py`. Source JSON:
+| Transfer | Training rows | Score mean | Score standard deviation | Subjective bridge | Ridge | Post-offset |
+|---|---:|---:|---:|---|---:|---:|
+| SDR | 200 SDR only | 8.010332079849347 | 1.241145006178454 | Revised U-v2 | 0.1 | +0.5107732905216783 |
+| HDR PQ | 192 PQ only | 8.769753592063894 | 0.9333470039280067 | Original U | 0.1 | 0 |
 
-`perceptual_optimization/.../CVQA_TO_MOS_SCIENTIFIC_REVISION_20261114/data/PIXVQA_CVQA_to_MOS_Selected_Coefficients_v5.json`
+Both models use baseline source/study-balanced weights without additional high-quality weighting (λ=0).
 
-SHA-256: `ba60d7c0d6154c7d66f16e2e453b69a936e7b96e3053c3b54747377537557718`
+| Route | Sigmoid intercept | Sigmoid slope | Combined correction |
+|---|---:|---:|---:|
+| SDR 1080p | −0.49117628849094824 | 1.0977838841771388 | +0.5107732905216783 |
+| SDR 2160p | −0.49117628849094824 | 1.0977838841771388 | +0.5962084585844877 |
+| HDR PQ 1080p | +0.07227163628268213 | 0.8293304839931255 | −0.131036744556774 |
+| HDR PQ 2160p | +0.07227163628268213 | 0.8293304839931255 | +0.0978636394362893 |
+
+The input CompressedVQA score is never clamped. Out-of-training-support flags are calculated **per transfer**: SDR [4.1344840888613135, 10.038337481465987] and PQ [6.268450107554486, 10.051497077192835]. Output MOS is clipped to [1,5].
+
+## Scientific source and integrity
+
+- Scientific report: `perceptual_optimization/calibration/production_readiness_20261113/CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/PIXVQA_CVQA_to_MOS_Scientific_Technical_Report_v7.md`
+- Full-precision research coefficient source: `tests/fixtures/mos_calibration/cvqa_mos_v7_source_coefficients.json`
+- Source SHA-256: `e817ed479079c0e208e8ec0d84aad3b5836606eeb329585d27e2c461c24b8e73`
+- Golden fixture: `tests/fixtures/mos_calibration/avt_transfer_separated_v7_selected.json` (68 historical AVT clips, independent four-tuple oracle).
+- The older `avt_selected_s1_sdr_p1_hdr_c0.json` fixture is intentionally preserved unchanged.
+
+For detailed development evidence and known limitations, see [Transfer-Separated v7 Integration](CVQA_MOS_TRANSFER_SEPARATED_V7.md).
 
 ## Runtime behavior
 
-- Applied automatically on every successful CVQA-HDR-NR run when ffprobe identifies SDR or HDR PQ at 1080p/2160p.
-- No `PIXVQA_CVQA_MOS_POLICY` required. Legacy policy env values **fail closed** (`obsolete_policy_env:…`).
-- CVQA input is **not** clamped; final MOS clipped to [1, 5].
-- Upstream pin gate (commit, checkpoint SHA-256, profile SHA-256) required before MOS is published.
+The calibration is applied automatically after canonical CompressedVQA scoring only when ffprobe identifies supported SDR/PQ metadata at 1080p/2160p. HLG, ambiguous transfer metadata, unsupported heights, invalid scores or mismatched pinned upstream assets suppress MOS but never change canonical CompressedVQA.
 
-## Tests
+The environment selector `PIXVQA_CVQA_MOS_POLICY` is obsolete: unset or the selected policy ID is accepted; other non-empty values fail closed.
+
+## Verification
 
 ```bash
-PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py
+PYTHONPATH=python .venv/bin/python -B scripts/test_cvqahdr_mos_calibration.py
+PYTHONPATH=python .venv/bin/python -O -B scripts/test_cvqahdr_mos_calibration.py
 ```
 
-Golden fixture: `tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json` (68 rows).
+These tests compare runtime values with an independent scientific reference, including the four CompressedVQA=10 routes, 68 native-rated AVT fixture cases, extra per-clip SDR54/HDR35 and VD6 comparisons, score support, monotonicity, digest integrity, and fail-closed metadata routing.
 
-Independent deliverable parity: `verification.py` in the scientific revision folder (max runtime difference ≤ 8.88×10⁻¹⁶).
+**Limitations:** HDR35 MAE 0.6042 is worse than the former mixed-training HDR curve's 0.5552. No high-quality native HDR observations with MOS≥4.5 were available. This update integrates the research-selected curves; prospective subjective validation and production release qualification remain separate.

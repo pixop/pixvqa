@@ -1,0 +1,106 @@
+{
+  "schema": "pixvqa.cvqa_to_mos.transfer_separated_scientific_deliverable.v7",
+  "date": "2026-11-16",
+  "status": "RESEARCH_SHADOW_ONLY_NOT_DEPLOYED",
+  "based_on": "exact original M1+M7 architecture, transfer-isolated training",
+  "legacy_v6_sha256": "afa1f6a2b3d03acf539025ecce2b5e8a96cc37ca9e7d89db1048d8fdda893822",
+  "source_retraining_sha256": "9cdf829254e79b39ce7bd93502f5550be7ed3c3c19ac9985559ec8430f3db855",
+  "used_native_for_core_fit": false,
+  "selected": {
+    "SDR": {
+      "key": "SDR_Uv2",
+      "n_fit": 200,
+      "source_groups": 30,
+      "studies": {
+        "LIVE HDR vs SDR": 40,
+        "WaterlooIVC-4K": 160
+      },
+      "target_bridge": "Uv2",
+      "weighting": "baseline",
+      "lambda": 0.0,
+      "ridge": 0.1,
+      "normalization": {
+        "mean": 8.010332079849347,
+        "std": 1.241145006178454
+      },
+      "M1_four_parameter_tuple": [
+        -0.07055699453525567,
+        1.046632891309185,
+        0.3831530959948227,
+        -0.04771525563606675
+      ],
+      "M7_PQ_correction": 0.0,
+      "M7_2160_correction": 0.08543516806280937,
+      "native_MOS_offset": 0.5107732905216783,
+      "score_support": [
+        4.1344840888613135,
+        10.038337481465987
+      ],
+      "synthetic_target_support": [
+        1.0,
+        4.669820876458324
+      ],
+      "native_metrics": {
+        "n": 54,
+        "n_sources": 5,
+        "mae": 0.27803377597606144,
+        "rmse": 0.33601159146614773,
+        "bias": 0.020908638017544032,
+        "source_mae": 0.27951502642346676,
+        "source_rmse": 0.3309730757676656,
+        "plcc": 0.8943216875534594,
+        "srcc": 0.8037100056624026
+      }
+    },
+    "PQ": {
+      "key": "PQ_U",
+      "n_fit": 192,
+      "source_groups": 35,
+      "studies": {
+        "LIVE HDR": 156,
+        "LIVE HDR vs SDR": 36
+      },
+      "target_bridge": "U",
+      "weighting": "baseline",
+      "lambda": 0.0,
+      "ridge": 0.1,
+      "normalization": {
+        "mean": 8.769753592063894,
+        "std": 0.9333470039280067
+      },
+      "M1_four_parameter_tuple": [
+        0.07820961719214638,
+        0.9076549436885741,
+        0.007159969426028561,
+        0.09024555892659213
+      ],
+      "M7_PQ_correction": -0.131036744556774,
+      "M7_2160_correction": 0.2289003839930633,
+      "native_MOS_offset": 0.0,
+      "score_support": [
+        6.268450107554486,
+        10.051497077192835
+      ],
+      "synthetic_target_support": [
+        1.0,
+        4.397349185288616
+      ],
+      "native_metrics": {
+        "n": 35,
+        "n_sources": 5,
+        "mae": 0.6041530457592809,
+        "rmse": 0.8069038478861592,
+        "bias": 0.44112419343854953,
+        "source_mae": 0.6041530457592809,
+        "source_rmse": 0.8069038478861592,
+        "plcc": 0.7200419852931638,
+        "srcc": 0.7230942840027859
+      }
+    }
+  },
+  "disclaimers": [
+    "The current PixVQA runtime uses the historical mixed-data model until a separate approved software update.",
+    "HDR absolute high-MOS accuracy is not validated; HDR35 has zero subjective MOS >=4.5.",
+    "Native offset evaluated retrospectively, not on prospectively blinded content."
+  ]
+}

@@ -106,20 +106,31 @@ CVQA-HDR-NR continues to report the canonical **0–10** `quality_score` from th
 
 PixVQA applies one scientifically selected transfer — policy `selected_s1_sdr_p1_hdr_c0` — automatically when metadata is supported. No environment variable is required.
 
-Normalized CVQA score: `z = (CVQA − 8.382293636852387) / 1.1647912353499874`
+**Updated 16 November 2026:** the models are now trained separately: 200 SDR observations only (30 recorded sources), and 192 HDR PQ observations only (35 recorded sources). The original M1 sigmoid + M7 metadata-correction structure is unchanged. The calibration version and provenance hashes distinguish these new coefficients from the old mixed-data policy.
 
-Estimated MOS (final clamp only; CVQA is never input-clamped):
+Normalization is separate for each transfer, using `z_T = (CVQA − mean_T) / std_T`:
 
-`MOS = clip(1 + 4·σ(a_T + b_T·z) + d_{T,h}, 1, 5)`
+| Transfer | Mean | Standard deviation |
+|---|---:|---:|
+| SDR | 8.010332079849347 | 1.241145006178454 |
+| HDR PQ | 8.769753592063894 | 0.9333470039280067 |
+
+Estimated MOS (input CVQA is never clipped):
+
+`MOS = clip(1 + 4·σ(a_T + b_T·z_T) + d_{T,h}, 1, 5)`
 
 | Transfer | Height | a_T | b_T | d_{T,h} |
 |---|---|---:|---:|---:|
-| SDR | 1080p | −0.10602048 | 1.05832898 | +0.41050178 |
-| SDR | 2160p | −0.10602048 | 1.05832898 | +0.57848368 |
-| HDR PQ | 1080p | −0.31362567 | 0.97426925 | −0.10199018 |
-| HDR PQ | 2160p | −0.31362567 | 0.97426925 | +0.03495636 |
+| SDR | 1080p | −0.49117629 | 1.09778388 | +0.51077329 |
+| SDR | 2160p | −0.49117629 | 1.09778388 | +0.59620846 |
+| HDR PQ | 1080p | +0.07227164 | 0.82933048 | −0.13103674 |
+| HDR PQ | 2160p | +0.07227164 | 0.82933048 | +0.09786364 |
 
-Full-precision coefficients: `PIXVQA_CVQA_to_MOS_Selected_Coefficients_v5.json` in the scientific revision deliverable. Historical training support `[4.134…, 10.051…]` triggers OOD flags only.
+The SDR native-MOS offset is +0.5107732905216783; no offset is applied to PQ. Training score support is **4.1345–10.0383 for SDR** and **6.2685–10.0515 for PQ**. Values outside a route's range trigger its own out-of-distribution flags but are not clamped. The MOS output remains within [1,5].
+
+The selected models were evaluated retrospectively: SDR54 MAE 0.2780 with source-family-held-out offsets, and HDR35 MAE 0.6042 without an offset (worse than 0.5552 for the old mixed-data model). These are provisional **estimated** ratings, not observed MOS. High-quality HDR MOS ≥4.5 remains unvalidated.
+
+Full-precision independent research coefficients and evaluation: `perceptual_optimization/calibration/production_readiness_20261113/CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/`. The frozen source copy, retained historical golden fixture, new oracle and implementation validation are described in [Transfer-Separated v7 Implementation](dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md).
 
 `PIXVQA_CVQA_MOS_POLICY` is **obsolete**. Unset or `selected_s1_sdr_p1_hdr_c0` is accepted; any other non-empty value (including legacy `legacy_target_lambda1_both` or `reviewed_s1_hdr0_sdr1`) **fail closed** with `obsolete_policy_env:…` so alternate formulas cannot be activated.
 
@@ -127,6 +138,6 @@ Full-precision coefficients: `PIXVQA_CVQA_to_MOS_Selected_Coefficients_v5.json` 
 
 - **PQ content** → `U0_M7_Bias`; **SDR** → `U_v2_M7_Bias` (stable calibrator identifiers).
 - **HLG**, bare `bt2020`, missing/unknown transfer, unsupported heights → MOS suppressed; canonical score unchanged.
-- Regression: `PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py` (68-row golden fixture + deliverable oracle).
+- Regression: `PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py` (68-row v7 golden fixture, 89 native per-clip comparisons, VD6 fixed-offset transfer and independent numerical oracle).
 
 The detailed JSON run record includes `mos_calibration` metadata (`calibration_version`, `coefficients_digest_sha256`, `route_sigmoid`, provenance) and, when available, `mos_calibrated_cvqa`.

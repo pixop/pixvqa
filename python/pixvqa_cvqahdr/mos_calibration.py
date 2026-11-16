@@ -1,24 +1,13 @@
-"""Estimated perceptual quality 1–5 calibration for CVQA-HDR-NR canonical 0–10 scores.
+"""Transfer-separated CVQA-to-estimated-MOS calibration (SDR 200 / PQ 192).
 
-Single scientifically selected transfer (policy ``selected_s1_sdr_p1_hdr_c0``), applied
-automatically when ffprobe metadata is supported. No policy selection or environment
-switch is required.
+The canonical CompressedVQA clip score remains unchanged. One selected M1 sigmoid
+plus M7 metadata correction is applied automatically when validated ffprobe transfer
+and encoded height are supported. Both route fits use only same-transfer observations.
+A source-family-balanced SDR native-MOS post-offset is applied after the M7 stage.
 
-Normalized score::
-
-    z = (CVQA − 8.382293636852387) / 1.1647912353499874
-
-Estimated MOS (final clamp only; CVQA is never clamped)::
-
-    MOS = clip(1 + 4·σ(a_T + b_T·z) + d_{T,h}, 1, 5)
-
-Supported routes: SDR or HDR PQ at encoded heights 1080 and 2160. HLG, ambiguous
-``bt2020``, missing/unknown transfer, and unsupported heights fail closed. Out-of-support
-CVQA scores extrapolate monotonically with OOD flags only.
-
-Source coefficients: ``PIXVQA_CVQA_to_MOS_Selected_Coefficients_v5.json`` (frozen S1
-composite). ``PIXVQA_CVQA_MOS_POLICY`` is **obsolete** — non-empty values other than
-``selected_s1_sdr_p1_hdr_c0`` fail closed so legacy formulas cannot be activated.
+The frozen v7 research source, retained historical v5 fixture and independent new
+oracle are documented in docs/dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md.
+This is retrospective research calibration, not a measured or certified MOS.
 """
 
 from __future__ import annotations
@@ -40,45 +29,38 @@ MOS_POLICY = "selected_s1_sdr_p1_hdr_c0"
 DEFAULT_MOS_POLICY = MOS_POLICY
 SELECTED_MOS_POLICY = MOS_POLICY
 
-FROZEN_S1_COEFFICIENTS_BUNDLE_SHA256 = (
-    "67d39be487fccee6b0a08ef33a4dd7e8adf1745578eff9060ab48e394069a02c"
-)
-SDR_SELECTION_LOCK_SHA256 = (
-    "15dbde98a70c3a4ac7e2f7036a084d589e4154f320ebf4dba657f9bb4c894581"
-)
-HDR_SELECTION_LOCK_SHA256 = (
-    "5a4749f6fae7d3a7a9c6736910d83c02d41e4d7630e09bba4476ebfed0ee68cd"
-)
-SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256 = (
-    "ba60d7c0d6154c7d66f16e2e453b69a936e7b96e3053c3b54747377537557718"
-)
+SELECTED_FITTED_MODELS_SHA256 = "9cdf829254e79b39ce7bd93502f5550be7ed3c3c19ac9985559ec8430f3db855"
+SDR_SELECTION_LOCK_SHA256 = "f65a19498735f0ce17257079a913f2ece25e9692b56c8392e27ce7d29ae079ee"
+HDR_SELECTION_LOCK_SHA256 = "7882d79f68f62fc06e034c3ed9f518cbdd0940f957b83df344b46858273b3f8c"
+SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256 = "e817ed479079c0e208e8ec0d84aad3b5836606eeb329585d27e2c461c24b8e73"
 OUTPUT_SCALE_LABEL = "estimated perceptual quality 1-5"
 
-CALIBRATION_VERSION = "selected-s1-sdr-p1-hdr-c0-unclamped-input-20261114-v2"
-CALIBRATION_LABEL = "Selected S1 composite CVQA-to-MOS calibration"
-WEIGHT_KIND = "route_mixed"
+CALIBRATION_VERSION = "selected-s1-sdr200-pq192-transfer-separated-20261116-v3"
+CALIBRATION_LABEL = "Transfer-separated SDR/PQ M1+M7 CVQA-to-MOS calibration"
+WEIGHT_KIND = "transfer_isolated_source_study_balanced_baseline"
 RESEARCH_STATUS = "provisional"
-COEFFICIENT_COHORT = "old392"
+COEFFICIENT_COHORT = "SDR200_PQ192_separate"
 COEFFICIENT_SOURCE = (
     "perceptual_optimization/calibration/production_readiness_20261113/"
-    "CVQA_TO_MOS_SCIENTIFIC_REVISION_20261114/data/"
-    "PIXVQA_CVQA_to_MOS_Selected_Coefficients_v5.json"
+    "CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/data/"
+    "PIXVQA_CVQA_to_MOS_Selected_Coefficients_v7_Research.json"
 )
-MANIFEST_ID = "pixvqa_calib_s1_f1_392_20261114_v1"
+MANIFEST_ID = "pixvqa_calib_s1_sdr200_pq192_20261116_v3"
 HDR_WEIGHT_LAMBDA = 0.0
-SDR_WEIGHT_LAMBDA = 1.0
-SDR_POST_MOS_OFFSET = 0.4105017796126768
-PQ_GAMMA_1080 = -0.10199018084158194
-GAMMA_2160_SDR = 0.16798189863001703
-GAMMA_2160_PQ = 0.13694653969694998
+SDR_WEIGHT_LAMBDA = 0.0
+SDR_POST_MOS_OFFSET = 0.5107732905216783
+PQ_GAMMA_1080 = -0.131036744556774
+GAMMA_2160_SDR = 0.08543516806280937
+GAMMA_2160_PQ = 0.2289003839930633
 
 EVIDENCE_CAVEAT = (
-    "User-selected S1 composite: effective two-parameter logistic per transfer plus "
-    "combined route correction d_{T,h} (algebraically equivalent to frozen S1 M1+M7 "
-    "with SDR post-offset). Input scores are NOT clamped to historical training support "
-    "[4.1344840888613135, 10.051497077192835]; OOD flags warn only. Extrapolation "
-    "uncertainty accepted. AVT informed U-v2 routing; retrospective metrics only. "
-    "Not production subjective-quality certified."
+    "Research v7: SDR model trained on 200 SDR rows only (30 recorded sources); "
+    "PQ model trained on 192 PQ rows only (35 recorded sources). M1 sigmoid with "
+    "original M7 correction; SDR native-MOS offset fitted on five SDR54 families. "
+    "Retrospective AVT comparisons are not blind. HDR35 MAE 0.6042 regresses "
+    "against the historic pooled model, and high-native-MOS HDR is unvalidated. "
+    "Input CVQA never support-clamped; per-transfer OOD flags warn on extrapolation. "
+    "Not subjectively certified for production."
 )
 
 FFPROBE_TIMEOUT_SEC = 30.0
@@ -92,36 +74,28 @@ _PROBE_ERRORS = frozenset({
     "non_positive_geometry",
 })
 
-_NORMALIZATION = {"mean": 8.382293636852387, "std": 1.1647912353499874}
-_SUPPORT = {
-    "score_min": 4.1344840888613135,
-    "score_max": 10.051497077192835,
+# The transfer-only cohorts have different fitted score distributions.
+_NORMALIZATION_BY_TRANSFER = {
+    "sdr": {"mean": 8.010332079849347, "std": 1.241145006178454},
+    "pq": {"mean": 8.769753592063894, "std": 0.9333470039280067},
 }
-_SHARED_SUPPORT = dict(_SUPPORT)
-_SHARED_NORMALIZATION = dict(_NORMALIZATION)
+_SUPPORT_BY_TRANSFER = {
+    "sdr": {"score_min": 4.1344840888613135, "score_max": 10.038337481465987},
+    "pq": {"score_min": 6.268450107554486, "score_max": 10.051497077192835},
+}
+# Provenance-only union for older records; prediction OOD uses per-transfer ranges.
+_SUPPORT = {
+    "score_min": min(v["score_min"] for v in _SUPPORT_BY_TRANSFER.values()),
+    "score_max": max(v["score_max"] for v in _SUPPORT_BY_TRANSFER.values()),
+}
 
-# Effective presentation parameters (full precision; equivalent to frozen S1 composite).
+# Effective 2-degree-of-freedom coefficients from original frozen four-tuple.
+# Runtime uses these embedded values; independent tests use the frozen tuple.
 _ROUTE_PARAMS: dict[tuple[str, int], dict[str, float]] = {
-    ("sdr", 1080): {
-        "a": -0.10602048052744088,
-        "b": 1.0583289781579686,
-        "d": 0.4105017796126768,
-    },
-    ("sdr", 2160): {
-        "a": -0.10602048052744088,
-        "b": 1.0583289781579686,
-        "d": 0.4105017796126768 + GAMMA_2160_SDR,
-    },
-    ("pq", 1080): {
-        "a": -0.3136256719154792,
-        "b": 0.9742692529668485,
-        "d": PQ_GAMMA_1080,
-    },
-    ("pq", 2160): {
-        "a": -0.3136256719154792,
-        "b": 0.9742692529668485,
-        "d": PQ_GAMMA_1080 + GAMMA_2160_PQ,
-    },
+    ("sdr", 1080): {'a': -0.49117628849094824, 'b': 1.0977838841771388, 'd': 0.5107732905216783},
+    ("sdr", 2160): {'a': -0.49117628849094824, 'b': 1.0977838841771388, 'd': 0.5962084585844877},
+    ("pq", 1080): {'a': 0.07227163628268213, 'b': 0.8293304839931255, 'd': -0.131036744556774},
+    ("pq", 2160): {'a': 0.07227163628268213, 'b': 0.8293304839931255, 'd': 0.09786363943628931},
 }
 
 # Stable calibrator identifiers and frozen training metadata (provenance only).
@@ -131,22 +105,22 @@ _CALIBRATORS: dict[str, dict[str, Any]] = {
         "research_arm": "Original_U",
         "weight_kind": "baseline",
         "weight_lambda": 0.0,
-        "model_key": "old392|Original_U|baseline|0.0",
-        "selected_ridge": 0.03,
-        "normalization": dict(_NORMALIZATION),
-        "support": dict(_SUPPORT),
+        "model_key": "PQ192|Original_U|baseline|0.0|ridge0.1",
+        "selected_ridge": 0.1,
+        "normalization": dict(_NORMALIZATION_BY_TRANSFER["pq"]),
+        "support": dict(_SUPPORT_BY_TRANSFER["pq"]),
         "route_params_1080": dict(_ROUTE_PARAMS[("pq", 1080)]),
         "route_params_2160": dict(_ROUTE_PARAMS[("pq", 2160)]),
     },
     "U_v2_M7_Bias": {
         "route": "sdr",
         "research_arm": "U_v2",
-        "weight_kind": "target_mos",
-        "weight_lambda": 1.0,
-        "model_key": "old392|U_v2|target|1.0",
-        "selected_ridge": 0.03,
-        "normalization": dict(_NORMALIZATION),
-        "support": dict(_SUPPORT),
+        "weight_kind": "baseline",
+        "weight_lambda": 0.0,
+        "model_key": "SDR200|U_v2|baseline|0.0|ridge0.1",
+        "selected_ridge": 0.1,
+        "normalization": dict(_NORMALIZATION_BY_TRANSFER["sdr"]),
+        "support": dict(_SUPPORT_BY_TRANSFER["sdr"]),
         "route_params_1080": dict(_ROUTE_PARAMS[("sdr", 1080)]),
         "route_params_2160": dict(_ROUTE_PARAMS[("sdr", 2160)]),
         "sdr_post_mos_offset": SDR_POST_MOS_OFFSET,
@@ -166,7 +140,7 @@ _POLICY_SPEC: dict[str, Any] = {
     "coefficient_source": COEFFICIENT_SOURCE,
     "coefficient_source_json_sha256": SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256,
     "manifest_id": MANIFEST_ID,
-    "coefficients_bundle_sha256": FROZEN_S1_COEFFICIENTS_BUNDLE_SHA256,
+    "coefficients_bundle_sha256": SELECTED_FITTED_MODELS_SHA256,
     "post_output_offset_by_transfer": {"pq": 0.0, "sdr": SDR_POST_MOS_OFFSET},
     "sdr_selection_lock_sha256": SDR_SELECTION_LOCK_SHA256,
     "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
@@ -248,29 +222,32 @@ def input_support_clamp_enabled(policy_id: str | None = None) -> bool:
 def _coefficients_digest_payload() -> dict[str, Any]:
     return {
         "policy_id": MOS_POLICY,
-        "s1_coefficients_bundle_sha256": FROZEN_S1_COEFFICIENTS_BUNDLE_SHA256,
+        "selected_fitted_models_sha256": SELECTED_FITTED_MODELS_SHA256,
+        "coefficient_source_json_sha256": SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256,
         "post_output_offset_by_transfer": _POLICY_SPEC["post_output_offset_by_transfer"],
+        "normalization_by_transfer": _NORMALIZATION_BY_TRANSFER,
+        "support_by_transfer": _SUPPORT_BY_TRANSFER,
+        "route_params": {f"{t}_{h}": dict(v) for (t, h), v in sorted(_ROUTE_PARAMS.items())},
         "sdr_selection_lock_sha256": SDR_SELECTION_LOCK_SHA256,
         "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
         "input_support_clamp": False,
     }
 
 
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = (
-    "463b641347d68585ea9f99fc6d8c58b3ea274896458f6b1e58cbf58592b43cd3"
-)
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3d47020b54518cdcfe56bc5420eb9a579eeb1c4dc92d8eeb5ad593da30fbf206"
 
 
 def _embedded_coefficients_payload() -> dict[str, Any]:
     return {
         "policy_id": MOS_POLICY,
         "formula": _POLICY_SPEC["formula"],
-        "normalization": dict(_NORMALIZATION),
+        "normalization_by_transfer": {k: dict(v) for k, v in _NORMALIZATION_BY_TRANSFER.items()},
+        "support_by_transfer": {k: dict(v) for k, v in _SUPPORT_BY_TRANSFER.items()},
         "routes": {
             f"{transfer}_{height}": dict(params)
             for (transfer, height), params in sorted(_ROUTE_PARAMS.items())
         },
-        "s1_coefficients_bundle_sha256": FROZEN_S1_COEFFICIENTS_BUNDLE_SHA256,
+        "selected_fitted_models_sha256": SELECTED_FITTED_MODELS_SHA256,
         "coefficient_source_json_sha256": SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256,
         "sdr_selection_lock_sha256": SDR_SELECTION_LOCK_SHA256,
         "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
@@ -279,9 +256,7 @@ def _embedded_coefficients_payload() -> dict[str, Any]:
     }
 
 
-EMBEDDED_COEFFICIENTS_SHA256 = (
-    "74cf758869796c5c3ba94ac7aba3b8ed808b664940f990e4b5f5c1b7920d6111"
-)
+EMBEDDED_COEFFICIENTS_SHA256 = "1fbdabde3bbec5d8907a9e139711632ac288d4996b64550d02a1a8e2ba5b12e4"
 
 
 def _embedded_coefficients_digest() -> str:
@@ -344,8 +319,8 @@ def _assert_calibrator_matches_transfer(calibrator: str, transfer: str) -> None:
 
 def _evaluate_route(score: float, transfer: str, encoded_height: int) -> float:
     params = route_params(transfer, encoded_height)
-    mean = _NORMALIZATION["mean"]
-    std = _NORMALIZATION["std"]
+    mean = _NORMALIZATION_BY_TRANSFER[transfer]["mean"]
+    std = _NORMALIZATION_BY_TRANSFER[transfer]["std"]
     z = (score - mean) / std
     logit = params["a"] + params["b"] * z
     return _clamp(1.0 + 4.0 * _sigmoid(logit) + params["d"], 1.0, 5.0)
@@ -398,8 +373,8 @@ def predict_mos_detailed(
         if key is None:
             raise ValueError(f"unsupported transfer {transfer!r}")
     spec = _CALIBRATORS[key]
-    lo = float(_SUPPORT["score_min"])
-    hi = float(_SUPPORT["score_max"])
+    lo = float(_SUPPORT_BY_TRANSFER[transfer]["score_min"])
+    hi = float(_SUPPORT_BY_TRANSFER[transfer]["score_max"])
     ood_below = requested < lo
     ood_above = requested > hi
     estimate = _evaluate_route(requested, transfer, encoded_height)
@@ -853,15 +828,16 @@ def mos_calibration_record(
         "input_support_clamp": False,
         "input_support_policy": "unbounded_extrapolation",
         "unresolved_policy_note": (
-            "Single selected calibration: no bilateral input clamp; scores outside "
-            f"historical support ({_SUPPORT['score_min']}, {_SUPPORT['score_max']}) "
-            "are extrapolated with OOD warnings only. Final output bounded to [1, 5]."
+            "The input CVQA score is not support-clamped. SDR support: "
+            f"{_SUPPORT_BY_TRANSFER['sdr']}; HDR PQ support: "
+            f"{_SUPPORT_BY_TRANSFER['pq']}. Out-of-support predictions are "
+            "extrapolations; the estimated MOS output is bounded to [1, 5]."
         ),
         "manifest_id": pspec["manifest_id"],
         "coefficients_source_bundle_sha256": pspec["coefficients_bundle_sha256"],
         "coefficients_digest_note": (
-            "coefficients_digest_sha256 is a composite digest (frozen S1 bundle, source "
-            "JSON SHA-256, post-output offsets, selection lock SHA-256s). "
+            "coefficients_digest_sha256 pins fitted-model SHA-256, source JSON hash, "
+            "native-MOS offsets and transfer-specific fitting provenance. "
             "embedded_coefficients_sha256 is recomputed from the effective route "
             "parameters embedded in this module."
         ),
