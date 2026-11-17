@@ -397,6 +397,26 @@ class MosRoutingTests(unittest.TestCase):
 
 
 class MosProvenanceTests(unittest.TestCase):
+    def test_public_policy_metadata_is_defensively_copied(self) -> None:
+        # A consumer modifying returned metadata must not silently change the
+        # runtime model identity, source hashes, or selected route mapping.
+        baseline_version = mc.policy_spec()["calibration_version"]
+        baseline_offset = mc.policy_spec()["post_output_offset_by_transfer"]["sdr"]
+        baseline_route = mc.calibrators_for_policy()["U_v2_M7_Bias"]["route"]
+        before = mc.predict_mos(10.0, transfer="sdr", encoded_height=2160)
+        snapshot = mc.policy_spec()
+        snapshot["calibration_version"] = "modified_by_consumer"
+        snapshot["post_output_offset_by_transfer"]["sdr"] = -4.0
+        snapshot["calibrators"]["U_v2_M7_Bias"]["route"] = "pq"
+        calibrators = mc.calibrators_for_policy()
+        calibrators["U_v2_M7_Bias"]["normalization"]["mean"] = -1.0
+        calibrators["U_v2_M7_Bias"]["route"] = "pq"
+        self.assertEqual(mc.policy_spec()["calibration_version"], baseline_version)
+        self.assertEqual(mc.policy_spec()["post_output_offset_by_transfer"]["sdr"], baseline_offset)
+        self.assertEqual(mc.calibrators_for_policy()["U_v2_M7_Bias"]["route"], baseline_route)
+        self.assertEqual(mc.coefficients_digest(), SELECTED_COEFFICIENTS_DIGEST_SHA256)
+        self.assertEqual(mc.predict_mos(10.0, transfer="sdr", encoded_height=2160), before)
+
     def test_fixed_policy_metadata(self) -> None:
         self.assertEqual(mc.MOS_POLICY, "selected_s1_sdr_p1_hdr_c0")
         self.assertEqual(mc.DEFAULT_MOS_POLICY, mc.MOS_POLICY)
@@ -520,6 +540,21 @@ class MosProtocolTests(unittest.TestCase):
 
 
 class MosIntegrityTests(unittest.TestCase):
+    def test_direct_prediction_fails_closed_on_tampered_coefficients(self) -> None:
+        # The public predict_mos API must not silently bypass the integrity
+        # checks that already protect apply_mos_calibration().
+        original = dict(mc._ROUTE_PARAMS[("sdr", 1080)])
+        try:
+            mc._ROUTE_PARAMS[("sdr", 1080)] = {**original, "b": original["b"] + 0.5}
+            with self.assertRaisesRegex(ValueError, "digest mismatch"):
+                mc.predict_mos(9.0, transfer="sdr", encoded_height=1080)
+        finally:
+            mc._ROUTE_PARAMS[("sdr", 1080)] = original
+        self.assertAlmostEqual(
+            mc.predict_mos(10.0, transfer="sdr", encoded_height=1080),
+            4.6328337676073605, delta=1e-12,
+        )
+
     def test_digest_raises_on_mismatch(self) -> None:
         with patch.object(mc, "SELECTED_COEFFICIENTS_DIGEST_SHA256", "0" * 64):
             with self.assertRaises(ValueError):

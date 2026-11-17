@@ -12,6 +12,7 @@ This is retrospective research calibration, not a measured or certified MOS.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -203,15 +204,17 @@ def resolve_mos_policy(explicit: str | None = None) -> tuple[str | None, str | N
 
 
 def policy_spec(policy_id: str | None = None) -> dict[str, Any]:
+    """Return a snapshot; callers must not be able to mutate the frozen policy."""
     pid = policy_id or MOS_POLICY
     if pid != MOS_POLICY:
         raise ValueError(f"unknown MOS policy {pid!r}")
-    return _POLICY_SPEC
+    return copy.deepcopy(_POLICY_SPEC)
 
 
 def calibrators_for_policy(policy_id: str | None = None) -> dict[str, dict[str, Any]]:
+    """Return independent calibrator metadata, never writable runtime state."""
     policy_spec(policy_id)
-    return _CALIBRATORS
+    return copy.deepcopy(_CALIBRATORS)
 
 
 def input_support_clamp_enabled(policy_id: str | None = None) -> bool:
@@ -365,6 +368,11 @@ def predict_mos_detailed(
         raise ValueError(f"unsupported transfer {transfer!r}")
     if encoded_height not in _SUPPORTED_HEIGHTS:
         raise ValueError(f"unsupported encoded height {encoded_height}")
+    # Standalone prediction must have the same integrity guarantees as the
+    # adapter path. Previously only apply_mos_calibration() checked digests,
+    # so direct callers could silently receive results from modified coefficients.
+    embedded_coefficients_sha256()
+    coefficients_digest()
     if calibrator is not None:
         key = calibrator
         _assert_calibrator_matches_transfer(key, transfer)

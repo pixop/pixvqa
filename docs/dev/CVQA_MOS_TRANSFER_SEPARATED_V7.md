@@ -70,4 +70,6 @@ PYTHONPATH=python .venv/bin/python -m unittest discover -s scripts -p 'test_cvqa
 
 The MOS test checks all four supported routes, numerical parity with the independently frozen JSON, 68 golden cases, 89 native per-clip cases, six VD examples, metadata and route gating, output monotonicity and clipping, per-transfer out-of-support flags, provenance hash checks, fail-closed behavior and unchanged canonical score.
 
-The original calibration v5 and original scientific report v6 remain unchanged in the research repository. No PiXVQA deployment or remote Git push is performed by this integration commit.
+The original calibration v5 and original scientific report v6 remain unchanged in the research repository. The original software integration was committed on the CVQA feature branch, without merging to main or deploying a production release.
+
+**Independent software review (17 November 2026):** [CVQA-to-MOS v7 audit and CLI regression resolution](CVQA_MOS_INDEPENDENT_SOFTWARE_AUDIT_20261117.md). The review corrected stale CLI assertions and hardened the direct prediction integrity checks and public provenance metadata. The original coefficients and calibration outputs remain unchanged.
