@@ -12,9 +12,12 @@ import unittest
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root / "python"))
 pkg = types.ModuleType("pixvqa_cvqahdr")
 pkg.PINNED_COMMIT = "test"
 pkg.PINNED_UPSTREAM = "test"
+pkg.PINNED_CHECKPOINT_SHA256 = "test-checkpoint"
+pkg.PINNED_PROFILE_SHA256 = "test-profile"
 sys.modules["pixvqa_cvqahdr"] = pkg
 device = types.ModuleType("pixvqa_device")
 device.DEVICE_CHOICES = {"cpu", "cuda", "auto"}
@@ -22,6 +25,14 @@ device.DeviceError = RuntimeError
 for name in ("auto_notice", "device_record", "peak_rss_bytes", "resolve_device"):
     setattr(device, name, lambda *args, **kwargs: None)
 sys.modules["pixvqa_device"] = device
+mos_spec = importlib.util.spec_from_file_location(
+    "pixvqa_cvqahdr.mos_calibration",
+    root / "python/pixvqa_cvqahdr/mos_calibration.py",
+)
+mos_mod = importlib.util.module_from_spec(mos_spec)
+sys.modules["pixvqa_cvqahdr.mos_calibration"] = mos_mod
+pkg.mos_calibration = mos_mod
+mos_spec.loader.exec_module(mos_mod)
 spec = importlib.util.spec_from_file_location("cvqa_adapter_under_test", root / "python/pixvqa_cvqahdr/adapter.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -59,7 +70,8 @@ class SamplingTests(unittest.TestCase):
         video = torch.randn(60, 3)
         with torch.no_grad():
             expected, _, _, _ = module.forward_with_samples(model, video.unsqueeze(0), torch)
-            score, scores, parity = module.forward_chunked(model, video, torch.device("cpu"), torch, 8)
+            score, scores, parity, chunks = module.forward_chunked(model, video, torch.device("cpu"), torch, 8)
+            self.assertEqual(chunks, [])
         self.assertEqual(len(scores), 60)
         self.assertTrue(parity)
         self.assertTrue(math.isclose(score, expected[0].item(), abs_tol=1e-6))

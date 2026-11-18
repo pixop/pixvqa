@@ -100,6 +100,14 @@ Full-reference comparisons stop at the shorter input and warn if frame counts di
 
 Run `./bin/pixvqa --help`, `--help-advanced` or `--help-hdr` for the authoritative option reference.
 
+### CVQA-HDR-NR estimated-quality calibration (provisional)
+
+PixVQA automatically reports a separate estimated quality rating on a nominal **1–5** scale alongside the canonical CompressedVQA score when transfer metadata and encoded height are supported. The active selected calibration uses **SDR-only (200 observations)** and **HDR PQ-only (192 observations)** fitting, with separate score normalization and M1 sigmoid + M7 corrections. The SDR model additionally uses a +0.5107733 native-MOS correction; HDR has no post-offset. The historical policy ID remains for protocol compatibility, but the calibration version and coefficient hashes have changed.
+
+These are research-derived estimates, **not viewer-measured MOS or production-certified predictions**. Retrospective SDR54 MAE is 0.2780 after source-held-out correction; HDR35 MAE is 0.6042, worse than the old mixed-data model. Native-rated high-quality HDR MOS ≥4.5 remains unvalidated. This code integration is not production release approval.
+
+For current coefficients, the exact source digest, test protocol and migration details, see [selected CVQA-to-MOS implementation](docs/dev/CVQA_MOS_FINAL_SELECTED_IMPLEMENTATION.md), [v7 transfer-separated calibration](docs/dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md) and [Learned Metrics](docs/LEARNED_METRICS.md). Older reviewed-S1 and mixed-data policy reports remain historical evidence, not current runtime behavior.
+
 ## License
 
 MIT © 2026 Pixop ApS. See [Licensing](docs/LICENSING.md) for third-party and trademark notices.

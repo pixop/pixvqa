@@ -27,6 +27,14 @@ def stdout_to_stderr():
         os.close(saved)
 
 
+def _protocol_token(value: str) -> str:
+    """Emit a simple unquoted protocol token (status enums, device names)."""
+    text = str(value)
+    if not text or any(ch.isspace() for ch in text):
+        raise ValueError(f"invalid protocol token {value!r}")
+    return text
+
+
 def protocol_lines(record: dict, output_json) -> list[str]:
     sampling = record["sampling"]
     temporal = record["temporal"]
@@ -34,11 +42,23 @@ def protocol_lines(record: dict, output_json) -> list[str]:
     def known(value):
         return "unknown" if value is None else repr(value)
 
+    mos = record.get("mos_calibration") or {}
+    mos_value = record.get("mos_calibrated_cvqa")
+    mos_status = mos.get("status", "unavailable")
+    mos_policy = mos.get("mos_policy")
+    mos_display = mos_value if mos_value is not None else "unavailable"
     lines = [
         "pixvqa-protocol 1",
         "pixvqa-value metric cvqa-hdr-nr",
         f"pixvqa-value quality_score {record['quality_score']!r}",
         f"pixvqa-value raw_model_score {record['raw_model_score']!r}",
+        f"pixvqa-value mos_calibration_status {_protocol_token(mos_status)}",
+        f"pixvqa-value mos_calibrated_cvqa "
+        f"{_protocol_token(mos_display) if isinstance(mos_display, str) else mos_display!r}",
+    ]
+    if mos_policy:
+        lines.append(f"pixvqa-value mos_policy {_protocol_token(str(mos_policy))}")
+    lines.extend([
         f"pixvqa-value sampled_frames {sampling['sampled_frames']}",
         f"pixvqa-value opencv_frame_count {sampling['opencv_frame_count']}",
         f"pixvqa-value opencv_fps {sampling['opencv_fps']!r}",
@@ -51,7 +71,7 @@ def protocol_lines(record: dict, output_json) -> list[str]:
         f"pixvqa-value device {record['device']}",
         f"pixvqa-value device_requested {record.get('device_requested', record['device'])}",
         f"pixvqa-value output_json {output_json if output_json else 'none'}",
-    ]
+    ])
     for sample in temporal["samples"]:
         lines.append(
             f"pixvqa-sample {sample['index']} {sample['frame_index']} {sample['time_seconds']!r} "
@@ -116,23 +136,27 @@ def main(argv=None) -> int:
         print("pixvqa-check ok")
         return 0
     output_json = None if args.transient_output else args.output_json
+    mos = record.get("mos_calibration") or {}
+    mos_value = record.get("mos_calibrated_cvqa")
+    mos_status = mos.get("status", "unavailable")
     if args.protocol == "lines":
         print("\n".join(protocol_lines(record, output_json)))
         return 0
-    print(
-        json.dumps(
-            {
-                "metric": record["metric"],
-                "quality_score": record["quality_score"],
-                "raw_model_score": record["raw_model_score"],
-                "sampled_frames": record["sampling"]["sampled_frames"],
-                "device": record["device"],
-                "device_requested": record.get("device_requested", record["device"]),
-                "output_json": output_json,
-            },
-            separators=(",", ":"),
-        )
-    )
+    summary = {
+        "metric": record["metric"],
+        "quality_score": record["quality_score"],
+        "raw_model_score": record["raw_model_score"],
+        "sampled_frames": record["sampling"]["sampled_frames"],
+        "device": record["device"],
+        "device_requested": record.get("device_requested", record["device"]),
+        "output_json": output_json,
+        "mos_calibration_status": mos_status,
+    }
+    if mos_value is not None:
+        summary["mos_calibrated_cvqa"] = mos_value
+    if mos.get("mos_policy"):
+        summary["mos_policy"] = mos["mos_policy"]
+    print(json.dumps(summary, separators=(",", ":")))
     return 0
 
 

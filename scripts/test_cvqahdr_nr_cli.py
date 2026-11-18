@@ -36,7 +36,11 @@ def test_sampling_plan() -> None:
     plan = sampling_plan(60, 24)
     if plan["sampled_frames"] != 2 or plan["tail_frames"] != 12:
         raise SystemExit(f"sampling-boundary: {plan}")
-    for frames, needle in ((50, "at least"), (100, "sampling-buffer")):
+    # 1.0 s at 60 fps requires two complete 60-frame intervals. A clip
+    # shorter than one interval and a clip with only one complete interval
+    # must both fail preflight; the latter reports an NR sampling buffer error.
+    for frames, needle in ((50, "at least"), (60, "sampling buffer"),
+                           (100, "sampling buffer"), (119, "sampling buffer")):
         try:
             sampling_plan(frames, 60)
         except AdapterError as exc:
@@ -44,6 +48,10 @@ def test_sampling_plan() -> None:
                 raise
         else:
             raise SystemExit(f"sampling-{frames}: accepted unsafe input")
+    # Exactly 120 frames is the minimum safe two-interval input.
+    boundary = sampling_plan(120, 60)
+    if boundary["sampled_frames"] != 2 or boundary["tail_frames"] != 0:
+        raise SystemExit(f"sampling-minimum-valid: {boundary}")
     print("OK   sampling-plan")
 
 
@@ -60,7 +68,10 @@ def main() -> int:
                 "required by full-reference metrics: cvvdp")
     expect_fail("reference-ignored", [*base, "-r", "reference.mp4"], "ignoring -r reference.mp4")
     expect_fail("raw-extension-rejected", [*base, "-t", "distorted.yuv"], "raw YUV")
-    expect_fail("raw-options-rejected", [*base, "-s", "1920x1080"], "incompatible")
+    # Raw-video geometry options are intentionally ignored for compressed NR input;
+    # the command still fails below because required model assets are absent.
+    expect_fail("raw-options-ignored", [*base, "-s", "1920x1080"],
+                "ignoring supplied raw-video options")
     frames_result = run([*base, "--frames", "7"])
     if frames_result.returncode != 2 or "--cvqahdr-repo" not in frames_result.stderr:
         raise SystemExit(f"frames-before-assets: {frames_result.stderr}")
@@ -73,7 +84,7 @@ def main() -> int:
     expect_fail("missing-interpreter", [
         *base, "--cvqahdr-python", "/no/such/python", "--cvqahdr-repo", "repo",
         "--cvqahdr-checkpoint", "checkpoint", "--cvqahdr-profile", "profile",
-    ], "could not execute CVQA-HDR-NR interpreter")
+    ], "CVQA-HDR-NR backend exited 127")
 
     with tempfile.TemporaryDirectory() as tmp:
         package = Path(tmp) / "pixvqa_cvqahdr"

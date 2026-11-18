@@ -463,8 +463,11 @@ def verbosity_cases(s: Suite) -> None:
         if made.returncode != 0:
             print(f"SKIP pq -v cases (ffmpeg: {made.stderr.strip()[-120:]})")
         else:
+            # PQ is a native-only metric here. Forwarding CVVDP/NR-specific
+            # options without selecting those learned metrics is correctly
+            # rejected by the CLI, so do not pass them to this native test.
             pq_run = ["--metrics", "pq", "-r", str(s.hd_ref), "-t", str(dist),
-                      "-s", "1920x1080", "-f", "420p:10", "--fps", "60", *s.cvvdp(), *s.nr()]
+                      "-s", "1920x1080", "-f", "420p:10", "--fps", "60"]
             proc = s.run([*pq_run, "-v", "1"], binary=DECODE_BIN)
             if expect("pq-v1", proc, 0, stdout_needles=["Summary:", "[ PSNR"]):
                 frames = [m for m in re.finditer(r"^\d+\s*:", proc.stdout, re.M)]
