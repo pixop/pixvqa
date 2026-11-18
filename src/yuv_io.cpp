@@ -41,10 +41,12 @@ bool YuvReader::open(const std::string& path, const VideoFormat& fmt) {
   if (fmt_.bit_depth != 8 && fmt_.bit_depth != 10) {
     throw std::runtime_error("only 8-bit and 10-bit planar little-endian is supported in this build");
   }
-  if (fmt_.width % 2 != 0 || fmt_.height % 2 != 0) {
-    if (fmt_.chroma == ChromaFormat::YUV420) {
-      throw std::runtime_error("4:2:0 requires even width and height");
-    }
+  if (fmt_.chroma == ChromaFormat::YUV420 &&
+      (fmt_.width % 2 != 0 || fmt_.height % 2 != 0)) {
+    throw std::runtime_error("4:2:0 requires even width and height");
+  }
+  if (fmt_.chroma == ChromaFormat::YUV422 && fmt_.width % 2 != 0) {
+    throw std::runtime_error("4:2:2 requires even width");
   }
   fp_ = std::fopen(path.c_str(), "rb");
   if (!fp_) {

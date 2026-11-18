@@ -50,7 +50,7 @@ if [[ -n "${DAV1D_LIB:-}" ]]; then
   LDFLAGS+=" -L$DAV1D_LIB -Wl,--disable-new-dtags,-rpath,$DAV1D_LIB -Wl,-rpath-link,$DAV1D_LIB"
 fi
 srcs=(src/yuv_io.cpp src/psnr.cpp src/ssim_ref.cpp src/msssim.cpp
-      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/pu21.cpp src/decode.cpp src/metric_resolve.cpp)
+      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/ref_rgb_gamut_clamp.cpp src/pu21.cpp src/decode.cpp src/metric_resolve.cpp)
 if [[ "$PIXVQA_HAS_VMAF" == "1" ]]; then
   echo "libvmaf: enabled (CPU VMAF)"
   CXXFLAGS+=" -DPIXVQA_HAS_VMAF=1 $PIXVQA_VMAF_CFLAGS"
@@ -121,7 +121,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
     -DPIXVQA_HAS_CUDA=1 -DPIXVQA_HAS_FFMPEG=1 -DPIXVQA_HAS_NVDEC=1 \
     -c src/decode.cpp -o "$FULL/decode.o"
   echo "CXX hdr/pu21/ssim/msssim (CUDA link)"
-  for src in hdr.cpp pu21.cpp ssim_ref.cpp msssim.cpp; do
+  for src in hdr.cpp ref_rgb_gamut_clamp.cpp pu21.cpp ssim_ref.cpp msssim.cpp; do
     $DEC_CXX -O3 -Wall -Wextra -std=c++17 -Iinclude -pthread -march=native \
       -DPIXVQA_HAS_CUDA=1 -c "src/$src" -o "build/cuda/${src%.cpp}.o"
   done
@@ -133,7 +133,7 @@ if [[ -n "${GCC13:-}" && -n "${CUDA_HOME:-}" && -x "$CUDA_HOME/bin/nvcc" ]]; the
   FULL_CXXFLAGS="-O3 -Wall -Wextra -std=c++17 -Iinclude -I$FFMPEG_PREFIX/include -I$CUDA_HOME/include -I$CUDA_HOME/targets/x86_64-linux/include -pthread -march=native -DPIXVQA_HAS_CUDA=1 -DPIXVQA_HAS_FFMPEG=1 -DPIXVQA_HAS_NVDEC=1"
   FULL_OBJS=(build/cuda/yuv_io.o build/cuda/psnr.o build/cuda/ssim_ref.o
              build/cuda/msssim.o build/cuda/thread_pool.o build/cuda/xpsnr.o build/cuda/hdr.o
-             build/cuda/pu21.o "$FULL/metric_resolve.o"
+             build/cuda/ref_rgb_gamut_clamp.o build/cuda/pu21.o "$FULL/metric_resolve.o"
              build/cuda/ssim_simd.o build/cuda/msssim_avx2.o
              build/cuda/cuda_metrics.o build/cuda/cuda_pu21.o "$FULL/decode.o")
   if [[ -z "${PIXVQA_LIBCUDA_DIR:-}" ]]; then

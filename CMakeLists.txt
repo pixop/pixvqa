@@ -18,6 +18,7 @@ add_library(pixvqa_core
   src/thread_pool.cpp
   src/xpsnr.cpp
   src/hdr.cpp
+  src/ref_rgb_gamut_clamp.cpp
   src/pu21.cpp
   src/metric_resolve.cpp
 )

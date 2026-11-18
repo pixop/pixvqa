@@ -3,6 +3,8 @@
 #include "pixvqa/hdr.hpp"
 #include "pixvqa/psnr.hpp"
 #include "pixvqa/pu21.hpp"
+#include "pixvqa/ref_rgb_gamut_clamp.hpp"
+#include "pixvqa/yuv_io.hpp"
 #include "pixvqa/ssim.hpp"
 #include "pixvqa/thread_pool.hpp"
 #include "pixvqa/msssim.hpp"
@@ -12,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <initializer_list>
 #include <limits>
 #include <stdexcept>
@@ -678,6 +681,255 @@ int main() {
           fail("cl_codes_white_chroma_center");
       }
       std::printf("OK   cl_analytical_vectors_pq_hlg_full_limited\n");
+    }
+
+    {
+      int y = 0, cb = 0, cr = 0;
+      if (!hdr_nominal_to_codes(10, HdrRange::Limited, 1.0, 0.0, 0.0, y, cb, cr) || y != 940 ||
+          cb != 512 || cr != 512)
+        fail("ref_gamut_codes_white_10_limited");
+      else std::printf("OK   ref_gamut_codes_white_10_limited\n");
+    }
+
+    {
+      VideoFormat fmt_an;
+      fmt_an.width = 1;
+      fmt_an.height = 1;
+      fmt_an.bit_depth = 10;
+      fmt_an.chroma = ChromaFormat::YUV444;
+      const struct { const char* name; HdrMatrix m; bool smpte240; int ey, eu, ev; } rows[] = {
+          {"bt2020nc", HdrMatrix::Bt2020Ncl, false, 113, 485, 478},
+          {"bt709", HdrMatrix::Bt709, false, 123, 480, 474},
+          {"bt601", HdrMatrix::Bt601, false, 152, 461, 447},
+          {"smpte240m", HdrMatrix::Other, true, 134, 473, 467},
+      };
+      for (const auto& row : rows) {
+        Frame extreme;
+        extreme.allocate(fmt_an);
+        extreme.y.storage[0] = 64;
+        extreme.u.storage[0] = 64;
+        extreme.v.storage[0] = 512;
+        RefRgbGamutClampConfig acfg{};
+        acfg.range = HdrRange::Limited;
+        acfg.matrix = row.m;
+        acfg.smpte240m = row.smpte240;
+        if (!ref_gamut_clamp_frame(extreme, fmt_an, acfg).empty() ||
+            extreme.y.storage[0] != static_cast<uint16_t>(row.ey) ||
+            extreme.u.storage[0] != static_cast<uint16_t>(row.eu) ||
+            extreme.v.storage[0] != static_cast<uint16_t>(row.ev)) {
+          std::fprintf(stderr, "FAIL ref_gamut_analytic_%s y=%u u=%u v=%u expect %d,%d,%d\n", row.name,
+                       extreme.y.storage[0], extreme.u.storage[0], extreme.v.storage[0], row.ey,
+                       row.eu, row.ev);
+          ++g_fail;
+        } else {
+          std::printf("OK   ref_gamut_analytic_%s\n", row.name);
+        }
+      }
+    }
+
+    VideoFormat fmt1;
+    fmt1.width = 1;
+    fmt1.height = 1;
+    fmt1.bit_depth = 10;
+    fmt1.chroma = ChromaFormat::YUV444;
+    Frame in_gamut;
+    Frame out_gamut;
+    in_gamut.allocate(fmt1);
+    out_gamut.allocate(fmt1);
+    in_gamut.y.storage[0] = 512;
+    in_gamut.u.storage[0] = 512;
+    in_gamut.v.storage[0] = 512;
+    out_gamut = in_gamut;
+    RefRgbGamutClampConfig cfg{};
+    cfg.matrix = HdrMatrix::Bt709;
+    cfg.range = HdrRange::Full;
+    cfg.chroma_loc = HdrChromaLoc::Left;
+    if (!ref_gamut_clamp_frame(out_gamut, fmt1, cfg).empty() ||
+        out_gamut.y.storage[0] != in_gamut.y.storage[0] ||
+        out_gamut.u.storage[0] != in_gamut.u.storage[0] ||
+        out_gamut.v.storage[0] != in_gamut.v.storage[0])
+      fail("ref_gamut_identity_full_444");
+    else std::printf("OK   ref_gamut_identity_full_444\n");
+
+    {
+      VideoFormat fmt420;
+      fmt420.width = 8;
+      fmt420.height = 8;
+      fmt420.bit_depth = 10;
+      fmt420.chroma = ChromaFormat::YUV420;
+      for (HdrChromaLoc loc :
+           {HdrChromaLoc::Left, HdrChromaLoc::Center, HdrChromaLoc::TopLeft}) {
+        for (HdrChromaUp up : {HdrChromaUp::Bilinear, HdrChromaUp::Nearest}) {
+          Frame src;
+          Frame dst;
+          src.allocate(fmt420);
+          dst.allocate(fmt420);
+          std::fill(src.y.storage.begin(), src.y.storage.end(), 502);
+          std::fill(src.v.storage.begin(), src.v.storage.end(), 512);
+          for (int cj = 0; cj < fmt420.chroma_height(); ++cj) {
+            for (int ci = 0; ci < fmt420.chroma_width(); ++ci) {
+              src.u.ptr()[cj * src.u.stride + ci] = ((ci + cj) % 2 == 0) ? 470 : 554;
+            }
+          }
+          dst = src;
+          RefRgbGamutClampConfig sub{};
+          sub.matrix = HdrMatrix::Bt709;
+          sub.range = HdrRange::Limited;
+          sub.chroma_loc = loc;
+          sub.chroma_up = up;
+          if (!ref_gamut_clamp_frame(dst, fmt420, sub).empty() ||
+              dst.y.storage != src.y.storage || dst.u.storage != src.u.storage ||
+              dst.v.storage != src.v.storage) {
+            std::fprintf(stderr, "FAIL ref_gamut_420_checker_identity loc=%d up=%d\n",
+                         static_cast<int>(loc), static_cast<int>(up));
+            ++g_fail;
+          } else {
+            std::printf("OK   ref_gamut_420_checker_identity loc=%s up=%s\n",
+                        hdr_chroma_loc_name(loc), hdr_chroma_up_name(up));
+          }
+        }
+      }
+    }
+
+    {
+      VideoFormat fmt2;
+      fmt2.width = 2;
+      fmt2.height = 2;
+      fmt2.bit_depth = 10;
+      fmt2.chroma = ChromaFormat::YUV420;
+      Frame dark;
+      dark.allocate(fmt2);
+      const uint16_t yvals[4] = {64, 502, 502, 502};
+      for (int i = 0; i < 4; ++i) dark.y.storage[static_cast<size_t>(i)] = yvals[i];
+      dark.u.storage[0] = 300;
+      dark.v.storage[0] = 512;
+      Frame oracle = dark;
+      RefRgbGamutClampConfig clip_cfg{};
+      clip_cfg.matrix = HdrMatrix::Bt709;
+      clip_cfg.range = HdrRange::Limited;
+      clip_cfg.chroma_loc = HdrChromaLoc::Left;
+      for (HdrChromaUp up : {HdrChromaUp::Bilinear, HdrChromaUp::Nearest}) {
+        Frame trial = dark;
+        clip_cfg.chroma_up = up;
+        if (!ref_gamut_clamp_frame(trial, fmt2, clip_cfg).empty()) fail("ref_gamut_420_partial_clip_run");
+        const int expect_u = 349;
+        if (trial.u.storage[0] < expect_u - 2 || trial.u.storage[0] > expect_u + 2) {
+          std::fprintf(stderr, "FAIL ref_gamut_420_partial_cb up=%s got=%u expect~%d\n",
+                       hdr_chroma_up_name(up), trial.u.storage[0], expect_u);
+          ++g_fail;
+        } else if (trial.u.storage[0] > 460) {
+          fail("ref_gamut_420_partial_cb_4x_bug");
+        } else {
+          std::printf("OK   ref_gamut_420_partial_cb up=%s u=%u\n", hdr_chroma_up_name(up),
+                      trial.u.storage[0]);
+        }
+      }
+      Frame trial = oracle;
+      clip_cfg.chroma_up = HdrChromaUp::Bilinear;
+      if (!ref_gamut_clamp_frame(trial, fmt2, clip_cfg).empty()) fail("ref_gamut_420_partial_apply");
+      if (trial.y.storage[1] != oracle.y.storage[1] || trial.y.storage[2] != oracle.y.storage[2] ||
+          trial.y.storage[3] != oracle.y.storage[3])
+        fail("ref_gamut_420_partial_unclamped_luma");
+      else std::printf("OK   ref_gamut_420_partial_unclamped_luma\n");
+    }
+
+    Frame clip_in;
+    Frame clip_out;
+    clip_in.allocate(fmt1);
+    clip_out.allocate(fmt1);
+    clip_in.y.storage[0] = 512;
+    clip_in.u.storage[0] = 512;
+    clip_in.v.storage[0] = 1023;
+    clip_out = clip_in;
+    cfg.range = HdrRange::Full;
+    cfg.matrix = HdrMatrix::Bt709;
+    if (!ref_gamut_clamp_frame(clip_out, fmt1, cfg).empty()) fail("ref_gamut_clip_run");
+    PsnrFrame exact =
+        compute_psnr_frame(clip_out, clip_in, fmt1, static_cast<double>((1 << 10) - 1));
+    if (exact.psnr.y >= 1e6) fail("ref_gamut_clip_changed_sample");
+    Frame self = clip_out;
+    if (!ref_gamut_clamp_frame(self, fmt1, cfg).empty()) fail("ref_gamut_idempotent_run");
+    PsnrFrame idem = compute_psnr_frame(self, clip_out, fmt1, static_cast<double>((1 << 10) - 1));
+    if (!std::isinf(idem.psnr.y)) fail("ref_gamut_idempotent");
+    else std::printf("OK   ref_gamut_clip_and_idempotent\n");
+
+    {
+      VideoFormat bad422;
+      bad422.width = 1;
+      bad422.height = 2;
+      bad422.bit_depth = 10;
+      bad422.chroma = ChromaFormat::YUV422;
+      Frame fr;
+      fr.allocate(bad422);
+      RefRgbGamutClampConfig gcfg{};
+      gcfg.matrix = HdrMatrix::Bt709;
+      gcfg.range = HdrRange::Limited;
+      const std::string err = ref_gamut_clamp_frame(fr, bad422, gcfg);
+      if (err != "422p requires even width") fail("ref_gamut_reject_odd_422w");
+      else std::printf("OK   ref_gamut_reject_odd_422w\n");
+    }
+    {
+      VideoFormat bad420;
+      bad420.width = 3;
+      bad420.height = 2;
+      bad420.bit_depth = 10;
+      bad420.chroma = ChromaFormat::YUV420;
+      Frame fr;
+      fr.allocate(bad420);
+      RefRgbGamutClampConfig gcfg{};
+      gcfg.matrix = HdrMatrix::Bt709;
+      gcfg.range = HdrRange::Limited;
+      const std::string err = ref_gamut_clamp_frame(fr, bad420, gcfg);
+      if (err != "420p requires even width and height") fail("ref_gamut_reject_odd_420");
+      else std::printf("OK   ref_gamut_reject_odd_420\n");
+    }
+    {
+      VideoFormat fmt1x1;
+      fmt1x1.width = 1;
+      fmt1x1.height = 1;
+      fmt1x1.bit_depth = 10;
+      fmt1x1.chroma = ChromaFormat::YUV444;
+      Frame empty;
+      RefRgbGamutClampConfig gcfg{};
+      gcfg.matrix = HdrMatrix::Bt709;
+      gcfg.range = HdrRange::Full;
+      const std::string err = ref_gamut_clamp_frame(empty, fmt1x1, gcfg);
+      if (err != "luma plane geometry mismatch" && err != "luma plane buffer too small") {
+        fail("ref_gamut_reject_empty_frame_buffers");
+      } else {
+        std::printf("OK   ref_gamut_reject_empty_frame_buffers\n");
+      }
+    }
+
+    {
+      const auto expect_open_fail = [&](const char* name, const VideoFormat& fmt,
+                                        const char* needle) {
+        YuvReader rd;
+        try {
+          (void)rd.open("/dev/null", fmt);
+          std::fprintf(stderr, "FAIL %s: expected open error\n", name);
+          ++g_fail;
+        } catch (const std::runtime_error& e) {
+          if (std::strstr(e.what(), needle) == nullptr) {
+            std::fprintf(stderr, "FAIL %s: %s\n", name, e.what());
+            ++g_fail;
+          } else {
+            std::printf("OK   %s\n", name);
+          }
+        }
+      };
+      VideoFormat odd422;
+      odd422.width = 1;
+      odd422.height = 2;
+      odd422.bit_depth = 10;
+      odd422.chroma = ChromaFormat::YUV422;
+      expect_open_fail("yuv_open_reject_422_odd_w", odd422, "4:2:2 requires even width");
+      VideoFormat odd420;
+      odd420.width = 3;
+      odd420.height = 2;
+      odd420.bit_depth = 10;
+      odd420.chroma = ChromaFormat::YUV420;
+      expect_open_fail("yuv_open_reject_420_odd", odd420, "4:2:0 requires even width and height");
     }
 
     VideoFormat fmt444;

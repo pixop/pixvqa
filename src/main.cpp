@@ -4,6 +4,7 @@
 #include "pixvqa/metric_resolve.hpp"
 #include "pixvqa/psnr.hpp"
 #include "pixvqa/pu21.hpp"
+#include "pixvqa/ref_rgb_gamut_clamp.hpp"
 #include "pixvqa/qcs.hpp"
 #include "pixvqa/msssim.hpp"
 #include "pixvqa/ssim.hpp"
@@ -302,6 +303,9 @@ void usage(const char* argv0) {
       "Execution and display\n"
       "  --device auto|cpu|gpu  Per-metric GPU preference with auto; VMAF uses CPU.\n"
       "  --decode auto|cpu|gpu  Independent decode selection; gpu requires NVDEC.\n"
+      "  --reference-rgb-gamut-clamp  Clamp reference R'G'B' to [0,1] before FR metrics.\n"
+      "  --reference-matrix M       Matrix for clamp (required for raw); see --help-advanced.\n"
+      "  --reference-range limited|full  YUV range for clamp (required for raw).\n"
       "  --hdr-transfer auto|pq|hlg|sdr|linear  HDR/SDR transfer interpretation.\n"
       "  --cvvdp-display NAME  Override display (SDR: standard_fhd; PQ: standard_hdr_pq; HLG: standard_hdr_hlg).\n"
       "  --cvvdp-gpu-mem GB   Optional CVVDP GPU memory budget (decimal GB).\n"
@@ -355,6 +359,12 @@ void print_help_advanced() {
       "  --cvqa-nr-chunk-size-sec N  Video seconds per GPU inference chunk (default 8).\n"
       "  --scheduler-admission  Opt-in global metric resource admission (PIXVQA_SCHEDULER_ADMISSION).\n"
       "  Options override config defaults; see docs/LEARNED_METRICS.md.\n"
+      "\n"
+      "Reference RGB gamut clamp (docs/REFERENCE_RGB_GAMUT_CLAMP.md)\n"
+      "  --reference-rgb-gamut-clamp  In-place reference YUV normalize (FR metrics only).\n"
+      "  --reference-matrix bt709|bt2020nc|bt601|smpte170m|bt470bg|smpte240m\n"
+      "  --reference-range limited|full\n"
+      "  Chroma upsample matches PU21 (--hdr-chroma-loc/up). BT.2020 CL is rejected.\n"
       "\n"
       "Advanced HDR settings\n"
       "  --hdr-primaries, --hdr-matrix, --hdr-range, --hdr-chroma-loc,\n"
@@ -4021,6 +4031,27 @@ int run_cli(int argc, char** argv) {
         opt.dist_color_space = v;
         opt.dist_color_set = true;
       }
+    } else if (a == "--reference-rgb-gamut-clamp") {
+      opt.reference_rgb_gamut_clamp = true;
+    } else if (a == "--reference-matrix") {
+      RefRgbGamutClampConfig probe{};
+      const std::string v = need("--reference-matrix");
+      if (!ref_parse_gamut_matrix_token(v, probe)) {
+        std::fprintf(stderr,
+                     "pixvqa: --reference-matrix expects bt709, bt2020nc, bt601, smpte170m, "
+                     "bt470bg, or smpte240m (not bt2020c)\n");
+        return 2;
+      }
+      opt.ref_gamut_smpte240m = probe.smpte240m;
+      opt.ref_gamut_matrix = probe.matrix;
+      opt.ref_gamut_matrix_set = true;
+    } else if (a == "--reference-range") {
+      const std::string v = need("--reference-range");
+      if (!hdr_parse_range_token(v, opt.ref_gamut_range)) {
+        std::fprintf(stderr, "pixvqa: --reference-range expects limited or full\n");
+        return 2;
+      }
+      opt.ref_gamut_range_set = true;
     } else if (a == "--hlg-peak") {
       const auto v = need("--hlg-peak");
       char* end = nullptr;
@@ -4073,6 +4104,27 @@ int run_cli(int argc, char** argv) {
                        hdr_chipqa.selected;
   const int learned_count = (cvvdp.selected ? 1 : 0) + (cvqahdr.selected ? 1 : 0) +
                             (simplevqa.selected ? 1 : 0) + (hdr_chipqa.selected ? 1 : 0);
+  if (opt.reference_rgb_gamut_clamp && !opt.ref_path.empty() && cvvdp.selected) {
+    std::fprintf(stderr,
+                 "pixvqa: --reference-rgb-gamut-clamp is not supported with cvvdp "
+                 "(compare with native metrics, or run cvvdp without the clamp)\n");
+    return 2;
+  }
+  if ((opt.ref_gamut_matrix_set || opt.ref_gamut_range_set) && !opt.reference_rgb_gamut_clamp) {
+    std::fprintf(stderr,
+                 "pixvqa: --reference-matrix/--reference-range require --reference-rgb-gamut-clamp\n");
+    return 2;
+  }
+  {
+    const std::vector<const MetricCaps*> caps =
+        selected_metric_caps(opt, cvvdp, cvqahdr, simplevqa, hdr_chipqa);
+    if (opt.reference_rgb_gamut_clamp && join_metric_names(caps, true).empty()) {
+      std::fprintf(stderr,
+                   "pixvqa: --reference-rgb-gamut-clamp requires a full-reference metric in "
+                   "--metrics (it does not apply to no-reference metrics)\n");
+      return 2;
+    }
+  }
   if (cvvdp.options_seen && !cvvdp.selected) {
     std::fprintf(stderr, "pixvqa: --cvvdp-* options require --metrics cvvdp\n");
     return 2;
@@ -4411,6 +4463,18 @@ int run_cli(int argc, char** argv) {
     print_input_summary(opt, ref_meta, dist_meta);
     std::fflush(stdout);
 
+    RefRgbGamutClampConfig ref_gamut_cfg{};
+    if (opt.reference_rgb_gamut_clamp) {
+      const bool ref_raw = opt.ref_decode == DecodeMode::Raw;
+      const std::string gamut_err =
+          ref_gamut_clamp_resolve(opt, ref_raw, ref_meta, ref_gamut_cfg);
+      if (!gamut_err.empty()) {
+        std::fprintf(stderr, "pixvqa: %s\n", gamut_err.c_str());
+        return 2;
+      }
+      std::printf("%s\n\n", ref_gamut_clamp_summary(ref_gamut_cfg).c_str());
+    }
+
     Frame ref_fr, test_fr;
     double sum_mse_y = 0, sum_mse_u = 0, sum_mse_v = 0;
     PlaneScore sum_ssim{}, sum_msssim{};
@@ -4525,6 +4589,13 @@ int run_cli(int argc, char** argv) {
                        "pixvqa: warning: reference/test lengths differ; "
                        "evaluating %d common frames\n", nframes);
         break;
+      }
+      if (opt.reference_rgb_gamut_clamp) {
+        const std::string clamp_err = ref_gamut_clamp_frame(ref_fr, opt.format, ref_gamut_cfg);
+        if (!clamp_err.empty()) {
+          std::fprintf(stderr, "pixvqa: reference RGB gamut clamp: %s\n", clamp_err.c_str());
+          return 2;
+        }
       }
       if (!hdr_reported) {
         HdrSide ref_meta;

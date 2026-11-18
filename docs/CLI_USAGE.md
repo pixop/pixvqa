@@ -127,6 +127,8 @@ Common options are listed below. For less frequently used backend, HDR, and comp
 | `--model PATH\|auto` | VMAF model; default `auto`. Explicit model overrides selection. |
 | `--hdr-transfer auto\|pq\|hlg\|sdr\|linear` | Transfer interpretation; default `auto`. |
 | `--hdr-primaries`, `--hdr-matrix`, `--hdr-range` | Color interpretation overrides; values in `--help-hdr`. |
+| `--reference-rgb-gamut-clamp` | Opt-in reference-only R′G′B′ gamut clamp (see [REFERENCE_RGB_GAMUT_CLAMP.md](REFERENCE_RGB_GAMUT_CLAMP.md)). |
+| `--reference-matrix`, `--reference-range` | Matrix/range for the clamp; required for raw YUV. |
 | `--hdr-chroma-loc`, `--hdr-chroma-up`, `--hdr-peak-nits`, `--hdr-black-nits`, `--hdr-hlg-gamma` | Optional HDR/display settings; values in `--help-hdr`. |
 | `--cvvdp-interpretation sdr\|pq\|hlg`, `--cvvdp-display NAME` | CVVDP interpretation/display; otherwise resolved where possible from group, options and metadata. |
 | `--cvvdp-gpu-mem GB` | Optional positive CUDA memory budget (decimal GB). |
