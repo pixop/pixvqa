@@ -166,4 +166,14 @@ bool hdr_codes_to_nominal(int bit_depth, HdrRange range, double y, double cb, do
 bool hdr_codes_to_nominal(int bit_depth, HdrRange range, int y, int cb, int cr, double& yn,
                           double& cb_n, double& cr_n);
 
+// Nonlinear R'G'B' in [0, 1] and centered Cb/Cr nominally in about [-0.5, 0.5].
+void hdr_nominal_ycbcr_to_rgb(double kr, double kg, double kb, double y, double cb, double cr,
+                              double& r, double& g, double& b);
+void hdr_nominal_rgb_to_ycbcr(double kr, double kg, double kb, double r, double g, double b,
+                              double& y, double& cb, double& cr);
+
+// Quantize nominal components to integer codes with standard limited/full scaling.
+bool hdr_nominal_to_codes(int bit_depth, HdrRange range, double yn, double cbn, double crn,
+                          int& y, int& cb, int& cr);
+
 }  // namespace pixvqa

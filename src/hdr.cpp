@@ -705,6 +705,48 @@ bool hdr_codes_to_nominal(int bit_depth, HdrRange range, int y, int cb, int cr, 
                               static_cast<double>(cr), yn, cb_n, cr_n);
 }
 
+void hdr_nominal_ycbcr_to_rgb(double kr, double kg, double kb, double y, double cb, double cr,
+                              double& r, double& g, double& b) {
+  ycbcr_to_rgb({kr, kg, kb}, y, cb, cr, r, g, b);
+}
+
+void hdr_nominal_rgb_to_ycbcr(double kr, double kg, double kb, double r, double g, double b,
+                              double& y, double& cb, double& cr) {
+  y = kr * r + kg * g + kb * b;
+  cb = (b - y) / (2.0 * (1.0 - kb));
+  cr = (r - y) / (2.0 * (1.0 - kr));
+}
+
+bool hdr_nominal_to_codes(int bit_depth, HdrRange range, double yn, double cbn, double crn, int& y,
+                          int& cb, int& cr) {
+  if (bit_depth < 8 || bit_depth > 16) return false;
+  const double maxv = static_cast<double>((1 << bit_depth) - 1);
+  const double scale = static_cast<double>(1 << (bit_depth - 8));
+  auto clamp_code = [&](double raw, double lo, double hi) {
+    const double v = std::round(raw);
+    if (v < lo) return static_cast<int>(lo);
+    if (v > hi) return static_cast<int>(hi);
+    return static_cast<int>(v);
+  };
+  if (range == HdrRange::Full) {
+    y = clamp_code(yn * maxv, 0.0, maxv);
+    cb = clamp_code((cbn + 0.5) * maxv, 0.0, maxv);
+    cr = clamp_code((crn + 0.5) * maxv, 0.0, maxv);
+    return true;
+  }
+  if (range == HdrRange::Limited) {
+    const double y_lo = 16.0 * scale;
+    const double y_hi = 235.0 * scale;
+    const double c_lo = 16.0 * scale;
+    const double c_hi = 240.0 * scale;
+    y = clamp_code(yn * 219.0 * scale + y_lo, y_lo, y_hi);
+    cb = clamp_code(cbn * 224.0 * scale + 128.0 * scale, c_lo, c_hi);
+    cr = clamp_code(crn * 224.0 * scale + 128.0 * scale, c_lo, c_hi);
+    return true;
+  }
+  return false;
+}
+
 bool hdr_display_rgb(const HdrEffective& cfg, double y, double cb, double cr,
                      double& r_nits, double& g_nits, double& b_nits, bool* gamut_clamped) {
   if (gamut_clamped) *gamut_clamped = false;

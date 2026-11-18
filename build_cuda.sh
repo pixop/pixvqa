@@ -30,7 +30,7 @@ NVCC="${NVCC:-$CUDA_HOME/bin/nvcc}"
 CXXFLAGS="-O3 -Wall -Wextra -std=c++17 -Iinclude -pthread -march=native -DPIXVQA_HAS_CUDA=1"
 LINK_LIBS=""
 srcs=(src/yuv_io.cpp src/psnr.cpp src/ssim_ref.cpp src/msssim.cpp
-      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/pu21.cpp src/metric_resolve.cpp)
+      src/thread_pool.cpp src/xpsnr.cpp src/hdr.cpp src/ref_rgb_gamut_clamp.cpp src/pu21.cpp src/metric_resolve.cpp)
 if [[ "$PIXVQA_HAS_VMAF" == "1" ]]; then
   echo "libvmaf: enabled (CPU VMAF; no CUDA VMAF)"
   CXXFLAGS+=" -DPIXVQA_HAS_VMAF=1 $PIXVQA_VMAF_CFLAGS"

@@ -100,9 +100,10 @@ build/cpu/pixvqa: build/cpu/config.mk build/cpu/main.o $(CPU_LIB_OBJS) $(CPU_SIM
 build/cpu/selftest: build/cpu/config.mk build/cpu/selftest_main.o $(CPU_LIB_OBJS) $(CPU_SIMD_OBJ)
 	$(CPU_CXX) $(CPU_CXXFLAGS) build/cpu/selftest_main.o $(CPU_LIB_OBJS) $(CPU_SIMD_OBJ) -o $@ $(CPU_LINK_LIBS)
 
-test-cpu: build/cpu/selftest
+test-cpu: build/cpu/pixvqa build/cpu/selftest
 	build/cpu/selftest
 	python3 scripts/test_version_resolution.py
+	PIXVQA_BIN=build/cpu/pixvqa python3 scripts/test_reference_rgb_gamut_clamp.py
 
 # --- swdec ---
 
@@ -163,7 +164,7 @@ build/cuda/gcc13_host.stamp: build/cuda/config.mk
 
 CUDA_SIMD_OBJ := build/cuda/ssim_simd.o build/cuda/msssim_avx2.o
 CUDA_NV_OBJ := build/cuda/cuda_metrics.o build/cuda/cuda_pu21.o
-FULL_CUDA_EXTRA_OBJS := build/cuda/hdr.o build/cuda/pu21.o build/cuda/ssim_ref.o build/cuda/msssim.o
+FULL_CUDA_EXTRA_OBJS := build/cuda/hdr.o build/cuda/ref_rgb_gamut_clamp.o build/cuda/pu21.o build/cuda/ssim_ref.o build/cuda/msssim.o
 
 build/cuda/%.o: $(ROOT)/src/%.cpp build/cuda/config.mk | build/cuda
 	$(CUDA_CXX) $(CUDA_CXXFLAGS) $(DEPFLAGS) -c $< -o $@

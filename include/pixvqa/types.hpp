@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pixvqa/hdr.hpp"
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -251,6 +253,14 @@ struct Options {
   DecodeMode ref_decode = DecodeMode::Raw;
   // Opt-in: set PIXVQA_SCHEDULER_ADMISSION for Python learned backends.
   bool scheduler_admission = false;
+  // Reference-only nonlinear R'G'B' gamut clamp before full-reference metrics (see
+  // docs/REFERENCE_RGB_GAMUT_CLAMP.md).
+  bool reference_rgb_gamut_clamp = false;
+  bool ref_gamut_matrix_set = false;
+  HdrMatrix ref_gamut_matrix = HdrMatrix::Unspecified;
+  bool ref_gamut_smpte240m = false;
+  bool ref_gamut_range_set = false;
+  HdrRange ref_gamut_range = HdrRange::Unspecified;
 };
 
 inline double yuv_sample_weight_avg(double y, double u, double v, ChromaFormat fmt) {
