@@ -28,12 +28,12 @@ SELECTED_VD6_CASES = (
     ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_vd6_per_clip.csv"
 )
 LOW_TAIL_RESEARCH_POINTS = (
-    ROOT / "tests/fixtures/mos_calibration/v7_local_c2_minus006_research_points.csv"
+    ROOT / "tests/fixtures/mos_calibration/v7_local_c2_minus008_join565_research_points.csv"
 )
 HISTORICAL_V5_FIXTURE = (
     ROOT / "tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json"
 )
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "dfda6ada8bdb0fbfac5d2dd329c4194f34e8fe21680bbc5e417626c377e32126"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "24fc1811327281cff37f37ece8db129bccada6f9e95252f1db5037fcffa4f899"
 EMBEDDED_COEFFICIENTS_SHA256 = mc.EMBEDDED_COEFFICIENTS_SHA256
 SDR_POST_MOS_OFFSET = 0.5107732905216783
 SDR_SELECTION_LOCK_SHA256 = "f65a19498735f0ce17257079a913f2ece25e9692b56c8392e27ce7d29ae079ee"
@@ -291,7 +291,7 @@ class MosLocalTailTests(unittest.TestCase):
         for height in (1080, 2160):
             original = independent_oracle_predict(anchor, transfer="sdr", encoded_height=height)
             revised = mc.predict_mos(anchor, transfer="sdr", encoded_height=height)
-            self.assertAlmostEqual(original - revised, 0.060, delta=3e-12)
+            self.assertAlmostEqual(original - revised, 0.080, delta=3e-12)
             self.assertEqual(mc.predict_mos(0., transfer="sdr", encoded_height=height), 1.0)
             self.assertEqual(mc.predict_mos(0., transfer="pq", encoded_height=height), 1.0)
 
@@ -335,8 +335,8 @@ class MosLocalTailTests(unittest.TestCase):
 
     def test_local_tail_provenance_and_digest_tamper(self) -> None:
         details = mc.policy_spec()
-        self.assertEqual(details["low_tail"]["sdr_anchor_delta_mos"], 0.060)
-        self.assertEqual(details["low_tail"]["sdr_join_score"], 5.5)
+        self.assertEqual(details["low_tail"]["sdr_anchor_delta_mos"], 0.080)
+        self.assertEqual(details["low_tail"]["sdr_join_score"], 5.65)
         self.assertIn("low_tail", mc._embedded_coefficients_payload())
         self.assertIn("low_tail", mc._coefficients_digest_payload())
         before = mc.predict_mos(2.0, transfer="sdr", encoded_height=1080)

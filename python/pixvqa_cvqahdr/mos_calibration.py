@@ -8,7 +8,7 @@ A source-family-balanced SDR native-MOS post-offset is applied after the M7 stag
 The frozen v7 research source, retained historical v5 fixture and independent new
 oracle are documented in docs/dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md.
 A low-score C2 tail adapter is separately documented in
-docs/dev/CVQA_MOS_V7_LOCAL_TAIL_006.md; original fitted coefficients remain frozen.
+docs/dev/CVQA_MOS_V7_LOCAL_TAIL_008.md; original fitted coefficients remain frozen.
 This is retrospective research calibration, not a measured or certified MOS.
 """
 
@@ -39,7 +39,7 @@ HDR_SELECTION_LOCK_SHA256 = "7882d79f68f62fc06e034c3ed9f518cbdd0940f957b83df344b
 SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256 = "e817ed479079c0e208e8ec0d84aad3b5836606eeb329585d27e2c461c24b8e73"
 OUTPUT_SCALE_LABEL = "estimated perceptual quality 1-5"
 
-CALIBRATION_VERSION = "selected-s1-sdr200-pq192-v7-local-c2-20261119-v4"
+CALIBRATION_VERSION = "selected-s1-sdr200-pq192-v7-local-c2-20261119-v5"
 CALIBRATION_LABEL = "Frozen v7 SDR/PQ M1+M7 plus local C2 low-tail correction"
 WEIGHT_KIND = "transfer_isolated_source_study_balanced_baseline"
 RESEARCH_STATUS = "provisional"
@@ -49,7 +49,7 @@ COEFFICIENT_SOURCE = (
     "CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/data/"
     "PIXVQA_CVQA_to_MOS_Selected_Coefficients_v7_Research.json"
 )
-MANIFEST_ID = "pixvqa_calib_s1_sdr200_pq192_20261119_local_c2_v4"
+MANIFEST_ID = "pixvqa_calib_s1_sdr200_pq192_20261119_local_c2_v5"
 HDR_WEIGHT_LAMBDA = 0.0
 SDR_WEIGHT_LAMBDA = 0.0
 SDR_POST_MOS_OFFSET = 0.5107732905216783
@@ -65,7 +65,7 @@ EVIDENCE_CAVEAT = (
     "against the historic pooled model, and high-native-MOS HDR is unvalidated. "
     "Input CVQA never support-clamped; per-transfer OOD flags warn on extrapolation. "
     "Research-only local C2 endpoint correction sets MOS(0)=1; SDR 4.134 anchor "
-    "is lowered 0.06 MOS and returns to frozen v7 at CVQA 5.5. HDR local C2 "
+    "is lowered 0.08 MOS and returns to frozen v7 at CVQA 5.65. HDR local C2 "
     "joins at CVQA 6.26845. Native low-score MOS remains unvalidated. "
     "Not subjectively certified for production."
 )
@@ -245,7 +245,7 @@ def _coefficients_digest_payload() -> dict[str, Any]:
     }
 
 
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "dfda6ada8bdb0fbfac5d2dd329c4194f34e8fe21680bbc5e417626c377e32126"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "24fc1811327281cff37f37ece8db129bccada6f9e95252f1db5037fcffa4f899"
 
 
 def _embedded_coefficients_payload() -> dict[str, Any]:
@@ -268,7 +268,7 @@ def _embedded_coefficients_payload() -> dict[str, Any]:
     }
 
 
-EMBEDDED_COEFFICIENTS_SHA256 = "e65db32b9764170e5c7f39a0cc798e001e9b55e224494ceba7e039d1235e4830"
+EMBEDDED_COEFFICIENTS_SHA256 = "579be1dde66bc92cc7ce7292a042bac68aaec6e5447408961b73ff1e6f63777a"
 
 
 def _embedded_coefficients_digest() -> str:

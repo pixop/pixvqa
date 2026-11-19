@@ -2,7 +2,7 @@
 
 Research provenance (19 Nov 2026):
 - SDR 1080p/2160p: monotone C2 cubic B-splines with the original v7
-  score=4.134484 anchor lowered by 0.060 MOS; return to v7 at 5.5.
+  score=4.134484 anchor lowered by 0.080 MOS; return to v7 at 5.65.
 - PQ 1080p: two-segment C2 quintic Bezier with a MOS=1 lower plateau.
 - PQ 2160p: two-segment C2 cubic (truncated-power form).
 - No original fitted v7 sigmoid coefficients are changed.
@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from bisect import bisect_right
 
-LOW_TAIL_VERSION = "v7-local-c2-sdr-anchor-minus-006-20261119"
+LOW_TAIL_VERSION = "v7-local-c2-sdr-anchor-minus-008-join565-20261119"
 RESEARCH_DELIVERABLE = (
     "perceptual_optimization/calibration/production_readiness_20261113/"
-    "CVQA_MOS_V7_SDR_ANCHOR_REFINEMENT_20261119"
+    "CVQA_MOS_V7_SDR_ANCHOR_JOIN565_20261119"
 )
 HDR_RESEARCH_DELIVERABLE = (
     "perceptual_optimization/calibration/production_readiness_20261113/"
@@ -27,25 +27,23 @@ HDR_RESEARCH_DELIVERABLE = (
 )
 
 SDR_ANCHOR_SCORE = 4.1344840888613135
-SDR_ANCHOR_DELTA_MOS = 0.060
-SDR_JOIN_SCORE = 5.5
+SDR_ANCHOR_DELTA_MOS = 0.080
+SDR_JOIN_SCORE = 5.65
 PQ_JOIN_SCORE = 6.268450107554486
 
 # Simple interior knots imply C2 continuity for a cubic. The second knot
 # explicitly passes through the corrected SDR anchor.
 _SDR_KNOTS = (
-    0.0, 0.0, 0.0, 0.0, 0.675, 0.7517243797929661, 1.0, 1.0, 1.0, 1.0,
+    0.0, 0.0, 0.0, 0.0, 0.6625, 0.7317670953736838, 1.0, 1.0, 1.0, 1.0,
 )
 _SDR_CONTROLS: dict[int, tuple[float, ...]] = {
     1080: (
-        1.0, 1.071203626442647, 1.173213802685994,
-        1.6078430559583194, 1.6658847855895467, 1.7599549658046365,
-    ),
-    2160: (
-        1.0, 1.1125779034496566, 1.2586489707487993,
-        1.6932782240211297, 1.7513199536523565, 1.845390133867446,
-    ),
-}
+        1.0, 1.0354875286536471, 1.1105919075127142,
+        1.6131456493015845, 1.6756790169278577, 1.7928154840710848,
+    ),    2160: (
+        1.0, 1.0772723415153433, 1.1960270755755236,
+        1.6985808173643928, 1.7611141849906664, 1.8782506521338933,
+    ),}
 
 _PQ_1080_SPLIT = 0.575
 _PQ_1080_RIGHT_CONTROLS = (
