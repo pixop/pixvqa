@@ -1,5 +1,7 @@
 # CVQA-to-estimated-MOS calibration: transfer-separated models (16 November 2026)
 
+> **Feature-branch extension (19 November 2026):** The original fitted v7 coefficients and historical evidence described here remain frozen. A selected **−0.060 MOS SDR low-anchor correction**, together with the previously selected HDR PQ C² lower tails, is implemented **only** on feature branch [feature/cvqa-mos-v7-local-tail-006](https://github.com/pixop/pixvqa/tree/feature/cvqa-mos-v7-local-tail-006). For the newly effective below-support mapping, comparison figures and limitations, see [v7 localized C² tail](CVQA_MOS_V7_LOCAL_TAIL_006.md). Nothing was merged to main.
+
 ## Purpose and change
 
 This change updates the **selected automatic CVQA-to-estimated-MOS calibration** in PixVQA to the new transfer-separated research fits. The canonical CompressedVQA clip score remains untouched. The calibration still uses the same sigmoid (M1), resolution/transfer correction (M7), final MOS clipping to [1,5], metadata gating and upstream checkpoint/profile pinning.
