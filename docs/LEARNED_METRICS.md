@@ -126,6 +126,8 @@ Estimated MOS (input CVQA is never clipped):
 | HDR PQ | 1080p | +0.07227164 | 0.82933048 | −0.13103674 |
 | HDR PQ | 2160p | +0.07227164 | 0.82933048 | +0.09786364 |
 
+**Feature-branch mapping (19 November 2026):** On branch **feature/cvqa-mos-v7-local-tail-006**, the formula above describes the **unchanged fitted v7 baseline**. A new separately versioned, monotone local C² tail replaces only its low CVQA extrapolation: SDR joins exact v7 at CVQA **5.65**, with the two SDR CVQA 4.134 markers each **0.080 MOS lower**, and HDR PQ joins exact v7 at CVQA **6.268450** using the earlier localized HDR C² curves. All routes satisfy **MOS(CVQA=0)=1**, while the canonical score remains unchanged. [Four-route curves, full coefficient values, integrity hashes and limitations](dev/CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). This feature is **not merged to main**.
+
 The SDR native-MOS offset is +0.5107732905216783; no offset is applied to PQ. Training score support is **4.1345–10.0383 for SDR** and **6.2685–10.0515 for PQ**. Values outside a route's range trigger its own out-of-distribution flags but are not clamped. The MOS output remains within [1,5].
 
 The selected models were evaluated retrospectively: SDR54 MAE 0.2780 with source-family-held-out offsets, and HDR35 MAE 0.6042 without an offset (worse than 0.5552 for the old mixed-data model). These are provisional **estimated** ratings, not observed MOS. High-quality HDR MOS ≥4.5 remains unvalidated.

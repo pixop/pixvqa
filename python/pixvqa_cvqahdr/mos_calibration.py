@@ -7,6 +7,8 @@ A source-family-balanced SDR native-MOS post-offset is applied after the M7 stag
 
 The frozen v7 research source, retained historical v5 fixture and independent new
 oracle are documented in docs/dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md.
+A low-score C2 tail adapter is separately documented in
+docs/dev/CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md; original fitted coefficients remain frozen.
 This is retrospective research calibration, not a measured or certified MOS.
 """
 
@@ -23,6 +25,7 @@ from typing import Any
 
 from pixvqa_cvqahdr import PINNED_CHECKPOINT_SHA256, PINNED_COMMIT, PINNED_PROFILE_SHA256
 from pixvqa_video.ffmpeg_bins import resolve_ffprobe_legacy
+from pixvqa_cvqahdr import mos_low_tail
 
 # Obsolete: ignored when unset or when set to MOS_POLICY; any other non-empty value fails closed.
 ENV_MOS_POLICY = "PIXVQA_CVQA_MOS_POLICY"
@@ -36,8 +39,8 @@ HDR_SELECTION_LOCK_SHA256 = "7882d79f68f62fc06e034c3ed9f518cbdd0940f957b83df344b
 SELECTED_COEFFICIENTS_SOURCE_JSON_SHA256 = "e817ed479079c0e208e8ec0d84aad3b5836606eeb329585d27e2c461c24b8e73"
 OUTPUT_SCALE_LABEL = "estimated perceptual quality 1-5"
 
-CALIBRATION_VERSION = "selected-s1-sdr200-pq192-transfer-separated-20261116-v3"
-CALIBRATION_LABEL = "Transfer-separated SDR/PQ M1+M7 CVQA-to-MOS calibration"
+CALIBRATION_VERSION = "selected-s1-sdr200-pq192-v7-convex-c2-20261119-v6"
+CALIBRATION_LABEL = "Frozen v7 SDR/PQ M1+M7 plus local C2 low-tail correction"
 WEIGHT_KIND = "transfer_isolated_source_study_balanced_baseline"
 RESEARCH_STATUS = "provisional"
 COEFFICIENT_COHORT = "SDR200_PQ192_separate"
@@ -46,7 +49,7 @@ COEFFICIENT_SOURCE = (
     "CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/data/"
     "PIXVQA_CVQA_to_MOS_Selected_Coefficients_v7_Research.json"
 )
-MANIFEST_ID = "pixvqa_calib_s1_sdr200_pq192_20261116_v3"
+MANIFEST_ID = "pixvqa_calib_s1_sdr200_pq192_20261119_convex_c2_v6"
 HDR_WEIGHT_LAMBDA = 0.0
 SDR_WEIGHT_LAMBDA = 0.0
 SDR_POST_MOS_OFFSET = 0.5107732905216783
@@ -61,6 +64,9 @@ EVIDENCE_CAVEAT = (
     "Retrospective AVT comparisons are not blind. HDR35 MAE 0.6042 regresses "
     "against the historic pooled model, and high-native-MOS HDR is unvalidated. "
     "Input CVQA never support-clamped; per-transfer OOD flags warn on extrapolation. "
+    "Research-only convex C2 endpoint correction sets MOS(0)=1; SDR 4.134 anchor "
+    "is lowered 0.08 MOS with nondecreasing slope and returns to frozen v7 at CVQA 5.65. HDR local C2 "
+    "joins at CVQA 6.26845. Native low-score MOS remains unvalidated. "
     "Not subjectively certified for production."
 )
 
@@ -147,7 +153,8 @@ _POLICY_SPEC: dict[str, Any] = {
     "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
     "evidence_caveat": EVIDENCE_CAVEAT,
     "calibrators": _CALIBRATORS,
-    "formula": "clip(1+4*sigmoid(a+b*z)+d,1,5)",
+    "formula": "frozen_v7_M1_M7_plus_local_C2_tail_below_transfer_join",
+    "low_tail": mos_low_tail.low_tail_payload(),
 }
 
 _SUPPORTED_HEIGHTS = frozenset({1080, 2160})
@@ -234,10 +241,11 @@ def _coefficients_digest_payload() -> dict[str, Any]:
         "sdr_selection_lock_sha256": SDR_SELECTION_LOCK_SHA256,
         "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
         "input_support_clamp": False,
+        "low_tail": mos_low_tail.low_tail_payload(),
     }
 
 
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3d47020b54518cdcfe56bc5420eb9a579eeb1c4dc92d8eeb5ad593da30fbf206"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3a1a130e776fb470eed89849717db37c9e4d9c038bc87706da56f957f19b7407"
 
 
 def _embedded_coefficients_payload() -> dict[str, Any]:
@@ -256,10 +264,11 @@ def _embedded_coefficients_payload() -> dict[str, Any]:
         "hdr_selection_lock_sha256": HDR_SELECTION_LOCK_SHA256,
         "post_output_offset_by_transfer": dict(_POLICY_SPEC["post_output_offset_by_transfer"]),
         "input_support_clamp": False,
+        "low_tail": mos_low_tail.low_tail_payload(),
     }
 
 
-EMBEDDED_COEFFICIENTS_SHA256 = "1fbdabde3bbec5d8907a9e139711632ac288d4996b64550d02a1a8e2ba5b12e4"
+EMBEDDED_COEFFICIENTS_SHA256 = "e8d5a971b86190b398a35083f8deff8a1843d1edb94434d142799d643bf384bc"
 
 
 def _embedded_coefficients_digest() -> str:
@@ -326,7 +335,11 @@ def _evaluate_route(score: float, transfer: str, encoded_height: int) -> float:
     std = _NORMALIZATION_BY_TRANSFER[transfer]["std"]
     z = (score - mean) / std
     logit = params["a"] + params["b"] * z
-    return _clamp(1.0 + 4.0 * _sigmoid(logit) + params["d"], 1.0, 5.0)
+    frozen_v7_mos = _clamp(1.0 + 4.0 * _sigmoid(logit) + params["d"], 1.0, 5.0)
+    return mos_low_tail.correct_low_tail(
+        score, transfer=transfer, encoded_height=encoded_height,
+        frozen_v7_mos=frozen_v7_mos,
+    )
 
 
 def predict_mos(
@@ -821,7 +834,8 @@ def mos_calibration_record(
         "coefficient_source": pspec["coefficient_source"],
         "coefficient_source_json_sha256": pspec["coefficient_source_json_sha256"],
         "coefficients_digest_sha256": coefficients_digest(),
-        "m1_implementation": "two_param_logistic_route_correction",
+        "m1_implementation": "two_param_logistic_route_correction_plus_local_c2_tail",
+        "low_tail": pspec["low_tail"],
         "formula": pspec["formula"],
         "canonical_score_scale": "0-10",
         "output_scale": OUTPUT_SCALE_LABEL,
@@ -845,9 +859,9 @@ def mos_calibration_record(
         "coefficients_source_bundle_sha256": pspec["coefficients_bundle_sha256"],
         "coefficients_digest_note": (
             "coefficients_digest_sha256 pins fitted-model SHA-256, source JSON hash, "
-            "native-MOS offsets and transfer-specific fitting provenance. "
-            "embedded_coefficients_sha256 is recomputed from the effective route "
-            "parameters embedded in this module."
+            "native-MOS offsets, low-tail C2 control points and transfer-specific "
+            "fitting provenance. embedded_coefficients_sha256 is recomputed from "
+            "the complete effective mapping, including the endpoint adapter."
         ),
         "embedded_coefficients_sha256": embedded_coefficients_sha256(),
         "post_output_offset_by_transfer": dict(pspec["post_output_offset_by_transfer"]),

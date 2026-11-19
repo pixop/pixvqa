@@ -27,10 +27,13 @@ SELECTED_NATIVE_CASES = (
 SELECTED_VD6_CASES = (
     ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_vd6_per_clip.csv"
 )
+LOW_TAIL_RESEARCH_POINTS = (
+    ROOT / "tests/fixtures/mos_calibration/v7_local_convex_c2_research_points.csv"
+)
 HISTORICAL_V5_FIXTURE = (
     ROOT / "tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json"
 )
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3d47020b54518cdcfe56bc5420eb9a579eeb1c4dc92d8eeb5ad593da30fbf206"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3a1a130e776fb470eed89849717db37c9e4d9c038bc87706da56f957f19b7407"
 EMBEDDED_COEFFICIENTS_SHA256 = mc.EMBEDDED_COEFFICIENTS_SHA256
 SDR_POST_MOS_OFFSET = 0.5107732905216783
 SDR_SELECTION_LOCK_SHA256 = "f65a19498735f0ce17257079a913f2ece25e9692b56c8392e27ce7d29ae079ee"
@@ -177,6 +180,8 @@ class MosFormulaTests(unittest.TestCase):
         self.assertLessEqual(max_err, 5e-12)
 
     def test_independent_oracle_all_boundaries(self) -> None:
+        # Frozen v7 is still the independent oracle ABOVE the local splice.
+        # Below it, test against the research-generated fixed-point fixture.
         for transfer, height, calibrator in COMBO_CASES:
             for score in BOUNDARY_SCORES:
                 expected = independent_oracle_predict(
@@ -188,7 +193,14 @@ class MosFormulaTests(unittest.TestCase):
                     encoded_height=height,
                     calibrator=calibrator,
                 )
-                self.assertAlmostEqual(actual, expected, delta=1e-12, msg=f"{transfer}/{height} x={score}")
+                join = mc.mos_low_tail.SDR_JOIN_SCORE if transfer == "sdr" else mc.mos_low_tail.PQ_JOIN_SCORE
+                if score >= join:
+                    self.assertAlmostEqual(actual, expected, delta=1e-12, msg=f"{transfer}/{height} x={score}")
+                else:
+                    self.assertGreaterEqual(actual, 1.0)
+                    self.assertLessEqual(actual, 5.0)
+                    if score == 0.0:
+                        self.assertEqual(actual, 1.0)
 
     def test_pq_2160_correction_delta(self) -> None:
         score = 8.5
@@ -254,6 +266,107 @@ class MosFormulaTests(unittest.TestCase):
         self.assertEqual(data["selected"]["SDR"]["lambda"], 0.0)
         self.assertEqual(data["selected"]["PQ"]["lambda"], 0.0)
         self.assertNotEqual(data["selected"]["SDR"]["normalization"], data["selected"]["PQ"]["normalization"])
+
+
+class MosLocalTailTests(unittest.TestCase):
+    """Research-backed endpoints, joins and no-change regression checks."""
+
+    def test_direct_research_oracle_points_all_routes(self) -> None:
+        import csv
+        with LOW_TAIL_RESEARCH_POINTS.open(newline="") as handle:
+            records = list(csv.DictReader(handle))
+        self.assertEqual(len(records), 48)
+        for row in records:
+            transfer = row["transfer"]
+            height = int(row["encoded_height"])
+            score = float(row["cvqa"])
+            predicted = mc.predict_mos(score, transfer=transfer, encoded_height=height)
+            self.assertAlmostEqual(predicted, float(row["expected_mos"]), delta=2e-11,
+                msg=f"{transfer}/{height}:CVQA={score}")
+            baseline = independent_oracle_predict(score, transfer=transfer, encoded_height=height)
+            self.assertAlmostEqual(baseline, float(row["frozen_v7"]), delta=2e-11)
+
+    def test_sdr_anchor_reduction_and_exact_zero(self) -> None:
+        anchor = mc.mos_low_tail.SDR_ANCHOR_SCORE
+        for height in (1080, 2160):
+            original = independent_oracle_predict(anchor, transfer="sdr", encoded_height=height)
+            revised = mc.predict_mos(anchor, transfer="sdr", encoded_height=height)
+            self.assertAlmostEqual(original - revised, 0.080, delta=3e-12)
+            self.assertEqual(mc.predict_mos(0., transfer="sdr", encoded_height=height), 1.0)
+            self.assertEqual(mc.predict_mos(0., transfer="pq", encoded_height=height), 1.0)
+
+    def test_no_high_score_change_in_any_route(self) -> None:
+        for transfer, height, _ in COMBO_CASES:
+            join = mc.mos_low_tail.SDR_JOIN_SCORE if transfer == "sdr" else mc.mos_low_tail.PQ_JOIN_SCORE
+            for score in (join, math.nextafter(join, math.inf), join + .001, 6.0, 8.0, 10.0, 11.0, 15.0):
+                if score < join:
+                    continue
+                actual = mc.predict_mos(score, transfer=transfer, encoded_height=height)
+                reference = independent_oracle_predict(score, transfer=transfer, encoded_height=height)
+                self.assertAlmostEqual(actual, reference, delta=1e-12,
+                    msg=f"{transfer}/{height} x={score}")
+                # Equality to the *original runtime arithmetic* is exact.
+                params = mc.route_params(transfer, height)
+                norm = mc._NORMALIZATION_BY_TRANSFER[transfer]
+                z = (score - norm["mean"]) / norm["std"]
+                frozen_runtime = mc._clamp(1 + 4*mc._sigmoid(params["a"] + params["b"]*z) + params["d"], 1., 5.)
+                self.assertEqual(actual, frozen_runtime)
+
+    def test_monotone_smooth_join_and_bounds(self) -> None:
+        for transfer, height, _ in COMBO_CASES:
+            scores = [i * .02 for i in range(601)]
+            values = [mc.predict_mos(x, transfer=transfer, encoded_height=height) for x in scores]
+            self.assertEqual(values[0], 1.0)
+            self.assertGreaterEqual(min(values), 1.0)
+            self.assertLessEqual(max(values), 5.0)
+            self.assertTrue(all(a <= b + 1e-12 for a,b in zip(values,values[1:])))
+            # The corrected low-tail is C2 at the cutoff; finite differences
+            # test agreement to the independently frozen v7 derivatives there.
+            c = mc.mos_low_tail.SDR_JOIN_SCORE if transfer == "sdr" else mc.mos_low_tail.PQ_JOIN_SCORE
+            step = 0.001
+            f = lambda x: mc.predict_mos(x, transfer=transfer, encoded_height=height)
+            old = lambda x: independent_oracle_predict(x, transfer=transfer, encoded_height=height)
+            slope_left = (f(c)-f(c-step))/step
+            slope_right = (old(c+step)-old(c))/step
+            self.assertAlmostEqual(slope_left, slope_right, delta=1e-3)
+            curv_left = (f(c)-2*f(c-step)+f(c-2*step))/step**2
+            curv_right = (old(c+2*step)-2*old(c+step)+old(c))/step**2
+            self.assertAlmostEqual(curv_left, curv_right, delta=.02)
+
+    def test_sdr_tail_convexity_no_slope_reversal(self) -> None:
+        # Stronger than C2: the derivative must be nondecreasing in the
+        # entire SDR low-tail interval. This specifically prevents the
+        # slope dip near canonical CVQA 4 found in the previous version.
+        join = mc.mos_low_tail.SDR_JOIN_SCORE
+        for height in (1080, 2160):
+            step = join / 2000
+            scores = [step * i for i in range(2001)]
+            values = [mc.predict_mos(x, transfer="sdr", encoded_height=height)
+                      for x in scores]
+            slopes = [(b - a) / step for a, b in zip(values, values[1:])]
+            self.assertGreater(slopes[0], 0.)
+            self.assertTrue(all(b >= a - 5e-10 for a,b in zip(slopes,slopes[1:])),
+                            msg=f"SDR {height}p slope reversal")
+            self.assertEqual(len(mc.mos_low_tail._SDR_CONTROLS[height]), 10)
+            self.assertEqual(len(mc.mos_low_tail._SDR_KNOTS), 14)
+            self.assertTrue(all(b >= a for a,b in zip(mc.mos_low_tail._SDR_CONTROLS[height],
+                               mc.mos_low_tail._SDR_CONTROLS[height][1:])))
+
+    def test_local_tail_provenance_and_digest_tamper(self) -> None:
+        details = mc.policy_spec()
+        self.assertEqual(details["low_tail"]["sdr_anchor_delta_mos"], 0.080)
+        self.assertEqual(details["low_tail"]["sdr_join_score"], 5.65)
+        self.assertIn("low_tail", mc._embedded_coefficients_payload())
+        self.assertIn("low_tail", mc._coefficients_digest_payload())
+        before = mc.predict_mos(2.0, transfer="sdr", encoded_height=1080)
+        original = mc.mos_low_tail._SDR_CONTROLS[1080]
+        try:
+            mc.mos_low_tail._SDR_CONTROLS[1080] = (original[0], original[1] + .1, *original[2:])
+            with self.assertRaisesRegex(ValueError, "digest mismatch"):
+                mc.predict_mos(2.0, transfer="sdr", encoded_height=1080)
+        finally:
+            mc.mos_low_tail._SDR_CONTROLS[1080] = original
+        self.assertEqual(mc.predict_mos(2.0, transfer="sdr", encoded_height=1080), before)
 
 
 class MosFixtureTests(unittest.TestCase):
