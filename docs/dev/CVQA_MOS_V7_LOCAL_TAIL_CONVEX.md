@@ -10,11 +10,25 @@ The prior −0.080 MOS (join CVQA 5.65) SDR curves were C² continuous but not c
 
 The original fitted v7 M1 sigmoid, M7 corrections, SDR native offset, colorimetry routing, upstream profile checks and source hashes are frozen.
 
-![Comparison of corrected convex and preceding nonconvex SDR curves](figures/cvqa_mos_v7_convex_c2_low_zoom.png)
+### Figure 1 — SDR low-score correction
 
-[First-derivative comparison: old reversal and new nondecreasing slope](figures/cvqa_mos_v7_convex_c2_slope.png)
+![Selected SDR 1080p and 2160p convex C2 calibration compared with the previous C2 model and frozen original v7](figures/cvqa_convex_comparison_low_zoom.png)
 
-Solid: new convex model. Dashed: previous C² model. Dotted: original frozen v7.
+**Solid:** new convex C²; **dashed:** previous C² with the slope dip; **dotted:** original v7. The two CVQA 4.134 anchor values remain 0.080 MOS below frozen v7.
+
+### Figure 2 — first-derivative comparison
+
+![SDR calibration first derivatives illustrating eliminated slope reversal above CVQA 4](figures/cvqa_convex_first_derivative.png)
+
+The selected SDR derivative is nondecreasing from CVQA 0 to 5.65, eliminating the shoulder in the earlier model. This is guaranteed by nonnegative cubic-spline curvature at every knot, not inferred solely from the picture.
+
+### Figure 3 — all four calibration routes
+
+![Full-range SDR and HDR PQ 1080p and 2160p CVQA-to-MOS curves with frozen v7 references](figures/cvqa_convex_full_range.png)
+
+Both HDR PQ routes retain the previous C² lower-tail functions. All SDR predictions at CVQA ≥5.65 and HDR PQ predictions at CVQA ≥6.268450107554486 remain exactly frozen v7.
+
+The figures are generated from the checked research models by [render_report_png.py](https://github.com/pixop/perceptual-optimization/blob/feature/bilawa-cvqa-mos-20261114/calibration/production_readiness_20261113/CVQA_MOS_V7_SDR_CONVEX_TAIL_20261119/render_report_png.py).
 
 ## Mathematical specification
 
