@@ -1,14 +1,15 @@
 """Endpoint-correct local CVQA-to-MOS tails for the frozen v7 calibration.
 
 Research provenance (19 Nov 2026):
-- SDR 1080p/2160p: monotone C2 cubic B-splines with the original v7
+- SDR 1080p/2160p: monotone, convex C2 cubic B-splines with the original v7
   score=4.134484 anchor lowered by 0.080 MOS; return to v7 at 5.65.
 - PQ 1080p: two-segment C2 quintic Bezier with a MOS=1 lower plateau.
 - PQ 2160p: two-segment C2 cubic (truncated-power form).
 - No original fitted v7 sigmoid coefficients are changed.
 - No input support clipping. x<=0 is assigned MOS=1 as a domain floor.
 
-The curves are research-only, with no subjective calibration data below
+The SDR derivative is now nondecreasing on the entire low tail. The curves
+are research-only, with no subjective calibration data below
 the splice boundaries. This module has no NumPy/SciPy runtime dependencies.
 """
 
@@ -16,10 +17,10 @@ from __future__ import annotations
 
 from bisect import bisect_right
 
-LOW_TAIL_VERSION = "v7-local-c2-sdr-anchor-minus-008-join565-20261119"
+LOW_TAIL_VERSION = "v7-local-convex-c2-sdr-anchor-minus-008-join565-20261119"
 RESEARCH_DELIVERABLE = (
     "perceptual_optimization/calibration/production_readiness_20261113/"
-    "CVQA_MOS_V7_SDR_ANCHOR_JOIN565_20261119"
+    "CVQA_MOS_V7_SDR_CONVEX_TAIL_20261119"
 )
 HDR_RESEARCH_DELIVERABLE = (
     "perceptual_optimization/calibration/production_readiness_20261113/"
@@ -31,19 +32,23 @@ SDR_ANCHOR_DELTA_MOS = 0.080
 SDR_JOIN_SCORE = 5.65
 PQ_JOIN_SCORE = 6.268450107554486
 
-# Simple interior knots imply C2 continuity for a cubic. The second knot
-# explicitly passes through the corrected SDR anchor.
+# Simple interior knots guarantee C2 continuity for the cubic B-spline.
+# Six interior knots provide enough degrees of freedom to enforce global
+# nonnegative curvature, unlike the previous two-interior-knot version.
 _SDR_KNOTS = (
-    0.0, 0.0, 0.0, 0.0, 0.6625, 0.7317670953736838, 1.0, 1.0, 1.0, 1.0,
+    0.0, 0.0, 0.0, 0.0, 0.19, 0.4308835476868419, 0.6717670953736838,
+    0.7317670953736838, 0.8524719024555261, 0.9463534190747368, 1.0, 1.0, 1.0, 1.0,
 )
 _SDR_CONTROLS: dict[int, tuple[float, ...]] = {
     1080: (
-        1.0, 1.0354875286536471, 1.1105919075127142,
-        1.6131456493015845, 1.6756790169278577, 1.7928154840710848,
-    ),    2160: (
-        1.0, 1.0772723415153433, 1.1960270755755236,
-        1.6985808173643928, 1.7611141849906664, 1.8782506521338933,
-    ),}
+        1.0, 1.0357279888964983, 1.1173093043172093, 1.2573954002992864, 1.3976062270202059,
+        1.5266780666417807, 1.6183440814400967, 1.7123812243533703, 1.769388190642436, 1.7928154840710815,
+    ),
+    2160: (
+        1.0, 1.0463399300133231, 1.1517705095252326, 1.3240360712851942, 1.4796095405353704,
+        1.6129317920269242, 1.7045194371454926, 1.7978163924161799, 1.8548233587052454, 1.8782506521338909,
+    ),
+}
 
 _PQ_1080_SPLIT = 0.575
 _PQ_1080_RIGHT_CONTROLS = (

@@ -7,7 +7,7 @@ The current selected calibration uses the original M1 monotone sigmoid and M7 me
 
 The historical protocol policy ID `selected_s1_sdr_p1_hdr_c0` is retained for compatibility because the architecture remains S1 + SDR post-offset + HDR without post-offset. **Do not identify a coefficient set from the policy ID alone.** The runtime `calibration_version`, source SHA-256 and embedded-coefficient digest distinguish the 2026-11-16 transfer-separated calibration from the older 2026-11-14 fit.
 
-> **Feature branch update (19 November 2026):** The automatic mapping on [feature/cvqa-mos-v7-local-tail-006](https://github.com/pixop/pixvqa/tree/feature/cvqa-mos-v7-local-tail-006) uses the frozen sigmoid defined below **only at and above the score joins** (SDR 5.65, HDR PQ 6.268450). Below those joins, it uses the separately versioned monotone C² low-tail adapter with **MOS(0)=1**, and the two SDR CVQA 4.134 anchors are lowered by **0.080 MOS**. See the [complete localized v7 specification and figures](CVQA_MOS_V7_LOCAL_TAIL_008.md). This is not merged to main or production-certified.
+> **Feature branch update (19 November 2026):** The automatic mapping on [feature/cvqa-mos-v7-local-tail-006](https://github.com/pixop/pixvqa/tree/feature/cvqa-mos-v7-local-tail-006) uses the frozen sigmoid defined below **only at and above the score joins** (SDR 5.65, HDR PQ 6.268450). Below those joins, it uses the separately versioned monotone, convex C² SDR low-tail adapter with **MOS(0)=1**, and the two SDR CVQA 4.134 anchors are lowered by **0.080 MOS**. See the [complete localized v7 specification and figures](CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). This is not merged to main or production-certified.
 
 ## Frozen v7 fitted formula and local branch extension
 

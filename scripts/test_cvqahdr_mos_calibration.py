@@ -28,12 +28,12 @@ SELECTED_VD6_CASES = (
     ROOT / "tests/fixtures/mos_calibration/avt_transfer_separated_v7_vd6_per_clip.csv"
 )
 LOW_TAIL_RESEARCH_POINTS = (
-    ROOT / "tests/fixtures/mos_calibration/v7_local_c2_minus008_join565_research_points.csv"
+    ROOT / "tests/fixtures/mos_calibration/v7_local_convex_c2_research_points.csv"
 )
 HISTORICAL_V5_FIXTURE = (
     ROOT / "tests/fixtures/mos_calibration/avt_selected_s1_sdr_p1_hdr_c0.json"
 )
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "24fc1811327281cff37f37ece8db129bccada6f9e95252f1db5037fcffa4f899"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "3a1a130e776fb470eed89849717db37c9e4d9c038bc87706da56f957f19b7407"
 EMBEDDED_COEFFICIENTS_SHA256 = mc.EMBEDDED_COEFFICIENTS_SHA256
 SDR_POST_MOS_OFFSET = 0.5107732905216783
 SDR_SELECTION_LOCK_SHA256 = "f65a19498735f0ce17257079a913f2ece25e9692b56c8392e27ce7d29ae079ee"
@@ -332,6 +332,25 @@ class MosLocalTailTests(unittest.TestCase):
             curv_left = (f(c)-2*f(c-step)+f(c-2*step))/step**2
             curv_right = (old(c+2*step)-2*old(c+step)+old(c))/step**2
             self.assertAlmostEqual(curv_left, curv_right, delta=.02)
+
+    def test_sdr_tail_convexity_no_slope_reversal(self) -> None:
+        # Stronger than C2: the derivative must be nondecreasing in the
+        # entire SDR low-tail interval. This specifically prevents the
+        # slope dip near canonical CVQA 4 found in the previous version.
+        join = mc.mos_low_tail.SDR_JOIN_SCORE
+        for height in (1080, 2160):
+            step = join / 2000
+            scores = [step * i for i in range(2001)]
+            values = [mc.predict_mos(x, transfer="sdr", encoded_height=height)
+                      for x in scores]
+            slopes = [(b - a) / step for a, b in zip(values, values[1:])]
+            self.assertGreater(slopes[0], 0.)
+            self.assertTrue(all(b >= a - 5e-10 for a,b in zip(slopes,slopes[1:])),
+                            msg=f"SDR {height}p slope reversal")
+            self.assertEqual(len(mc.mos_low_tail._SDR_CONTROLS[height]), 10)
+            self.assertEqual(len(mc.mos_low_tail._SDR_KNOTS), 14)
+            self.assertTrue(all(b >= a for a,b in zip(mc.mos_low_tail._SDR_CONTROLS[height],
+                               mc.mos_low_tail._SDR_CONTROLS[height][1:])))
 
     def test_local_tail_provenance_and_digest_tamper(self) -> None:
         details = mc.policy_spec()
