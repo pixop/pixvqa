@@ -25,7 +25,12 @@ from typing import Any
 
 from pixvqa_cvqahdr import PINNED_CHECKPOINT_SHA256, PINNED_COMMIT, PINNED_PROFILE_SHA256
 from pixvqa_video.ffmpeg_bins import resolve_ffprobe_legacy
-from pixvqa_cvqahdr import mos_low_tail
+from pixvqa_cvqahdr import mos_calibration_a2, mos_low_tail
+
+# Separate algorithm selector (default frozen v7+C2). Do not overload MOS_POLICY for this.
+ENV_MOS_CALIBRATION_ALGORITHM = "PIXVQA_MOS_CALIBRATION_ALGORITHM"
+MOS_CALIBRATION_ALGORITHM_V7 = "v7_convex_c2"
+DEFAULT_MOS_CALIBRATION_ALGORITHM = MOS_CALIBRATION_ALGORITHM_V7
 
 # Obsolete: ignored when unset or when set to MOS_POLICY; any other non-empty value fails closed.
 ENV_MOS_POLICY = "PIXVQA_CVQA_MOS_POLICY"
@@ -195,6 +200,34 @@ def _clamp(value: float, lo: float, hi: float) -> float:
     return min(max(value, lo), hi)
 
 
+_VALID_ALGORITHM_ALIASES: dict[str, str] = {
+    "v7_convex_c2": MOS_CALIBRATION_ALGORITHM_V7,
+    "v7": MOS_CALIBRATION_ALGORITHM_V7,
+    "selected_s1_sdr_p1_hdr_c0": MOS_CALIBRATION_ALGORITHM_V7,
+    mos_calibration_a2.MOS_CALIBRATION_ALGORITHM: mos_calibration_a2.MOS_CALIBRATION_ALGORITHM,
+    "a2_tv123": mos_calibration_a2.MOS_CALIBRATION_ALGORITHM,
+    "a2": mos_calibration_a2.MOS_CALIBRATION_ALGORITHM,
+}
+
+
+def resolve_mos_calibration_algorithm(explicit: str | None = None) -> tuple[str | None, str | None]:
+    """Return ``(algorithm_id, error_reason)``. Default is frozen v7+C2."""
+    if explicit is not None:
+        key = str(explicit).strip().lower()
+        resolved = _VALID_ALGORITHM_ALIASES.get(key)
+        if resolved is None:
+            return None, f"invalid_mos_calibration_algorithm:{explicit}"
+        return resolved, None
+    env_raw = os.environ.get(ENV_MOS_CALIBRATION_ALGORITHM, "").strip()
+    if not env_raw:
+        return DEFAULT_MOS_CALIBRATION_ALGORITHM, None
+    key = env_raw.lower()
+    resolved = _VALID_ALGORITHM_ALIASES.get(key)
+    if resolved is None:
+        return None, f"invalid_mos_calibration_algorithm:{env_raw}"
+    return resolved, None
+
+
 def resolve_mos_policy(explicit: str | None = None) -> tuple[str | None, str | None]:
     """Return ``(policy_id, error_reason)``. Only the fixed selected policy is valid."""
     if explicit is not None:
@@ -349,6 +382,7 @@ def predict_mos(
     encoded_height: int,
     calibrator: str | None = None,
     policy: str | None = None,
+    algorithm: str | None = None,
 ) -> float:
     """Map canonical CVQA 0–10 to estimated perceptual quality 1–5."""
     return predict_mos_detailed(
@@ -357,6 +391,7 @@ def predict_mos(
         encoded_height=encoded_height,
         calibrator=calibrator,
         policy=policy,
+        algorithm=algorithm,
     ).estimated_perceptual_quality
 
 
@@ -367,7 +402,36 @@ def predict_mos_detailed(
     encoded_height: int,
     calibrator: str | None = None,
     policy: str | None = None,
+    algorithm: str | None = None,
 ) -> "PredictMosResult":
+    algorithm_id, algorithm_err = resolve_mos_calibration_algorithm(algorithm)
+    if algorithm_err:
+        raise ValueError(algorithm_err)
+    if algorithm_id == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+        detail = mos_calibration_a2.predict_mos_detailed(
+            canonical_cvqa_score,
+            transfer=transfer,
+            encoded_height=encoded_height,
+            calibrator=calibrator,
+        )
+        return PredictMosResult(
+            estimated_perceptual_quality=detail.estimated_perceptual_quality,
+            score_requested=detail.score_requested,
+            score_effective=detail.score_effective,
+            ood_below_support=detail.ood_below_support,
+            ood_above_support=detail.ood_above_support,
+            policy=detail.policy,
+            calibrator=detail.calibrator,
+            route_weight_lambda=detail.route_weight_lambda,
+            model_key=detail.model_key,
+            post_mos_offset=detail.post_mos_offset,
+            input_support_clamp=detail.input_support_clamp,
+            support_extrapolation=detail.support_extrapolation,
+            route_sigmoid_a=detail.route_sigmoid_a,
+            route_sigmoid_b=detail.route_sigmoid_b,
+            route_correction_d=detail.route_correction_d,
+            calibration_algorithm=algorithm_id,
+        )
     policy_id, policy_err = resolve_mos_policy(policy)
     if policy_err:
         raise ValueError(policy_err)
@@ -416,6 +480,7 @@ def predict_mos_detailed(
         route_sigmoid_a=route["a"],
         route_sigmoid_b=route["b"],
         route_correction_d=route["d"],
+        calibration_algorithm=algorithm_id,
     )
 
 
@@ -444,6 +509,7 @@ class PredictMosResult:
     route_sigmoid_a: float = 0.0
     route_sigmoid_b: float = 0.0
     route_correction_d: float = 0.0
+    calibration_algorithm: str = DEFAULT_MOS_CALIBRATION_ALGORITHM
 
 
 @dataclass(frozen=True)
@@ -467,6 +533,7 @@ class MosCalibrationOutcome:
     route_sigmoid_a: float | None = None
     route_sigmoid_b: float | None = None
     route_correction_d: float | None = None
+    calibration_algorithm: str | None = None
 
 
 def _probe_error_reason(third: str | None) -> str | None:
@@ -582,16 +649,27 @@ def minimal_unavailable_mos_record(
     reason: str,
     *,
     policy: str | None = None,
+    algorithm: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    algorithm_id, algorithm_err = resolve_mos_calibration_algorithm(algorithm)
+    effective_algorithm = algorithm_id if algorithm_err is None else (algorithm or DEFAULT_MOS_CALIBRATION_ALGORITHM)
+    record = {
         "status": "unavailable",
         "research_status": RESEARCH_STATUS,
-        "mos_policy": policy or MOS_POLICY,
+        "mos_calibration_algorithm": effective_algorithm,
+        "mos_policy": policy or (
+            mos_calibration_a2.MOS_CALIBRATION_ALGORITHM
+            if effective_algorithm == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM
+            else MOS_POLICY
+        ),
         "canonical_score_input": _json_safe_number(canonical_score_input),
         "output_scale": OUTPUT_SCALE_LABEL,
         "reason": reason,
         "note": f"MOS mapping suppressed ({reason}); canonical CVQA score unchanged.",
     }
+    if algorithm_err:
+        record["reason"] = algorithm_err
+    return record
 
 
 def apply_mos_calibration(
@@ -599,19 +677,36 @@ def apply_mos_calibration(
     path: str,
     *,
     policy: str | None = None,
+    algorithm: str | None = None,
 ) -> MosCalibrationOutcome:
     """Attempt 1–5 estimate mapping; never mutates the canonical CVQA score."""
-    policy_id, policy_err = resolve_mos_policy(policy)
-    if policy_err:
+    algorithm_id, algorithm_err = resolve_mos_calibration_algorithm(algorithm)
+    if algorithm_err:
         return MosCalibrationOutcome(
             available=False,
             mos_calibrated_cvqa=None,
-            reason=policy_err,
+            reason=algorithm_err,
             domain=None,
             calibrator=None,
             canonical_score_input=canonical_cvqa_score,
             policy=None,
+            calibration_algorithm=None,
         )
+    if algorithm_id == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+        policy_id = mos_calibration_a2.MOS_CALIBRATION_ALGORITHM
+    else:
+        policy_id, policy_err = resolve_mos_policy(policy)
+        if policy_err:
+            return MosCalibrationOutcome(
+                available=False,
+                mos_calibrated_cvqa=None,
+                reason=policy_err,
+                domain=None,
+                calibrator=None,
+                canonical_score_input=canonical_cvqa_score,
+                policy=None,
+                calibration_algorithm=algorithm_id,
+            )
     try:
         requested = float(canonical_cvqa_score)
     except (TypeError, ValueError):
@@ -645,7 +740,13 @@ def apply_mos_calibration(
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
         )
-    calibrator = calibrator_for_transfer(domain.transfer)
+    if algorithm_id == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+        try:
+            calibrator = mos_calibration_a2.calibrator_for_transfer(domain.transfer)
+        except ValueError:
+            calibrator = None
+    else:
+        calibrator = calibrator_for_transfer(domain.transfer)
     if calibrator is None:
         return MosCalibrationOutcome(
             available=False,
@@ -662,7 +763,8 @@ def apply_mos_calibration(
             transfer=domain.transfer,
             encoded_height=domain.encoded_height,
             calibrator=calibrator,
-            policy=policy_id,
+            policy=policy_id if algorithm_id != mos_calibration_a2.MOS_CALIBRATION_ALGORITHM else None,
+            algorithm=algorithm_id,
         )
     except ValueError as exc:
         return MosCalibrationOutcome(
@@ -673,19 +775,7 @@ def apply_mos_calibration(
             calibrator=calibrator,
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
-        )
-    try:
-        embedded_coefficients_sha256()
-        coefficients_digest()
-    except ValueError as exc:
-        return MosCalibrationOutcome(
-            available=False,
-            mos_calibrated_cvqa=None,
-            reason=f"calibration_error:{exc}",
-            domain=domain,
-            calibrator=calibrator,
-            canonical_score_input=canonical_cvqa_score,
-            policy=policy_id,
+            calibration_algorithm=algorithm_id,
         )
     return MosCalibrationOutcome(
         available=True,
@@ -707,6 +797,7 @@ def apply_mos_calibration(
         route_sigmoid_a=detail.route_sigmoid_a,
         route_sigmoid_b=detail.route_sigmoid_b,
         route_correction_d=detail.route_correction_d,
+        calibration_algorithm=algorithm_id,
     )
 
 
@@ -811,6 +902,7 @@ def gate_reviewed_mos_outcome(
         route_sigmoid_a=outcome.route_sigmoid_a,
         route_sigmoid_b=outcome.route_sigmoid_b,
         route_correction_d=outcome.route_correction_d,
+        calibration_algorithm=outcome.calibration_algorithm or DEFAULT_MOS_CALIBRATION_ALGORITHM,
     )
 
 
@@ -819,11 +911,14 @@ def mos_calibration_record(
     *,
     cvqa_upstream: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if outcome.calibration_algorithm == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+        return mos_calibration_a2.mos_calibration_record(outcome, cvqa_upstream=cvqa_upstream)
     policy_id = outcome.policy or MOS_POLICY
     pspec = policy_spec(policy_id)
     record: dict[str, Any] = {
         "status": "available" if outcome.available else "unavailable",
         "research_status": RESEARCH_STATUS,
+        "mos_calibration_algorithm": MOS_CALIBRATION_ALGORITHM_V7,
         "mos_policy": MOS_POLICY,
         "calibration_version": pspec["calibration_version"],
         "calibration_label": pspec["calibration_label"],
@@ -870,6 +965,12 @@ def mos_calibration_record(
         "obsolete_env_note": (
             f"{ENV_MOS_POLICY} is obsolete and ignored when unset or set to "
             f"{MOS_POLICY!r}; other non-empty values fail closed."
+        ),
+        "algorithm_selector_env": ENV_MOS_CALIBRATION_ALGORITHM,
+        "algorithm_selector_note": (
+            f"Default algorithm is {MOS_CALIBRATION_ALGORITHM_V7!r}. Experimental "
+            f"{mos_calibration_a2.MOS_CALIBRATION_ALGORITHM!r} is opt-in via "
+            f"{ENV_MOS_CALIBRATION_ALGORITHM} or CLI --mos-calibration-algorithm."
         ),
     }
     if outcome.reason == "cvqa_upstream_incompatible":

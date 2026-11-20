@@ -503,7 +503,8 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
 
 
 def run(test: str, repository: str, checkpoint: str, profile: str, device: str, output_json: str,
-        verify_decoded_frames: bool = False, max_frames: int = -1) -> dict:
+        verify_decoded_frames: bool = False, max_frames: int = -1,
+        mos_calibration_algorithm: str | None = None) -> dict:
     deterministic = configure_deterministic_inference()
     context = preflight(test, repository, checkpoint, profile, device,
                         max_frames=max_frames)
@@ -639,7 +640,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         "profile_sha256": record["calibration_profile"]["sha256"],
     }
     try:
-        mos_outcome = apply_mos_calibration(score, test)
+        mos_outcome = apply_mos_calibration(score, test, algorithm=mos_calibration_algorithm)
         mos_outcome = gate_reviewed_mos_outcome(mos_outcome, cvqa_upstream)
         record["mos_calibration"] = mos_calibration_record(
             mos_outcome, cvqa_upstream=cvqa_upstream
@@ -651,7 +652,8 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         print(f"[CVQA-NR] Optional MOS calibration unavailable: {type(exc).__name__}: {exc}",
               file=sys.stderr, flush=True)
         record["mos_calibration"] = minimal_unavailable_mos_record(
-            score, f"calibration_error:{type(exc).__name__}"
+            score, f"calibration_error:{type(exc).__name__}",
+            algorithm=mos_calibration_algorithm,
         )
     destination = Path(output_json)
     try:

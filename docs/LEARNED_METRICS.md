@@ -136,6 +136,8 @@ Full-precision independent research coefficients and evaluation: `perceptual_opt
 
 `PIXVQA_CVQA_MOS_POLICY` is **obsolete**. Unset or `selected_s1_sdr_p1_hdr_c0` is accepted; any other non-empty value (including legacy `legacy_target_lambda1_both` or `reviewed_s1_hdr0_sdr1`) **fail closed** with `obsolete_policy_env:…` so alternate formulas cannot be activated.
 
+**Algorithm selector (feature branch):** `PIXVQA_MOS_CALIBRATION_ALGORITHM` or CLI `--mos-calibration-algorithm` chooses the MOS mapping. Default `v7_convex_c2` (frozen v7+M7+C2). Experimental `a2_tv123_ai25` is opt-in only — see [A2-TV123 integration](dev/CVQA_MOS_A2_TV123_INTEGRATION.md). Invalid values fail closed.
+
 **Upstream gate:** estimated perceptual quality is emitted only if git commit, checkpoint SHA-256, and profile SHA-256 all match pinned values in `pixvqa_cvqahdr.__init__`. Otherwise `reason=cvqa_upstream_incompatible`. Preflight still checks git commit only for canonical CVQA scoring.
 
 - **PQ content** → `U0_M7_Bias`; **SDR** → `U_v2_M7_Bias` (stable calibrator identifiers).
