@@ -672,6 +672,18 @@ def minimal_unavailable_mos_record(
     return record
 
 
+def outcome_calibration_algorithm(outcome: MosCalibrationOutcome) -> str:
+    """Resolve which calibration record builder to use (defensive for partial outcomes)."""
+    alg = outcome.calibration_algorithm
+    if alg in {MOS_CALIBRATION_ALGORITHM_V7, mos_calibration_a2.MOS_CALIBRATION_ALGORITHM}:
+        return alg
+    if outcome.policy == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+        return mos_calibration_a2.MOS_CALIBRATION_ALGORITHM
+    if outcome.policy == MOS_POLICY:
+        return MOS_CALIBRATION_ALGORITHM_V7
+    return alg or MOS_CALIBRATION_ALGORITHM_V7
+
+
 def apply_mos_calibration(
     canonical_cvqa_score: float,
     path: str,
@@ -718,6 +730,7 @@ def apply_mos_calibration(
             calibrator=None,
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
+            calibration_algorithm=algorithm_id,
         )
     if not math.isfinite(requested):
         return MosCalibrationOutcome(
@@ -728,6 +741,7 @@ def apply_mos_calibration(
             calibrator=None,
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
+            calibration_algorithm=algorithm_id,
         )
     domain, reason = resolve_mos_domain(path)
     if domain is None:
@@ -739,6 +753,7 @@ def apply_mos_calibration(
             calibrator=None,
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
+            calibration_algorithm=algorithm_id,
         )
     if algorithm_id == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
         try:
@@ -756,6 +771,7 @@ def apply_mos_calibration(
             calibrator=None,
             canonical_score_input=canonical_cvqa_score,
             policy=policy_id,
+            calibration_algorithm=algorithm_id,
         )
     try:
         detail = predict_mos_detailed(
@@ -902,7 +918,7 @@ def gate_reviewed_mos_outcome(
         route_sigmoid_a=outcome.route_sigmoid_a,
         route_sigmoid_b=outcome.route_sigmoid_b,
         route_correction_d=outcome.route_correction_d,
-        calibration_algorithm=outcome.calibration_algorithm or DEFAULT_MOS_CALIBRATION_ALGORITHM,
+        calibration_algorithm=outcome_calibration_algorithm(outcome),
     )
 
 
@@ -911,7 +927,7 @@ def mos_calibration_record(
     *,
     cvqa_upstream: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if outcome.calibration_algorithm == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
+    if outcome_calibration_algorithm(outcome) == mos_calibration_a2.MOS_CALIBRATION_ALGORITHM:
         return mos_calibration_a2.mos_calibration_record(outcome, cvqa_upstream=cvqa_upstream)
     policy_id = outcome.policy or MOS_POLICY
     pspec = policy_spec(policy_id)

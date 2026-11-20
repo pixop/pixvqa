@@ -185,6 +185,84 @@ class MosA2ProvenanceTests(unittest.TestCase):
             a2.A2_CVQA_COEF = original
 
 
+class MosA2UnavailableRecordTests(unittest.TestCase):
+    """Unavailable A2 outcomes must serialize via A2 provenance, never v7 policy_spec."""
+
+    def _assert_a2_unavailable_record(self, out: mc.MosCalibrationOutcome) -> dict:
+        self.assertFalse(out.available)
+        self.assertEqual(out.calibration_algorithm, ALG)
+        record = mc.mos_calibration_record(out, cvqa_upstream=_pinned_upstream_payload())
+        self.assertEqual(record["status"], "unavailable")
+        self.assertEqual(record["mos_calibration_algorithm"], ALG)
+        self.assertFalse(record["v7_legacy_components"])
+        self.assertNotIn("low_tail", record)
+        self.assertNotIn("mos_calibrated_cvqa", record)
+        json.dumps(record, allow_nan=False)
+        return record
+
+    def test_nonfinite_canonical(self) -> None:
+        out = mc.apply_mos_calibration(float("nan"), "dummy.mp4", algorithm=ALG)
+        record = self._assert_a2_unavailable_record(out)
+        self.assertIn("finite", record["reason"])
+
+    def test_ffprobe_failed(self) -> None:
+        with patch.object(mc, "resolve_mos_domain", return_value=(None, "ffprobe_failed")):
+            out = mc.apply_mos_calibration(8.5, "dummy.mp4", algorithm=ALG)
+        record = self._assert_a2_unavailable_record(out)
+        self.assertEqual(record["reason"], "ffprobe_failed")
+
+    def test_height_unsupported(self) -> None:
+        with patch.object(mc, "probe_encoded_geometry", return_value=(1920, 720, "bt709")):
+            out = mc.apply_mos_calibration(8.5, "video.mp4", algorithm=ALG)
+        record = self._assert_a2_unavailable_record(out)
+        self.assertEqual(record["reason"], "height_unsupported")
+
+    def test_transfer_hlg(self) -> None:
+        with patch.object(mc, "probe_encoded_geometry", return_value=(1920, 1080, "arib-std-b67")):
+            out = mc.apply_mos_calibration(8.5, "video.mp4", algorithm=ALG)
+        record = self._assert_a2_unavailable_record(out)
+        self.assertEqual(record["reason"], "transfer_hlg")
+
+    def test_invalid_algorithm_record_via_minimal(self) -> None:
+        record = mc.minimal_unavailable_mos_record(
+            8.5, "invalid_mos_calibration_algorithm:bogus", algorithm="bogus"
+        )
+        self.assertEqual(record["status"], "unavailable")
+        self.assertEqual(record["reason"], "invalid_mos_calibration_algorithm:bogus")
+        json.dumps(record, allow_nan=False)
+
+    def test_upstream_gate_blocked_a2(self) -> None:
+        with patch.object(mc, "probe_encoded_geometry", return_value=(1920, 1080, "smpte2084")):
+            out = mc.apply_mos_calibration(8.5, "video.mp4", algorithm=ALG)
+        self.assertTrue(out.available)
+        upstream = _pinned_upstream_payload()
+        upstream["checkpoint_sha256"] = "0" * 64
+        gated = mc.gate_reviewed_mos_outcome(out, upstream)
+        self.assertFalse(gated.available)
+        self.assertEqual(gated.calibration_algorithm, ALG)
+        record = mc.mos_calibration_record(gated, cvqa_upstream=upstream)
+        self.assertEqual(record["mos_calibration_algorithm"], ALG)
+        self.assertEqual(record["cvqa_upstream_gate_status"], "blocked")
+        self.assertNotIn("mos_calibrated_cvqa", record)
+        json.dumps(record, allow_nan=False)
+
+    def test_defensive_dispatch_when_only_policy_set(self) -> None:
+        """Legacy partial outcomes with policy but missing calibration_algorithm."""
+        partial = mc.MosCalibrationOutcome(
+            available=False,
+            mos_calibrated_cvqa=None,
+            reason="ffprobe_failed",
+            domain=None,
+            calibrator=None,
+            canonical_score_input=8.5,
+            policy=ALG,
+            calibration_algorithm=None,
+        )
+        record = mc.mos_calibration_record(partial)
+        self.assertEqual(record["mos_calibration_algorithm"], ALG)
+        json.dumps(record, allow_nan=False)
+
+
 class MosA2AdapterRoutingTests(unittest.TestCase):
     def test_apply_sdr_2160(self) -> None:
         score = 9.0
