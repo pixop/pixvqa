@@ -1,78 +1,90 @@
-# H1 seven-observer HDR 2160p ordinal ACR overlay — research candidate
+# H1 seven-observer ordinal ACR overlay — revised 75 / 15 / 10 weights
 
-**Date:** 2026-11-24
-**Status:** Experimental study-specific candidate. NOT a selected or production PixVQA calibration.
+**Date:** 2026-11-24. **Status:** RESEARCH ONLY; not a validated or production-selectable MOS calibration.
 
-## What was added
+## Intended evidence weights
 
-Executable module: python/pixvqa_cvqahdr/mos_calibration_h1_research.py
+| Cohort | Weight |
+|---|---:|
+| Original TV1–TV3 human scores | 75% |
+| New H1 human ACR study (seven collected ballots) | 15% |
+| Original 40 AI contact-sheet assessments | 10% |
 
-It provides predict_mos_h1_research(score, transfer="pq", encoded_height=2160). The frozen PixVQA A2 coefficients, selected v7 default, CLI algorithm selector, and every existing production MOS output remain unchanged.
+The preceding research candidate used a 30% H1 output blend while retaining the A2 AI25 boost. It did NOT implement the intended new historical/AI split. The revised model corrects both stages.
 
-### Human evidence and screening
+## Historical-human 75 / AI 10 amplitude re-selection
 
-- Seven H1 observers provided 196 individual ordinal ACR 1–5 responses on 28 HDR PQ 2160p clips (14 source families × 2 encodings).
-- B01–B06: 168 user-verified scores with six original JPEG photographs and six PNG scans.
-- B07: 28 directly supplied scores, with source-text preservation; no photo or scan exists.
-- Sequential per-PVS P.910(2023) correlation screening excludes B02. The primary fit includes B01, B03–B07: 168 ordinal individual ratings.
-- Seven-observer scores, robust outlier weighting and two individual-score training-only exclusions were evaluated as sensitivity controls. No original ratings were deleted.
+The original A2 research source run_a2_tv123_nested.py was independently replayed with 145 historical video clips (15 content families), all 435 TV1/2/3 human scores, and the original 40 AI-scored clips. Historical human sigmoid coefficients are unchanged.
 
-### Experimental model and weighting
+The boost amplitude was selected with the original source-balanced MAE grid and the reweighted historical-human/AI-only objective:
 
-Five-category ordinal logistic likelihood applied to every retained human score, with centered observer severity intercepts and historical-curve shrinkage lambda=0.25.
+    (75/85) * old_human_source_balanced_MAE + (10/85) * AI40_source_balanced_MAE
 
-For HDR2160, the new latent response is the fully fitted A2 value plus:
+This reproduces original A2 AI25 amplitude 0.240 and yields revised AI10 amplitude **0.235**, with the exact same human sigmoid coefficients (0.09446591142061583, 0.6046767170474217, 0.6167771933889601, 0.11819874714947097). The human TV1–TV3 scores were not averaged before fitting.
 
-f(x) = -0.1387460215555705 + 0.6449941229765033*(x-9.15) - 0.43841398782780305*max(0,x-9.25).
+The amplitude change applies to every A2 route, by up to -0.005 MOS in high-CVQA regions, and is zero below CVQA 7.75.
 
-Expected ACR is computed from category probabilities averaged over the six screened observer intercepts, not by fitting a curve to per-video mean MOS.
+## New H1 15% ordinal human-study component
 
-Experimental what-if output: 0.70*A2(x) + 0.30*H1_EACR(x).
+The seven H1 ballots contain 196 individual 1–5 ACR responses, 28 HDR PQ 2160p clips, 14 content source families, and seven observers. B01–B06 are photograph-verified. B07 was supplied directly in chat, without a scan.
 
-**The 30% fraction is an assumed cross-study scale-transport hypothesis, not measured MOS equivalence.** Historical continuous 0–100 MOS mapped to 1–5, new categorical ACR and AI contact-sheet scores are not interchangeable observations. Original A2 25% AI weight controlled amplitude selection; lambda=0.25 here is a separate prior penalty, and neither equals this hypothetical 30% H1 output blend.
+Following the previous sequential P.910 per-video correlation screening, B02 is excluded from the primary fit; B01 and B03–B07 contribute **168 individual ACR observations**, with all seven retained as a sensitivity comparison. Verified individual scores are not deleted.
 
-## Strict domain handling
+A five-category ordered-logistic observation model fits individual responses, per-observer severity intercepts, and a quality-dependent hinge correction relative to the revised AI10 A2 baseline:
 
-- Candidate supports only PQ HDR, height 2160, and CVQA in [7.599227864935756,10.098637140060532].
-- Other A2 routes are exactly unchanged.
-- HDR2160 CVQA scores 5, 6, 7, or outside the H1 observed range cause an exception rather than inventing an extrapolation or an abrupt fall-back discontinuity.
-- CVQA scores above 10 are valid; 10.05 is supported by this candidate, 10.2 simply lies outside the empirical H1 range.
-- This module is NOT registered in the production algorithm selector, ensuring it can be exercised only by explicit Python import.
+    latent_f(x) = -0.1371520921243924 + 0.6461944945101277 * (x - 9.15)
+                  - 0.4382042255038394 * max(0, x - 9.25)
 
-## Numerical output
+The fitted ordinal scale is 0.6975259574833641 and category thresholds are 1.5, 2.5, 3.5, and 4.5.
 
-| CVQA | Current A2 HDR2160 | Seven-observer H1 candidate | Candidate minus A2 |
-|---:|---:|---:|---:|
-| 8.0 | 3.661643 | 3.406362 | -0.255280 |
-| 8.5 | 3.847170 | 3.669229 | -0.177940 |
-| 9.0 | 4.048835 | 3.942895 | -0.105940 |
-| 9.5 | 4.234381 | 4.164850 | -0.069531 |
-| 10.0 | 4.371806 | 4.311260 | -0.060546 |
+The output-level sensitivity scenario is:
 
-## Scientific validation status
+    H1_751510_whatif(x) = 0.85 * A2_human75_AI10(x) + 0.15 * E[H1_ACR | x]
 
-Fixed-form, 14-source-family LOFO:
-- Observer-adjusted ordinal model with no curve correction: NLL 1.413720, MAE 0.913201.
-- With the exploratory anchored hinge correction: NLL 1.377886, MAE 0.887275.
-- Robust 10%-contamination variant: NLL 1.382650, MAE 0.898785 (worse than standard).
-- Nested 14-outer/13-inner source-family model/weight selection: best-inner-selected NLL 1.455697 versus no-correction 1.413720. Conservative one-SE rule selects **no correction in every outer fold**.
+**This is a staged two-objective sensitivity scenario, not a single statistically identified three-cohort calibration.** Historical continuous 0–100 TV scores converted to 1–5 and new discrete categorical ACR scores obtained on a different TV are not on a proven common perceptual scale. A 15% output blend assumes partial transportability. The separate historic-curve shrinkage lambda=0.25 is NOT a cohort importance weight. It is also distinct from the original A2 AI25 amplitude weight.
 
-Thus the H1 candidate fails the production-change gate. A2 already used historical ratings of overlapping content, and neither the TV nor rating-scale mapping is common across studies. The H1 results alone do not justify changes to SDR and 1080p, or extrapolation to CVQA below 7.599.
+## Numeric effect at HDR PQ 2160p
 
-## Reproducibility and next ballot
+| CVQA | Original A2 (AI25) | Reweighted historical AI10 | H1 75/15/10 what-if | Change from A2 |
+|---:|---:|---:|---:|---:|
+| 8.0 | 3.661643 | 3.661471 | 3.533859 | -0.127784 |
+| 8.5 | 3.847170 | 3.845874 | 3.757040 | -0.090130 |
+| 9.0 | 4.048835 | 4.045921 | 3.993220 | -0.055616 |
+| 9.5 | 4.234381 | 4.230012 | 4.195671 | -0.038710 |
+| 10.0 | 4.371806 | 4.366806 | 4.337084 | -0.034722 |
 
-Archive master on G: drive:
-G:\Videos\Perceptual_Optimization\LIVE_HDR_vs_SDR\extracted\public_release\subjective_test_packages_20261119\H1_28_HDR2160_human\human_ballots\H1_28clip_ACR_MASTER.xlsx
+The new H1 data provide empirical CVQA support only within [7.5992278649, 10.0986371401] for HDR PQ 2160p. CVQA scores above 10 are valid. The research API refuses to produce an H1 candidate outside this interval, rather than invent low-end extrapolation or a discontinuous fallback. At CVQA 5–7 the historical-human/AI10 baseline is unchanged because the boost begins at 7.75.
 
-Seven-observer research:
-D:\projects\perceptual_optimization\calibration\production_readiness_20261113\AI_EXTENSION_TV2_20261119\analysis\H1_HUMAN7_TV123_RECALIBRATION_20261124
+Other transfer/resolution routes have no H1 correction; in the separate research method they only reflect the small 0.240-to-0.235 shared AI amplitude change. Standard PixVQA A2 still uses AI25 amplitude 0.240.
 
-Key files:
-- H1_7OBS_PROVISIONAL_CURVE_SPEC.json
-- H1_7OBS_EXPERIMENTAL_A2_CURVES_20261124.csv
-- H1_7OBS_UPDATED_A2_HDR2160_EXPERIMENTAL.png
-- H1_7OBS_STUDY_WEIGHT_SENSITIVITY.json
-- H1_7OBS_ROBUST_RESULTS.json
-- H1_7OBS_NESTED_SELECTION.json
+## Observer outliers, robustness and selection caveats
 
-When B08 arrives, preserve the new observer scores with provenance, rerun source-aware screening / individual ordinal calibration and robustness, and version the next curve separately.
+- Source-family-held-out 14-fold fit at fixed hinge / lambda0.25: ordinal NLL 1.377878, individual ACR MAE 0.887396.
+- Fixed no-curve-correction alternative: NLL 1.413618, MAE 0.913427.
+- Robust epsilon0.10 contamination sensitivity: NLL 1.382685, MAE 0.898937; robust downweighting is not supported.
+- Nested 14-outer/13-inner model-class and shrinkage selection: chosen best-inner model held-out NLL 1.455711 vs no correction NLL 1.413618. Conservative one-standard-error selection chooses no correction in all 14 folds.
+- Historical A2 saw prior scores on overlapping content sources; even source-family-held-out H1 refits cannot certify independent cross-study generalization.
+
+**Decision:** keep production A2 and default v7 unchanged. The new weights are retained as an independently callable research scenario, not promoted to production.
+
+## Code and reproducibility
+
+Research module: python/pixvqa_cvqahdr/mos_calibration_h1_research.py. Its public research entrypoint remains predict_mos_h1_research. It is not part of the production algorithm selector. Companion regression tests are scripts/test_cvqahdr_mos_calibration_h1_research.py.
+
+Original 7-ballot H1 master remains on G: drive under the H1_28_HDR2160_human/human_ballots directory. All 7 ballots are preserved with provenance, including B07 direct-only.
+
+Reweighted analysis directory on D: drive:
+
+    D:\projects\perceptual_optimization\calibration\production_readiness_20261113\
+    AI_EXTENSION_TV2_20261119\analysis\H1_HUMAN7_751510_REWEIGHT_20261124
+
+- A2_HUMAN75_AI10_REPLAY.json — source-balanced original-model amplitude replay and input hashes.
+- H1_7OBS_STUDY_WEIGHT_SENSITIVITY.json — individual ordinal fits and source-held-out metrics.
+- H1_7OBS_ROBUST_RESULTS.json — robustness and observer sensitivity.
+- H1_7OBS_NESTED_SELECTION.json — nested model selection.
+- H1_751510_PROVISIONAL_CALIBRATION.json — candidate formula, precise parameters and samples.
+- H1_A2_751510_7OBS_EXPERIMENTAL_FOUR_CURVES.csv — old/reweighted/current scenarios by route.
+- H1_A2_751510_HDR2160_COMPARISON.png — illustrative curves.
+- H1_A2_751510_FOUR_ROUTES.png — all four route effects.
+
+When B08 arrives, archive its scores with provenance, rerun screening and re-fit the ordinal component using the same original75/AI10 historical anchor, and create a new versioned scenario.
