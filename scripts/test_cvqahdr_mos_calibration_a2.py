@@ -140,14 +140,34 @@ class MosA2FormulaTests(unittest.TestCase):
 
 
 class MosA2OodTests(unittest.TestCase):
-    def test_ood_above_10(self) -> None:
-        detail = mc.predict_mos_detailed(11.0, transfer="pq", encoded_height=1080, algorithm=ALG)
-        self.assertTrue(detail.ood_above_support)
-        self.assertTrue(detail.support_extrapolation)
+    def test_scores_above_10_are_valid_and_not_flagged_ood(self) -> None:
+        self.assertEqual(a2.calibrators_for_policy()["A2_TV123_Unified"]["support"], {"score_min": 0.0})
+        for score in (10.0, 10.05, 11.0, 20.0):
+            direct = a2.predict_mos_detailed(score, transfer="pq", encoded_height=1080)
+            detail = mc.predict_mos_detailed(score, transfer="pq", encoded_height=1080, algorithm=ALG)
+            self.assertFalse(hasattr(direct, "ood_above_support"))
+            self.assertFalse(detail.ood_above_support)
+            self.assertFalse(detail.support_extrapolation)
+            self.assertEqual(detail.score_requested, score)
+            self.assertEqual(detail.score_effective, score)
+            self.assertAlmostEqual(detail.estimated_perceptual_quality, direct.estimated_perceptual_quality)
+
+        with patch.object(mc, "probe_encoded_geometry", return_value=(1920, 1080, "smpte2084")):
+            outcome = mc.apply_mos_calibration(11.0, "video.mp4", algorithm=ALG)
+        self.assertTrue(outcome.available)
+        self.assertFalse(outcome.ood_above_support)
+        self.assertFalse(outcome.support_extrapolation)
+        record = mc.mos_calibration_record(outcome, cvqa_upstream=_pinned_upstream_payload())
+        self.assertNotIn("ood_above_support", record)
+        self.assertNotIn("support_extrapolation", record)
+        self.assertEqual(record["support"], {"score_min": 0.0})
+        self.assertEqual(record["score_effective"], 11.0)
+        json.dumps(record, allow_nan=False)
 
     def test_below_zero_ood(self) -> None:
         detail = mc.predict_mos_detailed(-1.0, transfer="sdr", encoded_height=2160, algorithm=ALG)
         self.assertTrue(detail.ood_below_support)
+        self.assertTrue(detail.support_extrapolation)
 
 
 class MosA2ProvenanceTests(unittest.TestCase):

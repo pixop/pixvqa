@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 MOS_CALIBRATION_ALGORITHM = "a2_tv123_ai25"
-CALIBRATION_VERSION = "a2-tv123-ai25-individual-ratings-20261120-v1"
+CALIBRATION_VERSION = "a2-tv123-ai25-individual-ratings-20261120-v2"
 CALIBRATION_LABEL = (
     "Experimental A2-TV123 unified sigmoid + smoothstep amplitude (25% AI tuning)"
 )
@@ -37,7 +37,7 @@ EXPERIMENT_SUMMARY = (
     "AI_EXTENSION_TV2_20261119/analysis/AI_INFORMED_POSTCALIBRATION_20261120/"
     "A2_TV123_INDIVIDUAL_RATINGS_20261120/results/experiment_summary.json"
 )
-MANIFEST_ID = "pixvqa_calib_a2_tv123_ai25_20261120_v1"
+MANIFEST_ID = "pixvqa_calib_a2_tv123_ai25_20261120_v2"
 
 A2_INTERCEPT = 0.09446591142061583
 A2_CVQA_COEF = 0.6046767170474217
@@ -59,7 +59,8 @@ EVIDENCE_CAVEAT = (
     "1080p and 2160p. Not subjectively certified for production."
 )
 
-_SUPPORT = {"score_min": 0.0, "score_max": 10.0}
+# CVQA scores above 10 are valid; no artificial upper limit applies to A2.
+_SUPPORT = {"score_min": 0.0}
 _SUPPORTED_HEIGHTS = frozenset({1080, 2160})
 
 _CALIBRATORS: dict[str, dict[str, Any]] = {
@@ -155,7 +156,7 @@ def _coefficients_digest_payload() -> dict[str, Any]:
 
 
 EMBEDDED_COEFFICIENTS_SHA256 = "5b432596109f24ae4a1050ea25f0be4b6aafeab3366d70ef6f5fd45641639e72"
-SELECTED_COEFFICIENTS_DIGEST_SHA256 = "ca351833725ad9f3c0e1641ca5210ea271bab076e6cdedec37beca4faddd0804"
+SELECTED_COEFFICIENTS_DIGEST_SHA256 = "05497a15ce8f5fee5dc378c4a1961418f8b55e7e4f734b90227d432894673f2c"
 
 
 def _enforce_digest_match(computed: str, expected: str, *, label: str) -> str:
@@ -222,7 +223,6 @@ class PredictMosResult:
     score_requested: float
     score_effective: float
     ood_below_support: bool
-    ood_above_support: bool
     policy: str
     calibrator: str
     route_weight_lambda: float
@@ -256,23 +256,20 @@ def predict_mos_detailed(
     if spec is None:
         raise ValueError(f"unknown calibrator {key!r}")
     lo = float(_SUPPORT["score_min"])
-    hi = float(_SUPPORT["score_max"])
     ood_below = requested < lo
-    ood_above = requested > hi
     estimate = _evaluate(requested, transfer, encoded_height)
     return PredictMosResult(
         estimated_perceptual_quality=estimate,
         score_requested=requested,
         score_effective=requested,
         ood_below_support=ood_below,
-        ood_above_support=ood_above,
         policy=MOS_CALIBRATION_ALGORITHM,
         calibrator=key,
         route_weight_lambda=float(spec["weight_lambda"]),
         model_key=str(spec["model_key"]),
         post_mos_offset=0.0,
         input_support_clamp=False,
-        support_extrapolation=ood_below or ood_above,
+        support_extrapolation=ood_below,
         route_sigmoid_a=A2_INTERCEPT,
         route_sigmoid_b=A2_CVQA_COEF,
         route_correction_d=A2_AMPLITUDE,
@@ -320,7 +317,7 @@ def mos_calibration_record(
         "coefficients_digest_sha256": coefficients_digest(),
         "m1_implementation": "unified_sigmoid_height_pq_indicators_plus_smoothstep",
         "formula": pspec["formula"],
-        "canonical_score_scale": "0-10",
+        "canonical_score_scale": "canonical CVQA (values >10 allowed)",
         "output_scale": OUTPUT_SCALE_LABEL,
         "canonical_score_input": _json_safe_number(outcome.canonical_score_input),
         "evidence_caveat": pspec["evidence_caveat"],
@@ -335,8 +332,8 @@ def mos_calibration_record(
         "unresolved_policy_note": (
             "A2-TV123 does not use v7 transfer-separated normalization, SDR native-MOS "
             "offset, M7 corrections or C2 low-tail. Input CVQA is not support-clamped; "
-            f"nominal research span {_SUPPORT}; extrapolations are flagged and output "
-            "MOS is bounded to [1, 5]."
+            "scores above 10 are valid, the smoothstep saturates at 10, and only "
+            "the MOS output is bounded to [1, 5]."
         ),
         "manifest_id": pspec["manifest_id"],
         "coefficients_digest_note": (
@@ -360,7 +357,6 @@ def mos_calibration_record(
         record["score_requested"] = score_requested
         record["score_effective"] = _json_safe_number(outcome.score_effective)
         record["ood_below_support"] = outcome.ood_below_support
-        record["ood_above_support"] = outcome.ood_above_support
         record["input_support_clamp"] = False
         if outcome.support_extrapolation:
             record["support_extrapolation"] = True
@@ -384,7 +380,7 @@ def mos_calibration_record(
         record["encoded_width"] = outcome.domain.encoded_width
         record["color_transfer_tag"] = outcome.domain.color_transfer_tag
     record["note"] = (
-        f"{OUTPUT_SCALE_LABEL} is an experimental research mapping from canonical 0–10 "
+        f"{OUTPUT_SCALE_LABEL} is an experimental research mapping from canonical "
         "CVQA-HDR-NR using A2-TV123; it is not validated for production subjective-quality "
         "prediction and must not be confused with frozen v7+C2 calibration."
     )

@@ -384,7 +384,7 @@ def predict_mos(
     policy: str | None = None,
     algorithm: str | None = None,
 ) -> float:
-    """Map canonical CVQA 0–10 to estimated perceptual quality 1–5."""
+    """Map canonical CVQA to estimated perceptual quality 1–5."""
     return predict_mos_detailed(
         canonical_cvqa_score,
         transfer=transfer,
@@ -419,7 +419,7 @@ def predict_mos_detailed(
             score_requested=detail.score_requested,
             score_effective=detail.score_effective,
             ood_below_support=detail.ood_below_support,
-            ood_above_support=detail.ood_above_support,
+            ood_above_support=False,  # Shared v7 field; A2 has no upper CVQA boundary.
             policy=detail.policy,
             calibrator=detail.calibrator,
             route_weight_lambda=detail.route_weight_lambda,

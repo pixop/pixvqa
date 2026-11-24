@@ -1,6 +1,6 @@
 # CVQA-to-MOS — experimental A2-TV123 integration (feature branch)
 
-**Updated:** 20 November 2026  
+**Updated:** 24 November 2026
 **Branch:** `feature/cvqa-mos-a2-tv123-ai25-20261120`  
 **Status:** Experimental opt-in calibration. **Not** merged, **not** production-certified.
 
@@ -65,7 +65,7 @@ The legacy env `PIXVQA_CVQA_MOS_POLICY` remains v7-only and is **not** used to s
 
 MOS is attempted only when ffprobe reports supported **SDR or PQ** transfer at **1080p or 2160p**. HLG, ambiguous transfer, unsupported heights and upstream pin mismatch suppress MOS without changing canonical CVQA.
 
-A2 score OOD flags use nominal research span **[0, 10]** on the canonical 0–10 scale (extrapolation flagged above 10; input never clamped). Runtime does **not** implicitly support 720p despite research LOW curves including 720p content.
+A2 accepts valid canonical CVQA scores above 10 without clamping or an upper OOD flag. Its smoothstep saturates at CVQA = 10 while the sigmoid continues increasing above 10; the final MOS is bounded to [1, 5]. This diagnostic-metadata update is tracked as calibration version v2; the four coefficients and smoothstep amplitude are unchanged. Runtime does **not** implicitly support 720p despite research LOW curves including 720p content.
 
 ## Provenance in JSON / protocol
 
