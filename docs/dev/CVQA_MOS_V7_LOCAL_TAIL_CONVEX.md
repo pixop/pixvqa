@@ -1,5 +1,7 @@
 # PixVQA v7 — convex C² SDR lower-tail calibration
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 **Research feature branch:** feature/cvqa-mos-v7-local-tail-006
 **Model version:** selected-s1-sdr200-pq192-v7-convex-c2-20261119-v6
 **Status:** Implemented on feature branch only. Not merged to main or subjectively certified.

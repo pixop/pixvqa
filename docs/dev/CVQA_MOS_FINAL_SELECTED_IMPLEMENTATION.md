@@ -1,5 +1,7 @@
 # CVQA-to-MOS — transfer-separated selected calibration (current runtime)
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 **Updated:** 16 November 2026
 **Status:** Automatically applied when supported video metadata is available. Provisional estimated quality, **not** a production-certified subjective MOS predictor.
 

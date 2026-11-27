@@ -14,6 +14,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "python"))
 pkg = types.ModuleType("pixvqa_cvqahdr")
+pkg.__path__ = [str(root / "python/pixvqa_cvqahdr")]
 pkg.PINNED_COMMIT = "test"
 pkg.PINNED_UPSTREAM = "test"
 pkg.PINNED_CHECKPOINT_SHA256 = "test-checkpoint"
@@ -25,22 +26,6 @@ device.DeviceError = RuntimeError
 for name in ("auto_notice", "device_record", "peak_rss_bytes", "resolve_device"):
     setattr(device, name, lambda *args, **kwargs: None)
 sys.modules["pixvqa_device"] = device
-mos_low_tail_spec = importlib.util.spec_from_file_location(
-    "pixvqa_cvqahdr.mos_low_tail",
-    root / "python/pixvqa_cvqahdr/mos_low_tail.py",
-)
-mos_low_tail_mod = importlib.util.module_from_spec(mos_low_tail_spec)
-sys.modules["pixvqa_cvqahdr.mos_low_tail"] = mos_low_tail_mod
-pkg.mos_low_tail = mos_low_tail_mod
-mos_low_tail_spec.loader.exec_module(mos_low_tail_mod)
-mos_a2_spec = importlib.util.spec_from_file_location(
-    "pixvqa_cvqahdr.mos_calibration_a2",
-    root / "python/pixvqa_cvqahdr/mos_calibration_a2.py",
-)
-mos_a2_mod = importlib.util.module_from_spec(mos_a2_spec)
-sys.modules["pixvqa_cvqahdr.mos_calibration_a2"] = mos_a2_mod
-pkg.mos_calibration_a2 = mos_a2_mod
-mos_a2_spec.loader.exec_module(mos_a2_mod)
 mos_spec = importlib.util.spec_from_file_location(
     "pixvqa_cvqahdr.mos_calibration",
     root / "python/pixvqa_cvqahdr/mos_calibration.py",

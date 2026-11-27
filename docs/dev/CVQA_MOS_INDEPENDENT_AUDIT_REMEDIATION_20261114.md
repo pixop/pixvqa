@@ -1,5 +1,7 @@
 # CVQA MOS independent audit remediation (2026-11-14)
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 Remediation for findings M01–M04 and L01–L02. Frozen coefficients, offsets, and digests are unchanged.
 
 | Artifact | SHA256 |

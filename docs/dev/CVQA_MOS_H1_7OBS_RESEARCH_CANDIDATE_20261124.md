@@ -1,3 +1,7 @@
+> Historical experiment only. Superseded for the default by the eight-ballot uniform 5% H1 mapping: [canonical specification](CVQA_MOS_A2_TV123_INTEGRATION.md).
+
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 # H1 seven-observer ordinal ACR overlay — revised 75 / 15 / 10 weights
 
 **Date:** 2026-11-24. **Status:** RESEARCH ONLY; not a validated or production-selectable MOS calibration.

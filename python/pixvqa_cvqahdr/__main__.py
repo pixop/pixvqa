@@ -55,7 +55,7 @@ def protocol_lines(record: dict, output_json) -> list[str]:
         f"pixvqa-value raw_model_score {record['raw_model_score']!r}",
         f"pixvqa-value mos_calibration_status {_protocol_token(mos_status)}",
         f"pixvqa-value mos_calibrated_cvqa "
-        f"{_protocol_token(mos_display) if isinstance(mos_display, str) else mos_display!r}",
+        f"{_protocol_token(mos_display) if isinstance(mos_display, str) else repr(mos_display)}",
     ]
     if mos_policy:
         lines.append(f"pixvqa-value mos_policy {_protocol_token(str(mos_policy))}")
@@ -110,15 +110,6 @@ def main(argv=None) -> int:
                         help="stdout format. json is the standalone summary.")
     parser.add_argument("--verify-decoded-frames", action="store_true",
                         help="Count decoded frames so padded samples are reported.")
-    parser.add_argument(
-        "--mos-calibration-algorithm",
-        default=None,
-        metavar="ALG",
-        help=(
-            "Optional MOS calibration algorithm. Default is frozen v7+C2 (v7_convex_c2). "
-            "Experimental A2-TV123: a2_tv123_ai25. Env: PIXVQA_MOS_CALIBRATION_ALGORITHM."
-        ),
-    )
     args = parser.parse_args(argv)
     try:
         with stdout_to_stderr():
@@ -136,7 +127,6 @@ def main(argv=None) -> int:
                         args.output_json,
                         args.verify_decoded_frames,
                         max_frames=args.max_frames,
-                        mos_calibration_algorithm=args.mos_calibration_algorithm,
                     )
     except AdmissionError as exc:
         print(f"pixvqa-cvqa-hdr-nr: admission: {exc}", file=sys.stderr)
