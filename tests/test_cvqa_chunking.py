@@ -14,6 +14,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "python"))
 pkg = types.ModuleType("pixvqa_cvqahdr")
+pkg.__path__ = [str(root / "python/pixvqa_cvqahdr")]
 pkg.PINNED_COMMIT = "test"
 pkg.PINNED_UPSTREAM = "test"
 pkg.PINNED_CHECKPOINT_SHA256 = "test-checkpoint"

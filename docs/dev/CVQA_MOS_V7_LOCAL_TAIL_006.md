@@ -1,5 +1,7 @@
 > **Historical v4 reference (superseded):** This page documents the earlier −0.060 MOS / SDR join 5.5 implementation. The same feature branch now uses **−0.080 MOS / join 5.65**, documented in [v5 selected local C² tail](CVQA_MOS_V7_LOCAL_TAIL_008.md). The figures and tables below are retained for historical comparison.
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 # PixVQA CVQA-to-MOS: local C² endpoint correction for frozen v7
 
 **Research feature branch: feature/cvqa-mos-v7-local-tail-006**

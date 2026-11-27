@@ -1,5 +1,7 @@
 # CVQA-to-MOS — historical reviewed/legacy policies (superseded)
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 **Superseded 2026-11-14.** PixVQA runtime now uses only the scientifically selected formula (`selected_s1_sdr_p1_hdr_c0`). The prior triple-policy model (`legacy_target_lambda1_both`, `reviewed_s1_hdr0_sdr1`, env-based selection) has been removed from active code paths.
 
 ## Obsolete environment variable

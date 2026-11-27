@@ -102,13 +102,9 @@ Run `./bin/pixvqa --help`, `--help-advanced` or `--help-hdr` for the authoritati
 
 ### CVQA-HDR-NR estimated-quality calibration (provisional)
 
-PixVQA automatically reports a separate estimated quality rating on a nominal **1–5** scale alongside the canonical CompressedVQA score when transfer metadata and encoded height are supported. The active selected calibration uses **SDR-only (200 observations)** and **HDR PQ-only (192 observations)** fitting, with separate score normalization and M1 sigmoid + M7 corrections. The SDR model additionally uses a +0.5107733 native-MOS correction; HDR has no post-offset. The historical policy ID remains for protocol compatibility, but the calibration version and coefficient hashes have changed.
+The sole active mapping is **A2-TV123 + H1 B08, w=0.05 (5%)** (`a2_tv123_ai25_h1_b08_w005`). It converts canonical clip-level CVQA to estimated perceptual quality on the 1–5 scale for SDR/PQ at 1080p/2160p. The original A2 sigmoid and 0.240 high-quality amplitude are frozen; the H1 ordinal model uses direct five-category human ACR ratings (28 HDR2160 clips, 14 families, 8 ballots, 7 retained). A shared full-range correction preserves the CVQA=10 anchor and curve ordering on the numerically tested score range. No AI or observer inference runs at scoring time.
 
-**Feature-branch update (19 November 2026):** A separately versioned convex C2 SDR local-tail correction has been added to branch **feature/cvqa-mos-v7-local-tail-006** (not main). It enforces estimated MOS(0)=1, lowers the two SDR CVQA 4.134 anchor values by **0.080 MOS**, and returns exactly to frozen v7 for SDR CVQA at or above **5.65** and HDR PQ CVQA at or above **6.268450**. Frozen fitted v7 coefficients and native-MOS evaluation scores remain unchanged. See [selected local C2 curves](docs/dev/CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). This is research-only, not production-certified.
-
-These are research-derived estimates, **not viewer-measured MOS or production-certified predictions**. Retrospective SDR54 MAE is 0.2780 after source-held-out correction; HDR35 MAE is 0.6042, worse than the old mixed-data model. Native-rated high-quality HDR MOS ≥4.5 remains unvalidated. This code integration is not production release approval.
-
-For current coefficients, the exact source digest, test protocol and migration details, see [selected CVQA-to-MOS implementation](docs/dev/CVQA_MOS_FINAL_SELECTED_IMPLEMENTATION.md), [v7 transfer-separated calibration](docs/dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md) and [Learned Metrics](docs/LEARNED_METRICS.md). Older reviewed-S1 and mixed-data policy reports remain historical evidence, not current runtime behavior.
+Historical A2-only and v7+C2 mappings have been removed from runtime; there is no algorithm-selection argument or environment override. See [canonical B08 specification](docs/dev/CVQA_MOS_A2_TV123_INTEGRATION.md) for formulas, provenance, validation, limitations, and the standalone mapper. These estimates are not viewer-measured MOS or production-certified predictions. Canonical CVQA and upstream/domain gating remain unchanged.
 
 ## License
 

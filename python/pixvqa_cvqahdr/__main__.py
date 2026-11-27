@@ -46,6 +46,7 @@ def protocol_lines(record: dict, output_json) -> list[str]:
     mos_value = record.get("mos_calibrated_cvqa")
     mos_status = mos.get("status", "unavailable")
     mos_policy = mos.get("mos_policy")
+    mos_algorithm = mos.get("mos_calibration_algorithm")
     mos_display = mos_value if mos_value is not None else "unavailable"
     lines = [
         "pixvqa-protocol 1",
@@ -54,10 +55,14 @@ def protocol_lines(record: dict, output_json) -> list[str]:
         f"pixvqa-value raw_model_score {record['raw_model_score']!r}",
         f"pixvqa-value mos_calibration_status {_protocol_token(mos_status)}",
         f"pixvqa-value mos_calibrated_cvqa "
-        f"{_protocol_token(mos_display) if isinstance(mos_display, str) else mos_display!r}",
+        f"{_protocol_token(mos_display) if isinstance(mos_display, str) else repr(mos_display)}",
     ]
     if mos_policy:
         lines.append(f"pixvqa-value mos_policy {_protocol_token(str(mos_policy))}")
+    if mos_algorithm:
+        lines.append(
+            f"pixvqa-value mos_calibration_algorithm {_protocol_token(str(mos_algorithm))}"
+        )
     lines.extend([
         f"pixvqa-value sampled_frames {sampling['sampled_frames']}",
         f"pixvqa-value opencv_frame_count {sampling['opencv_frame_count']}",
@@ -156,6 +161,8 @@ def main(argv=None) -> int:
         summary["mos_calibrated_cvqa"] = mos_value
     if mos.get("mos_policy"):
         summary["mos_policy"] = mos["mos_policy"]
+    if mos.get("mos_calibration_algorithm"):
+        summary["mos_calibration_algorithm"] = mos["mos_calibration_algorithm"]
     print(json.dumps(summary, separators=(",", ":")))
     return 0
 

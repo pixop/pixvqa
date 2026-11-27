@@ -502,6 +502,31 @@ def preflight(test: str, repository: str, checkpoint: str, profile: str, device:
     }
 
 
+def _attach_mos_calibration(record: dict, test: str) -> None:
+    """Attach the sole canonical MOS estimate without changing canonical CVQA."""
+    score = record["quality_score"]
+    cvqa_upstream = {
+        "upstream": record["upstream"],
+        "checkpoint_sha256": record["checkpoint"]["sha256"],
+        "profile_sha256": record["calibration_profile"]["sha256"],
+    }
+    try:
+        mos_outcome = apply_mos_calibration(score, test)
+        mos_outcome = gate_reviewed_mos_outcome(mos_outcome, cvqa_upstream)
+        record["mos_calibration"] = mos_calibration_record(
+            mos_outcome, cvqa_upstream=cvqa_upstream
+        )
+        if mos_outcome.available and mos_outcome.mos_calibrated_cvqa is not None:
+            record["mos_calibrated_cvqa"] = mos_outcome.mos_calibrated_cvqa
+    except Exception as exc:
+        # Narrow boundary: only the optional MOS stage; canonical scoring is complete.
+        print(f"[CVQA-NR] Optional MOS calibration unavailable: {type(exc).__name__}: {exc}",
+              file=sys.stderr, flush=True)
+        record["mos_calibration"] = minimal_unavailable_mos_record(
+            score, f"calibration_error:{type(exc).__name__}",
+        )
+
+
 def run(test: str, repository: str, checkpoint: str, profile: str, device: str, output_json: str,
         verify_decoded_frames: bool = False, max_frames: int = -1) -> dict:
     deterministic = configure_deterministic_inference()
@@ -633,26 +658,7 @@ def run(test: str, repository: str, checkpoint: str, profile: str, device: str, 
         },
         "elapsed_seconds": time.perf_counter() - t0,
     }
-    cvqa_upstream = {
-        "upstream": upstream,
-        "checkpoint_sha256": record["checkpoint"]["sha256"],
-        "profile_sha256": record["calibration_profile"]["sha256"],
-    }
-    try:
-        mos_outcome = apply_mos_calibration(score, test)
-        mos_outcome = gate_reviewed_mos_outcome(mos_outcome, cvqa_upstream)
-        record["mos_calibration"] = mos_calibration_record(
-            mos_outcome, cvqa_upstream=cvqa_upstream
-        )
-        if mos_outcome.available and mos_outcome.mos_calibrated_cvqa is not None:
-            record["mos_calibrated_cvqa"] = mos_outcome.mos_calibrated_cvqa
-    except Exception as exc:
-        # Narrow boundary: only the optional MOS stage; canonical scoring is complete.
-        print(f"[CVQA-NR] Optional MOS calibration unavailable: {type(exc).__name__}: {exc}",
-              file=sys.stderr, flush=True)
-        record["mos_calibration"] = minimal_unavailable_mos_record(
-            score, f"calibration_error:{type(exc).__name__}"
-        )
+    _attach_mos_calibration(record, test)
     destination = Path(output_json)
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)

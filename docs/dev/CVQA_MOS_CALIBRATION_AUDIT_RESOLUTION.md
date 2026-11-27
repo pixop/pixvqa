@@ -1,5 +1,7 @@
 # CVQA-HDR-NR MOS calibration: audit dispositions and implementation verification
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 Date: 2026-11-14
 Branch: `feature/cvqa-hdr-nr-mos-calibration`
 Status: **selected research model integrated into this working branch; not production-subjective-quality certified.**

@@ -100,46 +100,18 @@ For environment customization, offline installation, WSL-specific details, and u
 
 ## CVQA-HDR-NR estimated perceptual quality (provisional research)
 
-CVQA-HDR-NR continues to report the canonical **0–10** `quality_score` from the official NR logistic calibration. On every successful NR run, when ffprobe stream metadata **trustworthily** identifies **SDR** (`bt709` and related SDR tags) or **HDR PQ** (`smpte2084` / `st2084`) at **1080** or **2160** encoded height, PixVQA also emits a separate **estimated perceptual quality 1–5** field (`mos_calibrated_cvqa` in protocol/JSON for compatibility). ffprobe failures, metadata errors, or unsupported domains only suppress that field; the canonical score is always unchanged. Unexpected calibration errors are caught at a narrow boundary and likewise suppress MOS output without affecting the canonical score.
+CVQA-HDR-NR continues to report the canonical `quality_score` (nominal 0–10, values above 10 allowed) from the official NR logistic calibration. On every successful NR run, when ffprobe stream metadata **trustworthily** identifies **SDR** (`bt709` and related SDR tags) or **HDR PQ** (`smpte2084` / `st2084`) at **1080** or **2160** encoded height, PixVQA also emits a separate **estimated perceptual quality 1–5** field (`mos_calibrated_cvqa` in protocol/JSON for compatibility). ffprobe failures, metadata errors, or unsupported domains only suppress that field; the canonical score is always unchanged. Unexpected calibration errors are caught at a narrow boundary and likewise suppress MOS output without affecting the canonical score.
 
 ### Selected calibration (automatic)
 
-PixVQA applies one scientifically selected transfer — policy `selected_s1_sdr_p1_hdr_c0` — automatically when metadata is supported. No environment variable is required.
+The sole active mapping is `a2_tv123_ai25_h1_b08_w005`: frozen A2-TV123 (historical human sigmoid and AI25 amplitude) plus a uniform, anchored full-range 5% H1 shape correction. H1 adds direct five-category human ACR evidence: 224 ratings on 28 HDR PQ 2160p clips, 196 retained after observer screening. The correction transports this evidence to the other routes as an engineering assumption, not direct subjective validation.
 
-**Updated 16 November 2026:** the models are now trained separately: 200 SDR observations only (30 recorded sources), and 192 HDR PQ observations only (35 recorded sources). The original M1 sigmoid + M7 metadata-correction structure is unchanged. The calibration version and provenance hashes distinguish these new coefficients from the old mixed-data policy.
-
-Normalization is separate for each transfer, using `z_T = (CVQA − mean_T) / std_T`:
-
-| Transfer | Mean | Standard deviation |
-|---|---:|---:|
-| SDR | 8.010332079849347 | 1.241145006178454 |
-| HDR PQ | 8.769753592063894 | 0.9333470039280067 |
-
-Estimated MOS (input CVQA is never clipped):
-
-`MOS = clip(1 + 4·σ(a_T + b_T·z_T) + d_{T,h}, 1, 5)`
-
-| Transfer | Height | a_T | b_T | d_{T,h} |
-|---|---|---:|---:|---:|
-| SDR | 1080p | −0.49117629 | 1.09778388 | +0.51077329 |
-| SDR | 2160p | −0.49117629 | 1.09778388 | +0.59620846 |
-| HDR PQ | 1080p | +0.07227164 | 0.82933048 | −0.13103674 |
-| HDR PQ | 2160p | +0.07227164 | 0.82933048 | +0.09786364 |
-
-**Feature-branch mapping (19 November 2026):** On branch **feature/cvqa-mos-v7-local-tail-006**, the formula above describes the **unchanged fitted v7 baseline**. A new separately versioned, monotone local C² tail replaces only its low CVQA extrapolation: SDR joins exact v7 at CVQA **5.65**, with the two SDR CVQA 4.134 markers each **0.080 MOS lower**, and HDR PQ joins exact v7 at CVQA **6.268450** using the earlier localized HDR C² curves. All routes satisfy **MOS(CVQA=0)=1**, while the canonical score remains unchanged. [Four-route curves, full coefficient values, integrity hashes and limitations](dev/CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). This feature is **not merged to main**.
-
-The SDR native-MOS offset is +0.5107732905216783; no offset is applied to PQ. Training score support is **4.1345–10.0383 for SDR** and **6.2685–10.0515 for PQ**. Values outside a route's range trigger its own out-of-distribution flags but are not clamped. The MOS output remains within [1,5].
-
-The selected models were evaluated retrospectively: SDR54 MAE 0.2780 with source-family-held-out offsets, and HDR35 MAE 0.6042 without an offset (worse than 0.5552 for the old mixed-data model). These are provisional **estimated** ratings, not observed MOS. High-quality HDR MOS ≥4.5 remains unvalidated.
-
-Full-precision independent research coefficients and evaluation: `perceptual_optimization/calibration/production_readiness_20261113/CVQA_TO_MOS_TRANSFER_SEPARATED_DELIVERABLE_20261116/`. The frozen source copy, retained historical golden fixture, new oracle and implementation validation are described in [Transfer-Separated v7 Implementation](dev/CVQA_MOS_TRANSFER_SEPARATED_V7.md).
-
-`PIXVQA_CVQA_MOS_POLICY` is **obsolete**. Unset or `selected_s1_sdr_p1_hdr_c0` is accepted; any other non-empty value (including legacy `legacy_target_lambda1_both` or `reviewed_s1_hdr0_sdr1`) **fail closed** with `obsolete_policy_env:…` so alternate formulas cannot be activated.
+See [canonical B08 algorithm and validation](dev/CVQA_MOS_A2_TV123_INTEGRATION.md). Input CVQA is not clamped, values above 10 remain valid, and estimated MOS is bounded to [1,5]. The legacy calibration modules and selectors have been removed. No calibration algorithm or weight argument is needed, and the old MOS selector environment variables are not read.
 
 **Upstream gate:** estimated perceptual quality is emitted only if git commit, checkpoint SHA-256, and profile SHA-256 all match pinned values in `pixvqa_cvqahdr.__init__`. Otherwise `reason=cvqa_upstream_incompatible`. Preflight still checks git commit only for canonical CVQA scoring.
 
-- **PQ content** → `U0_M7_Bias`; **SDR** → `U_v2_M7_Bias` (stable calibrator identifiers).
+- **PQ or SDR content** → `A2_TV123_H1_B08` (fixed 5% correction, all four routes).
 - **HLG**, bare `bt2020`, missing/unknown transfer, unsupported heights → MOS suppressed; canonical score unchanged.
-- Regression: `PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py` (68-row v7 golden fixture, 89 native per-clip comparisons, VD6 fixed-offset transfer and independent numerical oracle).
+- Regression: `PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py` (independent B08 formula oracle, standalone parity, domain and upstream gates, provenance, selector removal and optional-stage safety).
 
-The detailed JSON run record includes `mos_calibration` metadata (`calibration_version`, `coefficients_digest_sha256`, `route_sigmoid`, provenance) and, when available, `mos_calibrated_cvqa`.
+The detailed JSON run record includes `mos_calibration` metadata (`calibration_version`, `coefficients_digest_sha256`, `unified_sigmoid`, `h1_shape_weight`, evidence/extrapolation provenance) and, when available, `mos_calibrated_cvqa`.

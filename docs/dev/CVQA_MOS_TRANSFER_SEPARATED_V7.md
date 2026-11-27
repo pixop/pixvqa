@@ -1,5 +1,7 @@
 # CVQA-to-estimated-MOS calibration: transfer-separated models (16 November 2026)
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 > **Feature-branch extension (19 November 2026):** The original fitted v7 coefficients and historical evidence described here remain frozen. A selected **−0.080 MOS convex C² SDR low-anchor correction**, together with the previously selected HDR PQ C² lower tails, is implemented **only** on feature branch [feature/cvqa-mos-v7-local-tail-006](https://github.com/pixop/pixvqa/tree/feature/cvqa-mos-v7-local-tail-006). For the newly effective below-support mapping, comparison figures and limitations, see [v7 localized C² tail](CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). Nothing was merged to main.
 
 ## Purpose and change

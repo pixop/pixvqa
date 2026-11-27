@@ -1,5 +1,7 @@
 > **Historical v5 model (superseded):** The prior −0.080 / join 5.65 curve has a slope reversal near CVQA 4. See [selected convex C² version](CVQA_MOS_V7_LOCAL_TAIL_CONVEX.md). The historical figures below remain for comparison.
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 # PixVQA CVQA-to-MOS: local C² endpoint correction for frozen v7
 
 **Research feature branch: feature/cvqa-mos-v7-local-tail-006**

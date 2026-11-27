@@ -1,5 +1,7 @@
 # Independent Software Review — CVQA-to-MOS v7 and CVQA CLI Regression
 
+> **Historical record:** Superseded for runtime on 27 November 2026 by [canonical B08](CVQA_MOS_A2_TV123_INTEGRATION.md). Earlier commands, selectors and module paths below describe the archived implementation, not current PixVQA.
+
 **Review date:** 17 November 2026  
 **Repository:** `pixop/pixvqa`  
 **Branch:** `feature/cvqa-hdr-nr-mos-calibration`  
