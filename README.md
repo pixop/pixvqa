@@ -100,12 +100,6 @@ Full-reference comparisons stop at the shorter input and warn if frame counts di
 
 Run `./bin/pixvqa --help`, `--help-advanced` or `--help-hdr` for the authoritative option reference.
 
-### CVQA-HDR-NR estimated-quality calibration (provisional)
-
-The sole active mapping is **A2-TV123 + H1 B08, w=0.05 (5%)** (`a2_tv123_ai25_h1_b08_w005`). It converts canonical clip-level CVQA to estimated perceptual quality on the 1–5 scale for SDR/PQ at 1080p/2160p. The original A2 sigmoid and 0.240 high-quality amplitude are frozen; the H1 ordinal model uses direct five-category human ACR ratings (28 HDR2160 clips, 14 families, 8 ballots, 7 retained). A shared full-range correction preserves the CVQA=10 anchor and curve ordering on the numerically tested score range. No AI or observer inference runs at scoring time.
-
-Historical A2-only and v7+C2 mappings have been removed from runtime; there is no algorithm-selection argument or environment override. See [canonical B08 specification](docs/dev/CVQA_MOS_A2_TV123_INTEGRATION.md) for formulas, provenance, validation, limitations, and the standalone mapper. These estimates are not viewer-measured MOS or production-certified predictions. Canonical CVQA and upstream/domain gating remain unchanged.
-
 ## License
 
 MIT © 2026 Pixop ApS. See [Licensing](docs/LICENSING.md) for third-party and trademark notices.
