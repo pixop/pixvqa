@@ -192,6 +192,8 @@ def preflight_video(path: str, max_frames: int = -1) -> dict:
             raise PreflightError(f"OpenCV could not open {path}")
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = float(capture.get(cv2.CAP_PROP_FPS))
+        advertised_frame_count = capture.advertised_frame_count
+        frame_count_basis = capture.frame_count_basis
     finally:
         capture.release()
     if max_frames == 0 or max_frames < -1:
@@ -200,6 +202,8 @@ def preflight_video(path: str, max_frames: int = -1) -> dict:
     interval_sec, chunk_sec = runtime_sampling_options()
     plan = sampling_plan(effective_frames, fps, interval_sec)
     plan["source_frame_count"] = frame_count
+    plan["container_frame_count"] = advertised_frame_count
+    plan["frame_count_basis"] = frame_count_basis
     plan["chunk_size_sec_requested"] = chunk_sec
     plan["chunk_max_sampled_frames"] = max(1, int(math.floor(chunk_sec * fps / plan["sample_interval_frames"] + 1e-9)))
     plan["path"] = path

@@ -591,6 +591,8 @@ def _regression_cases() -> list:
         ("regression-pu21", "test_pu21_numeric.py", "cpu", {}, 180, ["metric:pu21-psnr", "metric:pu21-ssim", "metric:pu21-msssim"]),
         ("regression-hdr", "test_hdr_metadata.py", "swdec", {}, 240, ["hdr:stream", "hdr:conflict"]),
         ("regression-ffmpeg", "test_ffmpeg_input.py", "swdec", {}, 240, ["codec:regression"]),
+        ("regression-learned-decoder", "test_ffmpeg_bgr_capture.py", "swdec",
+         {"PIXVQA_CAPTURE_TEST_HOST": "1"}, 120, ["codec:regression", "learned:edit-list"]),
         ("regression-dual-hevc", "test_dual_hevc.py", "swdec", {}, 180, ["codec:hevc"]),
         ("regression-vmaf", "test_vmaf_smoke.py", "swdec", {}, 240, ["metric:vmaf"]),
         ("regression-vmaf-hdr-auto", "test_vmaf_hdr_auto_params.py", "swdec", {}, 240,

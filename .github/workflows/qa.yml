@@ -50,6 +50,9 @@ jobs:
       - name: CVQA-HDR-NR B08 MOS calibration regression (stdlib; independent oracle)
         run: PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py
 
+      - name: Shared learned decoder contracts (no model or FFmpeg required)
+        run: python3 scripts/test_ffmpeg_bgr_capture.py --unit-only
+
       - name: QA smoke profile (17 cases)
         run: python3 scripts/run_qa.py --profile smoke
 
@@ -67,6 +70,7 @@ jobs:
             echo "| \`scripts/test_qcs.py\` (needs NumPy; \`python3-numpy\` on Ubuntu) | see step above |"
             echo "| \`scripts/test_simplevqa_reference.py\` (stdlib + mocks; no learned deps) | see step above |"
             echo "| \`scripts/test_cvqahdr_mos_calibration.py\` (B08 oracle, routing, CLI and integrity; stdlib) | see step above |"
+            echo "| \`scripts/test_ffmpeg_bgr_capture.py --unit-only\` (decoder count/EOF contracts) | see step above |"
             echo "| \`scripts/run_qa.py --profile smoke\` (17 cases) | see step above |"
             echo ""
             echo "## Separate workflows"
