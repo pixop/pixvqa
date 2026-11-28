@@ -74,6 +74,14 @@ An internet connection is needed to obtain missing models. Normally you do **not
 
 The `sdr`, `pq`, and `hlg` groups intentionally exclude **CVVDP** (potentially high GPU memory use) and **HDR-ChipQA** (potentially high system memory use). Add either explicitly (`--metrics sdr,cvvdp` or `--metrics pq,hdr-chipqa`). The legacy `all` selection includes CVVDP; see [Metric groups](CLI_USAGE.md#metric-groups).
 
+## Playback frame counts and MP4 edit lists
+
+CVQA-HDR-NR and SimpleVQA use the pinned FFmpeg BGR24 playback decoder, without frame-rate conversion or an OpenCV decoder fallback. MP4/MOV container `nb_frames` can include coded preroll excluded by the edit list. The shared frame-count resolver scans packet flags and counts; if discard flags or a packet-count discrepancy are present, it checks that the unrestricted coded track count matches the container and obtains the actual presented count using ffprobe with the edit list enabled. For ordinary MP4s, this is a compressed-packet scan rather than an extra video decode. Counts for unchanged local regular files are cached within each process. Both adapters plan samples from the reconciled presentation count; the original container count and count basis remain in JSON provenance. For edited media the extra exact count requires a decode-only preflight pass. Playback never disables edit lists.
+
+A full capture validates the decoder's exit status and exact byte count on the final expected frame. Partial frames, unreconciled count discrepancies, probe errors and nonzero decoder exits fail closed rather than padding a failed decode. Explicit frame-limited reads still release early. The B08 coefficients and temporal midpoint formula are unchanged.
+
+Regression: `python scripts/test_ffmpeg_bgr_capture.py` in the learned environment with an encoder-capable host FFmpeg (set `PIXVQA_TEST_FIXTURE_FFMPEG` if needed). The regular full QA suite also runs the synthetic edit-list case with its host FFmpeg pair; the hosted CPU workflow runs the decoder contracts without models.
+
 ## Concurrent jobs
 
 For multiple PixVQA processes on one GPU, `--scheduler-admission` enables opt-in global admission for **SimpleVQA** and **CVQA-HDR-NR**. It queues learned-metric inference according to shared resource reservations and concurrency limits. It does not control NVENC jobs or guarantee that memory use stays below a hard limit. The default is off; users running a single evaluation do not need this option.

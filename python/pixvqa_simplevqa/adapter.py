@@ -24,6 +24,7 @@ import tempfile
 from pathlib import Path
 
 from pixvqa_video.ffmpeg_bins import FFmpegBinError, resolve_ffprobe_bin
+from pixvqa_video.frame_count import is_mov_container, resolve_presentation_frame_count
 
 
 class SetupError(RuntimeError):
@@ -454,7 +455,7 @@ def inspect_video(path: Path, ffprobe: str | None = None) -> dict:
 
     format_proc = _run_ffprobe(
         ffprobe,
-        ["-show_entries", "format=duration", "-of", "json", str(path)],
+        ["-show_entries", "format=duration,format_name", "-of", "json", str(path)],
     )
     try:
         fmt_root = json.loads(format_proc.stdout)
@@ -480,6 +481,16 @@ def inspect_video(path: Path, ffprobe: str | None = None) -> dict:
     nb_parsed = _parse_nb_frames(stream.get("nb_frames"))
     if stream.get("nb_frames") not in (None, "N/A") and nb_parsed is None:
         raise SetupError("invalid or malformed nb_frames in video stream metadata")
+
+    advertised_frame_count = nb_parsed
+    frame_count_basis = "container" if nb_parsed is not None else "duration_estimate"
+    if is_mov_container(fmt.get("format_name")):
+        try:
+            nb_parsed, frame_count_basis = resolve_presentation_frame_count(
+                ffprobe, path, nb_parsed, fmt.get("format_name"),
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise SetupError(f"could not establish SimpleVQA presentation-frame count: {exc}") from exc
 
     # Reject sub-second or invalid clips when duration is known.
     if duration_s is not None:
@@ -525,6 +536,8 @@ def inspect_video(path: Path, ffprobe: str | None = None) -> dict:
         "height": stream.get("height"),
         "fps": fps,
         "frame_count": nb_parsed,
+        "container_frame_count": advertised_frame_count,
+        "frame_count_basis": frame_count_basis,
         "duration_seconds": duration_s,
         "transfer": tr_raw if tr_raw is not None else "unknown",
     }
