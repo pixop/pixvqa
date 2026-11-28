@@ -5,9 +5,11 @@ PixVQA supports four optional Python-based video quality metrics. They are **not
 | Metric | Type | Supported video |
 |---|---|---|
 | `cvvdp` (ColorVideoVDP) | Full-reference, perceptual JOD | SDR, PQ and HLG; compressed and supported raw 10-bit YUV420 |
-| `cvqa-hdr-nr` (CompressedVQA-HDR NR) | No-reference | Compressed SDR and HDR10; automatic provisional MOS 1–5 for supported metadata |
+| `cvqa-hdr-nr` (CompressedVQA-HDR NR) | No-reference | Compressed SDR and HDR10 |
 | `simplevqa` (SimpleVQA) | No-reference | Compressed SDR only |
 | `hdr-chipqa` (HDR-ChipQA) | No-reference, one score per video | SDR and PQ; experimental HLG; compressed or supported raw YUV420 |
+
+Pixop has developed an in-house CompressedVQA-HDR-NR to MOS (1–5) mapping function, which is applied automatically for supported inputs.
 
 For complete format details, see [Metrics & Formats](METRICS_AND_FORMATS.md).
 
@@ -78,7 +80,7 @@ The `sdr`, `pq`, and `hlg` groups intentionally exclude **CVVDP** (potentially h
 
 CVQA-HDR-NR and SimpleVQA use the pinned FFmpeg BGR24 playback decoder, without frame-rate conversion or an OpenCV decoder fallback. MP4/MOV container `nb_frames` can include coded preroll excluded by the edit list. The shared frame-count resolver scans packet flags and counts; if discard flags or a packet-count discrepancy are present, it checks that the unrestricted coded track count matches the container and obtains the actual presented count using ffprobe with the edit list enabled. For ordinary MP4s, this is a compressed-packet scan rather than an extra video decode. Counts for unchanged local regular files are cached within each process. Both adapters plan samples from the reconciled presentation count; the original container count and count basis remain in JSON provenance. For edited media the extra exact count requires a decode-only preflight pass. Playback never disables edit lists.
 
-A full capture validates the decoder's exit status and exact byte count on the final expected frame. Partial frames, unreconciled count discrepancies, probe errors and nonzero decoder exits fail closed rather than padding a failed decode. Explicit frame-limited reads still release early. The B08 coefficients and temporal midpoint formula are unchanged.
+A full capture validates the decoder's exit status and exact byte count on the final expected frame. Partial frames, unreconciled count discrepancies, probe errors and nonzero decoder exits fail closed rather than padding a failed decode. Explicit frame-limited reads still release early. The temporal midpoint formula is unchanged.
 
 Regression: `python scripts/test_ffmpeg_bgr_capture.py` in the learned environment with an encoder-capable host FFmpeg (set `PIXVQA_TEST_FIXTURE_FFMPEG` if needed). The regular full QA suite also runs the synthetic edit-list case with its host FFmpeg pair; the hosted CPU workflow runs the decoder contracts without models.
 
@@ -105,21 +107,3 @@ This is consistent with content-dependent model sensitivity and possibly out-of-
 **HDR-ChipQA can use substantial system RAM**, particularly with parallel jobs. Start with one job on memory-constrained systems and monitor RAM before increasing concurrency. Detailed benchmark observations belong in [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md).
 
 For environment customization, offline installation, WSL-specific details, and upstream packaging notes, see [Advanced Setup Reference](dev/LEARNED_METRICS_ADVANCED.md). For algorithm-specific behavior, see [HDR-ChipQA Reference](dev/CHIPQA_REFERENCE.md) and [SimpleVQA Reference](dev/SIMPLEVQA_REFERENCE.md).
-
-## CVQA-HDR-NR estimated perceptual quality (provisional research)
-
-CVQA-HDR-NR continues to report the canonical `quality_score` (nominal 0–10, values above 10 allowed) from the official NR logistic calibration. On every successful NR run, when ffprobe stream metadata **trustworthily** identifies **SDR** (`bt709` and related SDR tags) or **HDR PQ** (`smpte2084` / `st2084`) at **1080** or **2160** encoded height, PixVQA also emits a separate **estimated perceptual quality 1–5** field (`mos_calibrated_cvqa` in protocol/JSON for compatibility). ffprobe failures, metadata errors, or unsupported domains only suppress that field; the canonical score is always unchanged. Unexpected calibration errors are caught at a narrow boundary and likewise suppress MOS output without affecting the canonical score.
-
-### Selected calibration (automatic)
-
-The sole active mapping is `a2_tv123_ai25_h1_b08_w005`: frozen A2-TV123 (historical human sigmoid and AI25 amplitude) plus a uniform, anchored full-range 5% H1 shape correction. H1 adds direct five-category human ACR evidence: 224 ratings on 28 HDR PQ 2160p clips, 196 retained after observer screening. The correction transports this evidence to the other routes as an engineering assumption, not direct subjective validation.
-
-See [canonical B08 algorithm and validation](dev/CVQA_MOS_A2_TV123_INTEGRATION.md). Input CVQA is not clamped, values above 10 remain valid, and estimated MOS is bounded to [1,5]. The legacy calibration modules and selectors have been removed. No calibration algorithm or weight argument is needed, and the old MOS selector environment variables are not read.
-
-**Upstream gate:** estimated perceptual quality is emitted only if git commit, checkpoint SHA-256, and profile SHA-256 all match pinned values in `pixvqa_cvqahdr.__init__`. Otherwise `reason=cvqa_upstream_incompatible`. Preflight still checks git commit only for canonical CVQA scoring.
-
-- **PQ or SDR content** → `A2_TV123_H1_B08` (fixed 5% correction, all four routes).
-- **HLG**, bare `bt2020`, missing/unknown transfer, unsupported heights → MOS suppressed; canonical score unchanged.
-- Regression: `PYTHONPATH=python python3 scripts/test_cvqahdr_mos_calibration.py` (independent B08 formula oracle, standalone parity, domain and upstream gates, provenance, selector removal and optional-stage safety).
-
-The detailed JSON run record includes `mos_calibration` metadata (`calibration_version`, `coefficients_digest_sha256`, `unified_sigmoid`, `h1_shape_weight`, evidence/extrapolation provenance) and, when available, `mos_calibrated_cvqa`.

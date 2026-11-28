@@ -412,7 +412,11 @@ def mos_calibration_record(
         "calibration_label": "A2-TV123 with uniform B08 H1 5% correction",
         "weight_kind": "historical_AI25_amplitude_and_H1_shape_weight",
         "coefficient_cohort": "TV123_145clips_435_human_40_ai_H1_8ballots_7retained",
-        "coefficient_source": "docs/dev/CVQA_MOS_A2_TV123_INTEGRATION.md",
+        "coefficient_source": (
+            "https://github.com/pixop/pixvqa/blob/"
+            "f669ec67605b25bcf8ea04cf22088d90b3b29187/"
+            "docs/dev/CVQA_MOS_A2_TV123_INTEGRATION.md"
+        ),
         "manifest_id": CALIBRATION_VERSION,
         "coefficients_digest_sha256": digest,
         "embedded_coefficients_sha256": digest,
