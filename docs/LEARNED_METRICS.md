@@ -9,6 +9,8 @@ PixVQA supports four optional Python-based video quality metrics. They are **not
 | `simplevqa` (SimpleVQA) | No-reference | Compressed SDR only |
 | `hdr-chipqa` (HDR-ChipQA) | No-reference, one score per video | SDR and PQ; experimental HLG; compressed or supported raw YUV420 |
 
+Pixop has developed an in-house CompressedVQA-HDR-NR to MOS (1–5) mapping function, which is applied automatically for supported inputs.
+
 For complete format details, see [Metrics & Formats](METRICS_AND_FORMATS.md).
 
 **Learned NR production defaults (2026-11-10):** SimpleVQA and CVQA-HDR-NR
